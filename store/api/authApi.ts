@@ -240,11 +240,12 @@ function parseOrderRecord(value: unknown): OrderRecord | null {
   return {
     id,
     orderNumber: asString(record.orderNumber) || asString(record.displayId),
-    status: asString(record.status),
+    status: asString(record.status) || "PLACED",
     tableId,
     tableName,
     sourceLabel: tableName ? `${tableName} - Dine-in` : customerName ? `${customerName} - Takeaway` : "Order",
     itemsSummary: parseOrderItemsSummary(record),
+    items: [],
     raw: record,
   };
 }
@@ -547,7 +548,10 @@ export const authApi = createApi({
 
     orders: builder.query<OrdersListPayload, OrdersQueryParams | void>({
       query: (params) => {
-        const status = params?.status?.length ? params.status.join(",") : "PLACED,IN_PROGRESS";
+        const statusParam = params?.status;
+        const status = Array.isArray(statusParam)
+          ? statusParam.join(",")
+          : statusParam || "PLACED,IN_PROGRESS";
 
         return {
           url: "/orders",

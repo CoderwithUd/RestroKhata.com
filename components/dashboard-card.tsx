@@ -8,6 +8,7 @@ import { getErrorMessage } from "@/lib/error";
 import { isSubscriptionExpired } from "@/lib/subscription";
 import { FullPageLoader } from "@/components/full-page-loader";
 import { MenuWorkspace } from "@/components/menu-workspace";
+import { OrdersWorkspace } from "@/components/orders-workspace";
 import { ProfileSettingsWorkspace } from "@/components/profile-settings-workspace";
 import { StaffWorkspace } from "@/components/staff-workspace";
 import { TablesWorkspace } from "@/components/tables-workspace";
@@ -419,6 +420,7 @@ export function DashboardCard({ section }: DashboardCardProps) {
   const tenant = useAppSelector(selectAuthTenant);
   const [logout, { isLoading: isLoggingOut }] = useLogoutMutation();
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const [newOrderOpen, setNewOrderOpen] = useState(false);
   const { data: tentantProfile, isLoading: isTenantProfileLoading } = useTentantProfileQuery();
   const { data: ordersPayload, isFetching: isOrdersFetching } = useOrdersQuery({
     status: ["PLACED", "IN_PROGRESS"],
@@ -604,7 +606,11 @@ export function DashboardCard({ section }: DashboardCardProps) {
               </div>
 
               <div className="grid w-full grid-cols-2 gap-2 sm:flex sm:w-auto sm:items-center">
-                <button className="hidden rounded-lg border border-[#e6dfd1] bg-white px-3 py-2 text-sm font-medium text-slate-700 md:inline-flex">
+                <button
+                  type="button"
+                  onClick={() => setNewOrderOpen(true)}
+                  className="hidden rounded-lg border border-[#e6dfd1] bg-white px-3 py-2 text-sm font-medium text-slate-700 md:inline-flex hover:bg-amber-50"
+                >
                   + New Order
                 </button>
                 <button className="hidden w-full items-center justify-center rounded-lg bg-amber-500 px-3 py-2 text-sm font-semibold text-white hover:bg-amber-600 sm:inline-flex sm:w-auto">
@@ -811,6 +817,10 @@ export function DashboardCard({ section }: DashboardCardProps) {
                 </div>
               </section>
             </>
+          ) : activeSection.id === "orders" || activeSection.id === "kitchen" ? (
+            <section className="mt-4">
+              <OrdersWorkspace rawRole={tentantProfile?.role || user?.role} />
+            </section>
           ) : activeSection.id === "tables" ? (
             <TablesWorkspace tenantName={tenantName} tenantSlug={tenantSlug} />
           ) : activeSection.id === "menu" ? (
@@ -832,6 +842,24 @@ export function DashboardCard({ section }: DashboardCardProps) {
           )}
         </div>
       </div>
+
+      {/* Global + New Order modal (accessible from header button) */}
+      {newOrderOpen && (
+        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 sm:items-center" onClick={() => setNewOrderOpen(false)}>
+          <div
+            className="flex h-[90vh] w-full max-w-3xl flex-col rounded-t-3xl bg-[#f6f4ef] p-4 shadow-2xl sm:rounded-2xl sm:h-auto sm:max-h-[90vh]"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="mb-3 flex items-center justify-between">
+              <p className="text-base font-bold">New Order</p>
+              <button onClick={() => setNewOrderOpen(false)} className="text-slate-400 hover:text-slate-700">✕</button>
+            </div>
+            <div className="flex-1 overflow-y-auto">
+              <OrdersWorkspace rawRole="waiter" />
+            </div>
+          </div>
+        </div>
+      )}
 
       {drawerOpen ? (
         <div className="fixed inset-0 z-40 lg:hidden">
