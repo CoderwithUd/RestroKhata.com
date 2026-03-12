@@ -7,6 +7,7 @@ import { clearStoredSession } from "@/lib/auth-session";
 import { getErrorMessage } from "@/lib/error";
 import { isSubscriptionExpired } from "@/lib/subscription";
 import { FullPageLoader } from "@/components/full-page-loader";
+import { InvoicesWorkspace } from "@/components/invoices-workspace";
 import { MenuWorkspace } from "@/components/menu-workspace";
 import { OrdersWorkspace } from "@/components/orders-workspace";
 import { ProfileSettingsWorkspace } from "@/components/profile-settings-workspace";
@@ -26,6 +27,7 @@ type RoleKey = "owner" | "manager" | "waiter" | "kitchen";
 type SectionId =
   | "overview"
   | "orders"
+  | "invoices"
   | "menu"
   | "staff"
   | "reports"
@@ -45,9 +47,9 @@ type DashboardSection = {
 };
 
 const ROLE_SECTIONS: Record<RoleKey, SectionId[]> = {
-  owner: ["overview", "orders", "tables", "kitchen", "menu", "staff", "reports", "inventory", "settings", "profile"],
-  manager: ["overview", "orders", "tables", "kitchen", "menu", "staff", "reports", "profile"],
-  waiter: ["overview", "orders", "tables", "profile"],
+  owner: ["overview", "orders", "invoices", "tables", "kitchen", "menu", "staff", "reports", "inventory", "settings", "profile"],
+  manager: ["overview", "orders", "invoices", "tables", "kitchen", "menu", "staff", "reports", "profile"],
+  waiter: ["overview", "orders", "invoices", "tables", "profile"],
   kitchen: ["overview", "kitchen", "orders", "inventory", "profile"],
 };
 
@@ -84,6 +86,23 @@ const SECTION_LIBRARY: Record<SectionId, DashboardSection> = {
       { title: "Counter Priority", description: "High-priority order queue.", value: "6 urgent tickets" },
       { title: "Average Fulfillment", description: "Order completion speed.", value: "18 min" },
       { title: "Refund Requests", description: "Pending customer escalations.", value: "1 open" },
+    ],
+  },
+  invoices: {
+    id: "invoices",
+    short: "BL",
+    label: "Invoices",
+    subtitle: "Generate table bills and collect payment quickly.",
+    kpis: [
+      { label: "Pending Bills", value: "14", tone: "amber" },
+      { label: "Issued", value: "9", tone: "blue" },
+      { label: "Paid", value: "62", tone: "green" },
+      { label: "Overdue", value: "1", tone: "red" },
+    ],
+    modules: [
+      { title: "Fast Billing", description: "One tap invoice issue for ready orders.", value: "Live now" },
+      { title: "Payment Desk", description: "Cash and UPI settlement from one screen.", value: "2 modes" },
+      { title: "Table Clearance", description: "Auto table release after payment.", value: "Enabled" },
     ],
   },
   menu: {
@@ -336,6 +355,15 @@ function SectionIcon({ id }: { id: SectionId }) {
         <path d="M8 4h8" />
         <rect x="5" y="3" width="14" height="18" rx="2" />
         <path d="M8 9h8M8 13h8M8 17h5" />
+      </svg>
+    );
+  }
+
+  if (id === "invoices") {
+    return (
+      <svg viewBox="0 0 24 24" className={common} fill="none" stroke="currentColor" strokeWidth="2">
+        <path d="M6 3h9l4 4v14H6z" />
+        <path d="M15 3v5h4M9 12h8M9 16h8" />
       </svg>
     );
   }
@@ -613,9 +641,15 @@ export function DashboardCard({ section }: DashboardCardProps) {
                 >
                   + New Order
                 </button>
-                <button className="hidden w-full items-center justify-center rounded-lg bg-amber-500 px-3 py-2 text-sm font-semibold text-white hover:bg-amber-600 sm:inline-flex sm:w-auto">
-                  Billing
-                </button>
+                {allowedIds.includes("invoices") ? (
+                  <button
+                    type="button"
+                    onClick={() => router.push("/dashboard/invoices")}
+                    className="hidden w-full items-center justify-center rounded-lg bg-amber-500 px-3 py-2 text-sm font-semibold text-white hover:bg-amber-600 sm:inline-flex sm:w-auto"
+                  >
+                    Billing
+                  </button>
+                ) : null}
                 {tenantSlug ? (
                   <Link href={`/${tenantSlug}`} className="hidden rounded-lg border border-[#e6dfd1] bg-white px-3 py-2 text-sm font-medium text-slate-700 xl:inline-flex">
                     Public URL
@@ -821,6 +855,10 @@ export function DashboardCard({ section }: DashboardCardProps) {
             <section className="mt-4">
               <OrdersWorkspace rawRole={tentantProfile?.role || user?.role} />
             </section>
+          ) : activeSection.id === "invoices" ? (
+            <section className="mt-4">
+              <InvoicesWorkspace rawRole={tentantProfile?.role || user?.role} />
+            </section>
           ) : activeSection.id === "tables" ? (
             <TablesWorkspace tenantName={tenantName} tenantSlug={tenantSlug} />
           ) : activeSection.id === "menu" ? (
@@ -900,12 +938,15 @@ export function DashboardCard({ section }: DashboardCardProps) {
         </div>
       ) : null}
 
-      <button
-        type="button"
-        className="fixed bottom-20 right-3 z-40 inline-flex items-center justify-center rounded-full bg-amber-500 px-5 py-3 text-sm font-semibold text-white shadow-lg shadow-amber-500/30 sm:hidden"
-      >
-        Billing
-      </button>
+      {allowedIds.includes("invoices") ? (
+        <button
+          type="button"
+          onClick={() => router.push("/dashboard/invoices")}
+          className="fixed bottom-20 right-3 z-40 inline-flex items-center justify-center rounded-full bg-amber-500 px-5 py-3 text-sm font-semibold text-white shadow-lg shadow-amber-500/30 sm:hidden"
+        >
+          Billing
+        </button>
+      ) : null}
 
       <nav className="fixed inset-x-0 bottom-0 z-30 border-t border-[#e6dfd1] bg-[#fffdf9] px-2 py-2 lg:hidden">
         <div className="no-scrollbar grid gap-1" style={{ gridTemplateColumns: `repeat(${bottomTabs.length}, minmax(0, 1fr))` }}>

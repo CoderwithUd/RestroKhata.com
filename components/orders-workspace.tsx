@@ -9,6 +9,7 @@ import {
   useGetOrdersQuery,
   useUpdateOrderMutation,
 } from "@/store/api/ordersApi";
+import { useCreateInvoiceMutation } from "@/store/api/invoicesApi";
 import { useGetTablesQuery } from "@/store/api/tablesApi";
 import { useGetMenuAggregateQuery } from "@/store/api/menuApi";
 import { useAppSelector } from "@/store/hooks";
@@ -130,16 +131,20 @@ function TableGrid({
   tables,
   orders,
   onSelectTable,
+  onCreateInvoice,
+  creatingInvoiceOrderId,
 }: {
   tables: TableRecord[];
   orders: OrderRecord[];
   onSelectTable: (table: TableRecord, existingOrder?: OrderRecord) => void;
+  onCreateInvoice: (order: OrderRecord) => void;
+  creatingInvoiceOrderId?: string | null;
 }) {
   const activeOrderByTable = useMemo(() => {
     const map: Record<string, OrderRecord> = {};
     for (const o of orders) {
       const tid = o.table?.id || o.tableId;
-      if (tid && (o.status === "PLACED" || o.status === "IN_PROGRESS")) {
+      if (tid && (o.status === "PLACED" || o.status === "IN_PROGRESS" || o.status === "READY")) {
         map[tid] = o;
       }
     }
@@ -154,24 +159,40 @@ function TableGrid({
           const existing = activeOrderByTable[table.id];
           const hasOrder = Boolean(existing);
           return (
-            <button
+            <div
               key={table.id}
-              type="button"
-              onClick={() => onSelectTable(table, existing)}
-              className={`flex aspect-square flex-col items-center justify-center gap-0.5 rounded-2xl border-2 text-center text-xs font-semibold transition active:scale-95 hover:scale-[1.03] ${tableStatusClass(table.status)}`}
+              className={`flex aspect-square flex-col rounded-2xl border-2 text-center text-xs font-semibold ${tableStatusClass(table.status)}`}
             >
-              <span className="text-base font-bold">T{table.number}</span>
-              <span className="text-[10px] opacity-70">{table.capacity}p</span>
+              <button
+                type="button"
+                onClick={() => onSelectTable(table, existing)}
+                className="flex flex-1 flex-col items-center justify-center gap-0.5 rounded-t-[calc(1rem-2px)] px-1 transition active:scale-95 hover:scale-[1.03]"
+              >
+                <span className="text-base font-bold">T{table.number}</span>
+                <span className="text-[10px] opacity-70">{table.capacity}p</span>
+                {hasOrder ? (
+                  <span className="rounded-full bg-amber-500 px-1.5 py-0.5 text-[9px] font-bold text-white">
+                    {STATUS_LABELS[existing?.status || ""] || "Active"}
+                  </span>
+                ) : (
+                  <span className="mt-0.5 text-[9px] opacity-60">
+                    {(table.status || "available").toLowerCase()}
+                  </span>
+                )}
+              </button>
               {hasOrder ? (
-                <span className="mt-0.5 rounded-full bg-amber-500 px-1.5 py-0.5 text-[9px] font-bold text-white">
-                  Active
-                </span>
-              ) : (
-                <span className="mt-0.5 text-[9px] opacity-60">
-                  {(table.status || "available").toLowerCase()}
-                </span>
-              )}
-            </button>
+                <div className="px-1 pb-1">
+                  <button
+                    type="button"
+                    onClick={() => existing && onCreateInvoice(existing)}
+                    disabled={!existing || creatingInvoiceOrderId === existing.id}
+                    className="w-full rounded-full border border-emerald-300 bg-emerald-50 px-1.5 py-0.5 text-[9px] font-bold text-emerald-700 disabled:opacity-60"
+                  >
+                    {creatingInvoiceOrderId === existing?.id ? "..." : "Invoice"}
+                  </button>
+                </div>
+              ) : null}
+            </div>
           );
         })}
         {tables.length === 0 && (
@@ -274,12 +295,37 @@ function MenuBrowser({
     });
   }
 
-  const activeCatLabel =
-    activeCat
-      ? categories.find((c) => c.id === activeCat)?.name ||
-        categories.flatMap((c) => c.children || []).find((s) => s.id === activeCat)?.name ||
-        "All"
-      : "All";
+  function addFromExisting(orderItem: OrderRecord["items"][number]) {
+    setCart((prev) => {
+      const idx = prev.findIndex(
+        (entry) => entry.itemId === orderItem.itemId && entry.variantId === orderItem.variantId,
+      );
+      if (idx >= 0) {
+        return prev.map((entry, i) =>
+          i === idx ? { ...entry, quantity: entry.quantity + 1 } : entry,
+        );
+      }
+      return [
+        ...prev,
+        {
+          itemId: orderItem.itemId,
+          variantId: orderItem.variantId,
+          name: orderItem.name,
+          variantName: orderItem.variantName,
+          unitPrice: orderItem.unitPrice,
+          quantity: 1,
+        },
+      ];
+    });
+  }
+
+  function extraQtyForExisting(orderItem: OrderRecord["items"][number]): number {
+    return (
+      cart.find(
+        (entry) => entry.itemId === orderItem.itemId && entry.variantId === orderItem.variantId,
+      )?.quantity ?? 0
+    );
+  }
 
   return (
     <div className="flex h-full flex-col">
@@ -310,6 +356,43 @@ function MenuBrowser({
       <div className="flex min-h-0 flex-1 gap-3 pt-3">
         {/* Left: categories + items */}
         <div className="flex min-w-0 flex-1 flex-col">
+          {existingOrder && existingOrder.items.length > 0 ? (
+            <div className="mb-2 rounded-xl border border-amber-200 bg-amber-50 p-2.5">
+              <p className="mb-2 text-[11px] font-semibold text-amber-800">
+                Existing order items (tap +1 to add quickly)
+              </p>
+              <div className="space-y-1.5">
+                {existingOrder.items.map((orderItem, index) => {
+                  const extra = extraQtyForExisting(orderItem);
+                  return (
+                    <div
+                      key={`${orderItem.itemId}-${orderItem.variantId || "base"}-${index}`}
+                      className="flex items-center justify-between rounded-lg border border-amber-200 bg-white px-2 py-1.5"
+                    >
+                      <div className="min-w-0">
+                        <p className="truncate text-xs font-semibold text-slate-800">
+                          {orderItem.name}
+                          {orderItem.variantName ? ` (${orderItem.variantName})` : ""}
+                        </p>
+                        <p className="text-[10px] text-slate-500">
+                          Current: {orderItem.quantity}
+                          {extra > 0 ? `  |  Adding: +${extra}` : ""}
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => addFromExisting(orderItem)}
+                        className="rounded-md bg-amber-500 px-2 py-1 text-[10px] font-bold text-white"
+                      >
+                        +1
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          ) : null}
+
           {/* Search */}
           <div className="relative mb-2">
             <svg viewBox="0 0 24 24" className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" fill="none" stroke="currentColor" strokeWidth="2">
@@ -524,11 +607,12 @@ type WaiterStep = "tables" | "menu" | "placing";
 function WaiterView({ onOrderPlaced }: { onOrderPlaced: () => void }) {
   const token = useAppSelector(selectAuthToken);
   const { data: tablesData } = useGetTablesQuery({ isActive: true });
-  const { data: ordersData, refetch: refetchOrders } = useGetOrdersQuery({ status: ["PLACED", "IN_PROGRESS"], limit: 100 });
+  const { data: ordersData, refetch: refetchOrders } = useGetOrdersQuery({ status: ["PLACED", "IN_PROGRESS", "READY"], limit: 100 });
   const [createOrder, { isLoading: isCreating }] = useCreateOrderMutation();
-  const [updateOrder, { isLoading: isUpdating }] = useUpdateOrderMutation();
+  const [createInvoice, { isLoading: isCreatingInvoice }] = useCreateInvoiceMutation();
   const [toast, setToast] = useState<{ msg: string; type: "ok" | "err" | "info" } | null>(null);
   const [socketConnected, setSocketConnected] = useState(false);
+  const [creatingInvoiceOrderId, setCreatingInvoiceOrderId] = useState<string | null>(null);
   const [step, setStep] = useState<WaiterStep>("tables");
   const [selectedTable, setSelectedTable] = useState<TableRecord | null>(null);
   const [existingOrder, setExistingOrder] = useState<OrderRecord | undefined>(undefined);
@@ -537,22 +621,24 @@ function WaiterView({ onOrderPlaced }: { onOrderPlaced: () => void }) {
   useOrderSocket({
     token,
     enabled: true,
+    role: "waiter",
+    onConnectionChange: setSocketConnected,
     onEvent: (event) => {
       if (event.type === "created") {
         const table = event.order?.table;
         const label = table?.name || (table?.number ? `Table ${table.number}` : "a table");
-        setToast({ msg: `🆕 New order — ${label}`, type: "info" });
+        setToast({ msg: `New order - ${label}`, type: "info" });
         refetchOrders();
-        setSocketConnected(true);
       } else if (event.type === "updated") {
         const status = (event.order?.status || "").toUpperCase();
-        if (status === "READY") {
-          const table = event.order?.table;
-          const label = table?.name || (table?.number ? `Table ${table.number}` : "");
-          setToast({ msg: `✅ Order Ready! ${label}`, type: "ok" });
-        }
+        const table = event.order?.table;
+        const label = table?.name || (table?.number ? `Table ${table.number}` : "a table");
+        if (status === "READY") setToast({ msg: `${label} ready for serve`, type: "ok" });
+        else if (status === "IN_PROGRESS") setToast({ msg: `${label} cooking started`, type: "info" });
+        else setToast({ msg: `${label} order updated`, type: "info" });
         refetchOrders();
       } else if (event.type === "deleted") {
+        setToast({ msg: "An order was deleted", type: "info" });
         refetchOrders();
       }
     },
@@ -565,6 +651,20 @@ function WaiterView({ onOrderPlaced }: { onOrderPlaced: () => void }) {
     setSelectedTable(table);
     setExistingOrder(existing);
     setStep("menu");
+  }
+
+  async function handleCreateInvoice(order: OrderRecord) {
+    if (!order.id) return;
+    try {
+      setCreatingInvoiceOrderId(order.id);
+      const response = await createInvoice({ orderId: order.id }).unwrap();
+      setToast({ msg: response.message || `Invoice created for Table ${order.table?.number || ""}`, type: "ok" });
+      refetchOrders();
+    } catch (error) {
+      setToast({ msg: getErrorMessage(error), type: "err" });
+    } finally {
+      setCreatingInvoiceOrderId(null);
+    }
   }
 
   const handleConfirm = useCallback(
@@ -580,30 +680,17 @@ function WaiterView({ onOrderPlaced }: { onOrderPlaced: () => void }) {
           optionIds: [],
         }));
 
-        if (existingOrder) {
-          // Merge with existing items
-          const existingItems = (existingOrder.items || []).map((ei) => ({
-            itemId: ei.itemId,
-            ...(ei.variantId ? { variantId: ei.variantId } : {}),
-            quantity: ei.quantity,
-            optionIds: [],
-          }));
-          const merged = [...existingItems];
-          for (const ni of items) {
-            const idx = merged.findIndex((m) => m.itemId === ni.itemId && m.variantId === ni.variantId);
-            if (idx >= 0) merged[idx] = { ...merged[idx], quantity: merged[idx].quantity + ni.quantity };
-            else merged.push(ni);
-          }
-          await updateOrder({ orderId: existingOrder.id, payload: { items: merged, ...(tableNote ? { note: tableNote } : {}) } }).unwrap();
-          setToast({ msg: "Items added to existing order!", type: "ok" });
-        } else {
-          await createOrder({
-            tableId: selectedTable.id,
-            ...(tableNote ? { note: tableNote } : {}),
-            items,
-          }).unwrap();
-          setToast({ msg: "Order placed successfully!", type: "ok" });
-        }
+        // Order_API.md: incremental add should use POST /orders.
+        // Backend appends into the active open order for the same table.
+        await createOrder({
+          tableId: selectedTable.id,
+          ...(tableNote ? { note: tableNote } : {}),
+          items,
+        }).unwrap();
+        setToast({
+          msg: existingOrder ? "Items appended to active order!" : "Order placed successfully!",
+          type: "ok",
+        });
         refetchOrders();
         onOrderPlaced();
         setStep("tables");
@@ -614,11 +701,12 @@ function WaiterView({ onOrderPlaced }: { onOrderPlaced: () => void }) {
         setStep("menu");
       }
     },
-    [createOrder, existingOrder, onOrderPlaced, refetchOrders, selectedTable, updateOrder],
+    [createOrder, existingOrder, onOrderPlaced, refetchOrders, selectedTable],
   );
 
   return (
     <div className="flex h-full flex-col">
+      <WaiterLiveHeader connected={socketConnected} />
       {/* Step indicator */}
       <div className="mb-4 flex items-center gap-2">
         {(["tables", "menu"] as const).map((s, i) => (
@@ -633,7 +721,13 @@ function WaiterView({ onOrderPlaced }: { onOrderPlaced: () => void }) {
       </div>
 
       {step === "tables" && (
-        <TableGrid tables={tables} orders={orders} onSelectTable={handleSelectTable} />
+        <TableGrid
+          tables={tables}
+          orders={orders}
+          onSelectTable={handleSelectTable}
+          onCreateInvoice={handleCreateInvoice}
+          creatingInvoiceOrderId={creatingInvoiceOrderId}
+        />
       )}
 
       {(step === "menu" || step === "placing") && selectedTable && (
@@ -642,7 +736,7 @@ function WaiterView({ onOrderPlaced }: { onOrderPlaced: () => void }) {
             <div className="absolute inset-0 z-10 flex items-center justify-center rounded-2xl bg-white/80 backdrop-blur">
               <div className="flex flex-col items-center gap-3 text-slate-600">
                 <Spinner />
-                <p className="text-sm font-medium">{isCreating || isUpdating ? "Placing order..." : "Done!"}</p>
+                <p className="text-sm font-medium">{isCreating || isCreatingInvoice ? "Placing order..." : "Done!"}</p>
               </div>
             </div>
           )}
@@ -710,7 +804,7 @@ function OrderCard({
             </span>
           </div>
           <p className="mt-0.5 text-xs text-slate-500">{order.items.length} item{order.items.length !== 1 ? "s" : ""} · {fmtCurrency(order.grandTotal ?? order.subTotal)} · {timeAgo(order.createdAt)}</p>
-          {order.note && <p className="mt-0.5 text-xs italic text-slate-400">"{order.note}"</p>}
+          {order.note && <p className="mt-0.5 text-xs italic text-slate-400">{`"${order.note}"`}</p>}
         </div>
         {/* Expand */}
         <button type="button" onClick={() => setExpanded((v) => !v)} className="shrink-0 text-slate-400 hover:text-slate-700">
@@ -790,20 +884,21 @@ function ManagerView({ role }: { role: RoleKey }) {
   useOrderSocket({
     token,
     enabled: true,
+    role,
+    onConnectionChange: setSocketConnected,
     onEvent: (event) => {
-      setSocketConnected(true);
       if (event.type === "created") {
         const table = event.order?.table;
         const label = table?.name || (table?.number ? `Table ${table.number}` : "a table");
-        setToast({ msg: `🆕 New order — ${label}`, type: "info" });
+        setToast({ msg: `New order - ${label}`, type: "info" });
         refetch();
       } else if (event.type === "updated") {
         const status = (event.order?.status || "").toUpperCase();
-        if (status === "READY") {
-          const table = event.order?.table;
-          const label = table?.name || (table?.number ? `Table ${table.number}` : "");
-          setToast({ msg: `✅ Order Ready — ${label}`, type: "ok" });
-        }
+        const table = event.order?.table;
+        const label = table?.name || (table?.number ? `Table ${table.number}` : "a table");
+        if (status === "READY") setToast({ msg: `${label} ready for serve`, type: "ok" });
+        else if (status === "IN_PROGRESS") setToast({ msg: `${label} cooking started`, type: "info" });
+        else setToast({ msg: `${label} order updated`, type: "info" });
         refetch();
       } else {
         refetch();
@@ -943,14 +1038,23 @@ function KitchenView() {
   useOrderSocket({
     token,
     enabled: true,
+    role: "kitchen",
+    onConnectionChange: setSocketConnected,
     onEvent: (event) => {
-      setSocketConnected(true);
       if (event.type === "created") {
         const table = event.order?.table;
         const label = table?.name || (table?.number ? `Table ${table.number}` : "a table");
-        setToast({ msg: `🆕 New order — ${label}`, type: "info" });
+        setToast({ msg: `New order - ${label}`, type: "info" });
         refetch();
-      } else if (event.type === "updated" || event.type === "deleted") {
+      } else if (event.type === "updated") {
+        const status = (event.order?.status || "").toUpperCase();
+        const table = event.order?.table;
+        const label = table?.name || (table?.number ? `Table ${table.number}` : "a table");
+        if (status === "IN_PROGRESS") setToast({ msg: `${label} cooking started`, type: "ok" });
+        else if (status === "READY") setToast({ msg: `${label} cooked and ready`, type: "ok" });
+        else setToast({ msg: `${label} order updated`, type: "info" });
+        refetch();
+      } else if (event.type === "deleted") {
         refetch();
       }
     },
@@ -1022,7 +1126,7 @@ function KitchenView() {
                       </button>
                     )}
                   </div>
-                  {order.note && <p className="mt-1 text-[10px] italic text-slate-400">"{order.note}"</p>}
+                  {order.note && <p className="mt-1 text-[10px] italic text-slate-400">{`"${order.note}"`}</p>}
                   <div className="mt-2 space-y-0.5 border-t border-slate-100 pt-2">
                     {order.items.map((item, i) => (
                       <p key={i} className="text-xs text-slate-700">
