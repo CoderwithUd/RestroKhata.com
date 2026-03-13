@@ -9,7 +9,7 @@ import {
   useGetOrdersQuery,
   useUpdateOrderMutation,
 } from "@/store/api/ordersApi";
-import { useCreateInvoiceMutation } from "@/store/api/invoicesApi";
+import { useCreateInvoiceMutation, useGetInvoicesQuery } from "@/store/api/invoicesApi";
 import { useGetTablesQuery } from "@/store/api/tablesApi";
 import { useGetMenuAggregateQuery } from "@/store/api/menuApi";
 import { useAppSelector } from "@/store/hooks";
@@ -27,6 +27,10 @@ function normalizeRole(raw?: string): RoleKey {
   if (r.includes("waiter") || r.includes("server") || r.includes("captain")) return "waiter";
   if (r.includes("kitchen") || r.includes("chef") || r.includes("cook")) return "kitchen";
   return "manager";
+}
+
+function normalizeStatus(status?: string): string {
+  return (status || "").toUpperCase();
 }
 
 // ─── Cart entry ───────────────────────────────────────────────────────────────
@@ -81,6 +85,19 @@ function timeAgo(iso?: string): string {
   return `${Math.floor(diff / 60)}h ago`;
 }
 
+function sortOrdersByLatest(orders: OrderRecord[]): OrderRecord[] {
+  return [...orders].sort((left, right) => {
+    const a = new Date(left.updatedAt || left.createdAt || 0).getTime();
+    const b = new Date(right.updatedAt || right.createdAt || 0).getTime();
+    return b - a;
+  });
+}
+
+function canGenerateInvoiceForStatus(status?: string): boolean {
+  const normalized = normalizeStatus(status);
+  return normalized === "READY" || normalized === "SERVED";
+}
+
 // ─── Tiny reusable components ─────────────────────────────────────────────────
 function Spinner() {
   return (
@@ -130,26 +147,32 @@ function LiveBadge({ connected }: { connected: boolean }) {
 function TableGrid({
   tables,
   orders,
+  invoicedOrderIds,
+  issuedInvoiceTableIds,
   onSelectTable,
   onCreateInvoice,
   creatingInvoiceOrderId,
 }: {
   tables: TableRecord[];
   orders: OrderRecord[];
+  invoicedOrderIds: Set<string>;
+  issuedInvoiceTableIds: Set<string>;
   onSelectTable: (table: TableRecord, existingOrder?: OrderRecord) => void;
   onCreateInvoice: (order: OrderRecord) => void;
   creatingInvoiceOrderId?: string | null;
 }) {
   const activeOrderByTable = useMemo(() => {
     const map: Record<string, OrderRecord> = {};
-    for (const o of orders) {
+    for (const o of sortOrdersByLatest(orders)) {
       const tid = o.table?.id || o.tableId;
-      if (tid && (o.status === "PLACED" || o.status === "IN_PROGRESS" || o.status === "READY")) {
+      if (!tid || invoicedOrderIds.has(o.id)) continue;
+      if (map[tid]) continue;
+      if (["PLACED", "IN_PROGRESS", "READY", "SERVED"].includes(normalizeStatus(o.status))) {
         map[tid] = o;
       }
     }
     return map;
-  }, [orders]);
+  }, [invoicedOrderIds, orders]);
 
   return (
     <div>
@@ -158,6 +181,8 @@ function TableGrid({
         {tables.map((table) => {
           const existing = activeOrderByTable[table.id];
           const hasOrder = Boolean(existing);
+          const billingLocked = issuedInvoiceTableIds.has(table.id);
+          const canInvoice = Boolean(existing && canGenerateInvoiceForStatus(existing.status));
           return (
             <div
               key={table.id}
@@ -165,12 +190,19 @@ function TableGrid({
             >
               <button
                 type="button"
-                onClick={() => onSelectTable(table, existing)}
-                className="flex flex-1 flex-col items-center justify-center gap-0.5 rounded-t-[calc(1rem-2px)] px-1 transition active:scale-95 hover:scale-[1.03]"
+                onClick={() => {
+                  if (!billingLocked) onSelectTable(table, existing);
+                }}
+                disabled={billingLocked}
+                className="flex flex-1 flex-col items-center justify-center gap-0.5 rounded-t-[calc(1rem-2px)] px-1 transition active:scale-95 hover:scale-[1.03] disabled:cursor-not-allowed disabled:opacity-70"
               >
                 <span className="text-base font-bold">T{table.number}</span>
                 <span className="text-[10px] opacity-70">{table.capacity}p</span>
-                {hasOrder ? (
+                {billingLocked ? (
+                  <span className="rounded-full bg-slate-900 px-1.5 py-0.5 text-[9px] font-bold text-white">
+                    Billing
+                  </span>
+                ) : hasOrder ? (
                   <span className="rounded-full bg-amber-500 px-1.5 py-0.5 text-[9px] font-bold text-white">
                     {STATUS_LABELS[existing?.status || ""] || "Active"}
                   </span>
@@ -180,7 +212,13 @@ function TableGrid({
                   </span>
                 )}
               </button>
-              {hasOrder ? (
+              {billingLocked ? (
+                <div className="px-1 pb-1">
+                  <span className="block w-full rounded-full border border-slate-300 bg-white px-1.5 py-0.5 text-[9px] font-bold text-slate-600">
+                    Invoice Issued
+                  </span>
+                </div>
+              ) : hasOrder && canInvoice ? (
                 <div className="px-1 pb-1">
                   <button
                     type="button"
@@ -604,15 +642,132 @@ function MenuBrowser({
 // ─── Waiter View ──────────────────────────────────────────────────────────────
 type WaiterStep = "tables" | "menu" | "placing";
 
+function WaiterActionBoard({
+  orders,
+  servingOrderId,
+  creatingInvoiceOrderId,
+  onMarkServed,
+  onCreateInvoice,
+}: {
+  orders: OrderRecord[];
+  servingOrderId?: string | null;
+  creatingInvoiceOrderId?: string | null;
+  onMarkServed: (order: OrderRecord) => void;
+  onCreateInvoice: (order: OrderRecord) => void;
+}) {
+  const readyCount = orders.filter((order) => normalizeStatus(order.status) === "READY").length;
+  const billingCount = orders.filter((order) => canGenerateInvoiceForStatus(order.status)).length;
+  const kitchenCount = orders.filter((order) =>
+    ["PLACED", "IN_PROGRESS"].includes(normalizeStatus(order.status)),
+  ).length;
+
+  return (
+    <div className="mt-4 space-y-3">
+      <div className="grid gap-2 sm:grid-cols-3">
+        <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-3">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-emerald-800">Ready To Serve</p>
+          <p className="mt-1 text-2xl font-bold text-emerald-950">{readyCount}</p>
+        </div>
+        <div className="rounded-2xl border border-amber-200 bg-amber-50 p-3">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-amber-800">Pending Invoice</p>
+          <p className="mt-1 text-2xl font-bold text-amber-950">{billingCount}</p>
+        </div>
+        <div className="rounded-2xl border border-rose-200 bg-rose-50 p-3">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-rose-800">Kitchen Running</p>
+          <p className="mt-1 text-2xl font-bold text-rose-950">{kitchenCount}</p>
+        </div>
+      </div>
+
+      <div className="rounded-[26px] border border-slate-200 bg-white p-4">
+        <div className="mb-3 flex items-center justify-between gap-2">
+          <div>
+            <p className="text-base font-bold text-slate-900">Waiter Action Board</p>
+            <p className="text-xs text-slate-500">Kitchen READY ko waiter yahin se SERVED karega, aur invoice bhi yahin se nikal sakta hai.</p>
+          </div>
+          <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-[11px] font-semibold text-slate-600">
+            {orders.length} orders
+          </span>
+        </div>
+
+        <div className="space-y-2">
+          {orders.length === 0 ? (
+            <div className="rounded-2xl border border-dashed border-slate-300 py-8 text-center text-sm text-slate-500">
+              No waiter actions pending.
+            </div>
+          ) : (
+            orders.map((order) => {
+              const status = normalizeStatus(order.status);
+              const canServe = status === "READY";
+              const canInvoice = canGenerateInvoiceForStatus(status);
+
+              return (
+                <div key={order.id} className="rounded-2xl border border-slate-200 bg-slate-50 p-3">
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="rounded-full bg-slate-900 px-2.5 py-1 text-[10px] font-semibold text-white">
+                          T{order.table?.number ?? "?"}
+                        </span>
+                        <span className={`rounded-full border px-2.5 py-1 text-[10px] font-semibold ${statusBadgeClass(order.status)}`}>
+                          {STATUS_LABELS[order.status] || order.status}
+                        </span>
+                      </div>
+                      <p className="mt-2 text-sm font-semibold text-slate-900">
+                        {order.table?.name || `Table ${order.table?.number ?? "-"}`}
+                      </p>
+                      <p className="mt-1 text-xs text-slate-500">
+                        {order.items.length} item(s) | {fmtCurrency(order.grandTotal ?? order.subTotal)} | {timeAgo(order.updatedAt || order.createdAt)}
+                      </p>
+                    </div>
+                    <div className="grid gap-2 sm:min-w-[180px]">
+                      {canServe ? (
+                        <button
+                          type="button"
+                          disabled={servingOrderId === order.id}
+                          onClick={() => onMarkServed(order)}
+                          className="rounded-xl bg-emerald-600 px-3 py-2 text-xs font-bold text-white disabled:opacity-50"
+                        >
+                          {servingOrderId === order.id ? "Serving..." : "Mark Served"}
+                        </button>
+                      ) : null}
+                      {canInvoice ? (
+                        <button
+                          type="button"
+                          disabled={creatingInvoiceOrderId === order.id}
+                          onClick={() => onCreateInvoice(order)}
+                          className="rounded-xl border border-amber-300 bg-amber-50 px-3 py-2 text-xs font-bold text-amber-800 disabled:opacity-50"
+                        >
+                          {creatingInvoiceOrderId === order.id ? "Generating..." : "Generate Invoice"}
+                        </button>
+                      ) : (
+                        <div className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs text-slate-500">
+                          {status === "PLACED" ? "Waiting for kitchen to start" : "Kitchen cooking in progress"}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              );
+            })
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function WaiterView({ onOrderPlaced }: { onOrderPlaced: () => void }) {
   const token = useAppSelector(selectAuthToken);
   const { data: tablesData } = useGetTablesQuery({ isActive: true });
-  const { data: ordersData, refetch: refetchOrders } = useGetOrdersQuery({ status: ["PLACED", "IN_PROGRESS", "READY"], limit: 100 });
+  const { data: ordersData, refetch: refetchOrders } = useGetOrdersQuery({ status: ["PLACED", "IN_PROGRESS", "READY", "SERVED"], limit: 100 });
+  const { data: invoicesData, refetch: refetchInvoices } = useGetInvoicesQuery({ limit: 200 });
   const [createOrder, { isLoading: isCreating }] = useCreateOrderMutation();
+  const [updateOrder] = useUpdateOrderMutation();
   const [createInvoice, { isLoading: isCreatingInvoice }] = useCreateInvoiceMutation();
   const [toast, setToast] = useState<{ msg: string; type: "ok" | "err" | "info" } | null>(null);
   const [socketConnected, setSocketConnected] = useState(false);
   const [creatingInvoiceOrderId, setCreatingInvoiceOrderId] = useState<string | null>(null);
+  const [servingOrderId, setServingOrderId] = useState<string | null>(null);
   const [step, setStep] = useState<WaiterStep>("tables");
   const [selectedTable, setSelectedTable] = useState<TableRecord | null>(null);
   const [existingOrder, setExistingOrder] = useState<OrderRecord | undefined>(undefined);
@@ -629,23 +784,47 @@ function WaiterView({ onOrderPlaced }: { onOrderPlaced: () => void }) {
         const label = table?.name || (table?.number ? `Table ${table.number}` : "a table");
         setToast({ msg: `New order - ${label}`, type: "info" });
         refetchOrders();
+        refetchInvoices();
       } else if (event.type === "updated") {
         const status = (event.order?.status || "").toUpperCase();
         const table = event.order?.table;
         const label = table?.name || (table?.number ? `Table ${table.number}` : "a table");
         if (status === "READY") setToast({ msg: `${label} ready for serve`, type: "ok" });
+        else if (status === "SERVED") setToast({ msg: `${label} served by waiter`, type: "ok" });
         else if (status === "IN_PROGRESS") setToast({ msg: `${label} cooking started`, type: "info" });
         else setToast({ msg: `${label} order updated`, type: "info" });
         refetchOrders();
+        refetchInvoices();
       } else if (event.type === "deleted") {
         setToast({ msg: "An order was deleted", type: "info" });
         refetchOrders();
+        refetchInvoices();
       }
     },
   });
 
   const tables = useMemo(() => (tablesData?.items || []).slice().sort((a, b) => a.number - b.number), [tablesData]);
-  const orders = useMemo(() => ordersData?.items || [], [ordersData]);
+  const orders = useMemo(() => sortOrdersByLatest(ordersData?.items || []), [ordersData]);
+  const invoices = useMemo(() => invoicesData?.items || [], [invoicesData]);
+  const invoicedOrderIds = useMemo(() => new Set(invoices.map((invoice) => invoice.orderId).filter(Boolean)), [invoices]);
+  const issuedInvoiceTableIds = useMemo(
+    () =>
+      new Set(
+        invoices
+          .filter((invoice) => normalizeStatus(invoice.status) === "ISSUED")
+          .map((invoice) => invoice.table?.id)
+          .filter((value): value is string => Boolean(value)),
+      ),
+    [invoices],
+  );
+  const waiterActionOrders = useMemo(
+    () =>
+      orders.filter((order) => {
+        if (invoicedOrderIds.has(order.id)) return false;
+        return ["PLACED", "IN_PROGRESS", "READY", "SERVED"].includes(normalizeStatus(order.status));
+      }),
+    [invoicedOrderIds, orders],
+  );
 
   function handleSelectTable(table: TableRecord, existing?: OrderRecord) {
     setSelectedTable(table);
@@ -660,10 +839,24 @@ function WaiterView({ onOrderPlaced }: { onOrderPlaced: () => void }) {
       const response = await createInvoice({ orderId: order.id }).unwrap();
       setToast({ msg: response.message || `Invoice created for Table ${order.table?.number || ""}`, type: "ok" });
       refetchOrders();
+      refetchInvoices();
     } catch (error) {
       setToast({ msg: getErrorMessage(error), type: "err" });
     } finally {
       setCreatingInvoiceOrderId(null);
+    }
+  }
+
+  async function handleMarkServed(order: OrderRecord) {
+    try {
+      setServingOrderId(order.id);
+      await updateOrder({ orderId: order.id, payload: { status: "SERVED" } }).unwrap();
+      setToast({ msg: `${order.table?.name || `Table ${order.table?.number}`} served`, type: "ok" });
+      refetchOrders();
+    } catch (error) {
+      setToast({ msg: getErrorMessage(error), type: "err" });
+    } finally {
+      setServingOrderId(null);
     }
   }
 
@@ -692,6 +885,7 @@ function WaiterView({ onOrderPlaced }: { onOrderPlaced: () => void }) {
           type: "ok",
         });
         refetchOrders();
+        refetchInvoices();
         onOrderPlaced();
         setStep("tables");
         setSelectedTable(null);
@@ -701,7 +895,7 @@ function WaiterView({ onOrderPlaced }: { onOrderPlaced: () => void }) {
         setStep("menu");
       }
     },
-    [createOrder, existingOrder, onOrderPlaced, refetchOrders, selectedTable],
+    [createOrder, existingOrder, onOrderPlaced, refetchInvoices, refetchOrders, selectedTable],
   );
 
   return (
@@ -721,13 +915,24 @@ function WaiterView({ onOrderPlaced }: { onOrderPlaced: () => void }) {
       </div>
 
       {step === "tables" && (
-        <TableGrid
-          tables={tables}
-          orders={orders}
-          onSelectTable={handleSelectTable}
-          onCreateInvoice={handleCreateInvoice}
-          creatingInvoiceOrderId={creatingInvoiceOrderId}
-        />
+        <>
+          <TableGrid
+            tables={tables}
+            orders={orders}
+            invoicedOrderIds={invoicedOrderIds}
+            issuedInvoiceTableIds={issuedInvoiceTableIds}
+            onSelectTable={handleSelectTable}
+            onCreateInvoice={handleCreateInvoice}
+            creatingInvoiceOrderId={creatingInvoiceOrderId}
+          />
+          <WaiterActionBoard
+            orders={waiterActionOrders}
+            servingOrderId={servingOrderId}
+            creatingInvoiceOrderId={creatingInvoiceOrderId}
+            onMarkServed={handleMarkServed}
+            onCreateInvoice={handleCreateInvoice}
+          />
+        </>
       )}
 
       {(step === "menu" || step === "placing") && selectedTable && (
@@ -1061,7 +1266,8 @@ function KitchenView() {
   });
 
   async function bump(order: OrderRecord) {
-    const next = NEXT_STATUS[order.status];
+    const next =
+      order.status === "PLACED" ? "IN_PROGRESS" : order.status === "IN_PROGRESS" ? "READY" : undefined;
     if (!next) return;
     try {
       await updateOrder({ orderId: order.id, payload: { status: next } }).unwrap();
@@ -1116,13 +1322,13 @@ function KitchenView() {
                       <p className="text-sm font-bold">T{order.table?.number} — {order.table?.name}</p>
                       <p className="text-[10px] text-slate-500">{timeAgo(order.createdAt)}</p>
                     </div>
-                    {NEXT_STATUS[order.status] && (
+                    {(order.status === "PLACED" || order.status === "IN_PROGRESS") && (
                       <button
                         type="button"
                         onClick={() => bump(order)}
                         className={`rounded-lg px-2.5 py-1.5 text-[11px] font-bold text-white shadow active:scale-95 transition ${col.status === "PLACED" ? "bg-red-500" : col.status === "IN_PROGRESS" ? "bg-emerald-500" : "bg-blue-500"}`}
                       >
-                        {col.status === "PLACED" ? "Start" : col.status === "IN_PROGRESS" ? "Ready" : "Served"}
+                        {col.status === "PLACED" ? "Start" : "Ready"}
                       </button>
                     )}
                   </div>

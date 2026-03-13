@@ -186,12 +186,13 @@ export const invoicesApi = createApi({
           url: "/invoices",
           method: "GET",
           credentials: "include",
-          // params: {
-          //   tableId: params?.tableId || undefined,
-          //   status: statusForApi,
-          //   page: params?.page ?? 1,
-          //   limit: params?.limit ?? 50,
-          // },
+          params: {
+            tableId: params?.tableId || undefined,
+            orderId: params?.orderId || undefined,
+            status: statusForApi,
+            page: params?.page ?? 1,
+            limit: params?.limit ?? 50,
+          },
         };
       },
       transformResponse: (response: unknown) => parseInvoicesList(response),

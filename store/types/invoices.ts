@@ -56,6 +56,7 @@ export type InvoicesListResponse = {
 export type InvoicesQueryParams = {
   status?: string | string[];
   tableId?: string;
+  orderId?: string;
   page?: number;
   limit?: number;
 };
