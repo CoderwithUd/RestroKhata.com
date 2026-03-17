@@ -72,12 +72,24 @@ function parseInvoice(value: unknown): InvoiceRecord | null {
   const record = asRecord(value);
   if (!record) return null;
 
-  const id = asString(record.id) || asString(record._id);
-  const orderId = asString(record.orderId);
+  const nestedOrder = asRecord(record.order);
+  const nestedTable = asRecord(record.table) || asRecord(nestedOrder?.table);
+  const id = asString(record.id) || asString(record._id) || asString(record.invoiceId);
+  const orderId =
+    asString(record.orderId) ||
+    asString(nestedOrder?.id) ||
+    asString(nestedOrder?._id);
   if (!id || !orderId) return null;
 
-  const tableRecord = asRecord(record.table);
-  const tableId = asString(tableRecord?.id) || asString(tableRecord?._id);
+  const tableId =
+    asString(nestedTable?.id) ||
+    asString(nestedTable?._id) ||
+    asString(record.tableId);
+  const tableNumber = asNumber(nestedTable?.number) ?? asNumber(record.tableNumber) ?? 0;
+  const tableName =
+    asString(nestedTable?.name) ||
+    asString(record.tableName) ||
+    (tableNumber ? `Table ${tableNumber}` : undefined);
 
   const discountRecord = asRecord(record.discount);
   const paymentRecord = asRecord(record.payment);
@@ -89,8 +101,8 @@ function parseInvoice(value: unknown): InvoiceRecord | null {
     table: tableId
       ? {
           id: tableId,
-          number: asNumber(tableRecord?.number) ?? 0,
-          name: asString(tableRecord?.name) || `Table ${asNumber(tableRecord?.number) ?? ""}`,
+          number: tableNumber,
+          name: tableName || `Table ${tableNumber || ""}`,
         }
       : undefined,
     status: asString(record.status) || "ISSUED",
@@ -191,7 +203,6 @@ export const invoicesApi = createApi({
             orderId: params?.orderId || undefined,
             status: statusForApi,
             page: params?.page ?? 1,
-            limit: params?.limit ?? 50,
           },
         };
       },

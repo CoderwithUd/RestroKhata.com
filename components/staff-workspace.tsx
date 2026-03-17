@@ -1,7 +1,9 @@
 "use client";
 
 import { FormEvent, useMemo, useState } from "react";
+import { useConfirm } from "@/components/confirm-provider";
 import { getErrorMessage } from "@/lib/error";
+import { showError, showSuccess } from "@/lib/feedback";
 import {
   useCreateTenantStaffMutation,
   useDeleteTenantStaffMutation,
@@ -46,6 +48,7 @@ function toSafeEmail(value: string): string {
 }
 
 export function StaffWorkspace({ tenantName }: Props) {
+  const confirm = useConfirm();
   const { data: rolesPayload } = useStaffRolesQuery();
   const { data: staffPayload, isLoading, isFetching, refetch } = useTenantStaffQuery();
   const [createStaff, { isLoading: isCreating }] = useCreateTenantStaffMutation();
@@ -70,8 +73,6 @@ export function StaffWorkspace({ tenantName }: Props) {
   const [searchText, setSearchText] = useState("");
   const [roleFilter, setRoleFilter] = useState("all");
   const [statusFilter, setStatusFilter] = useState<"all" | "active" | "inactive">("all");
-  const [notice, setNotice] = useState("");
-  const [error, setError] = useState("");
 
   const filteredStaff = useMemo(() => {
     const q = searchText.trim().toLowerCase();
@@ -111,12 +112,18 @@ export function StaffWorkspace({ tenantName }: Props) {
 
   async function submitCreate(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    setNotice("");
-    setError("");
-
-    if (!createForm.name.trim()) return setError("Staff name is required");
-    if (!toSafeEmail(createForm.email)) return setError("Valid email is required");
-    if (!createForm.password.trim() || createForm.password.trim().length < 6) return setError("Password minimum 6 chars");
+    if (!createForm.name.trim()) {
+      showError("Staff name is required");
+      return;
+    }
+    if (!toSafeEmail(createForm.email)) {
+      showError("Valid email is required");
+      return;
+    }
+    if (!createForm.password.trim() || createForm.password.trim().length < 6) {
+      showError("Password minimum 6 chars");
+      return;
+    }
 
     try {
       const response = await createStaff({
@@ -126,15 +133,13 @@ export function StaffWorkspace({ tenantName }: Props) {
         role: normalizeRole(createForm.role),
       }).unwrap();
       setCreateForm(defaultCreateForm(roleOptions));
-      setNotice(response.message || "Staff created");
+      showSuccess(response.message || "Staff created");
     } catch (e) {
-      setError(getErrorMessage(e));
+      showError(getErrorMessage(e));
     }
   }
 
   async function saveMember(member: TenantStaffMember) {
-    setNotice("");
-    setError("");
     const draft = getDraft(member);
 
     try {
@@ -146,30 +151,35 @@ export function StaffWorkspace({ tenantName }: Props) {
           isActive: draft.isActive,
         },
       }).unwrap();
-      setNotice(response.message || "Staff updated");
+      showSuccess(response.message || "Staff updated");
     } catch (e) {
-      setError(getErrorMessage(e));
+      showError(getErrorMessage(e));
     }
   }
 
   async function removeMember(member: TenantStaffMember) {
-    if (!window.confirm(`Delete ${member.user.name || member.user.email || "this staff"}?`)) return;
-    setNotice("");
-    setError("");
+    const approved = await confirm({
+      title: "Delete Staff",
+      message: `Delete ${member.user.name || member.user.email || "this staff"}? Access for this account will be removed from this tenant.`,
+      confirmText: "Delete Staff",
+      cancelText: "Keep Staff",
+      tone: "danger",
+    });
+    if (!approved) return;
 
     try {
       const response = await deleteStaff({
         membershipId: member.membershipId,
         userId: member.user.id,
       }).unwrap();
-      setNotice(response.message || "Staff deleted");
+      showSuccess(response.message || "Staff deleted");
       setEdits((prev) => {
         const next = { ...prev };
         delete next[member.membershipId];
         return next;
       });
     } catch (e) {
-      setError(getErrorMessage(e));
+      showError(getErrorMessage(e));
     }
   }
 
@@ -280,9 +290,6 @@ export function StaffWorkspace({ tenantName }: Props) {
             </select>
           </div>
         </div>
-
-        {notice ? <p className="mx-4 mt-3 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-700">{notice}</p> : null}
-        {error ? <p className="mx-4 mt-3 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-700">{error}</p> : null}
 
         <div className="p-4">
           {filteredStaff.length ? (

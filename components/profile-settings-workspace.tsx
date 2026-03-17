@@ -1,9 +1,14 @@
 "use client";
 
 import { FormEvent, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
+import { clearStoredSession } from "@/lib/auth-session";
 import { getErrorMessage } from "@/lib/error";
+import { showError, showSuccess } from "@/lib/feedback";
 import { formatSubscriptionDate } from "@/lib/subscription";
-import { useTentantProfileQuery, useUpdateTenantProfileMutation } from "@/store/api/authApi";
+import { useLogoutMutation, useTentantProfileQuery, useUpdateTenantProfileMutation } from "@/store/api/authApi";
+import { useAppDispatch } from "@/store/hooks";
+import { clearSession } from "@/store/slices/authSlice";
 import type { TenantProfilePayload, UpdateTenantProfilePayload } from "@/store/types/auth";
 
 type Props = {
@@ -54,12 +59,13 @@ function formFromProfile(data: TenantProfilePayload | undefined): ProfileForm {
 }
 
 export function ProfileSettingsWorkspace({ title = "Profile & Settings" }: Props) {
+  const router = useRouter();
+  const dispatch = useAppDispatch();
   const { data, isLoading, isFetching, refetch } = useTentantProfileQuery();
+  const [logout, { isLoading: isLoggingOut }] = useLogoutMutation();
   const [updateProfile, { isLoading: isSaving }] = useUpdateTenantProfileMutation();
   const baseline = useMemo(() => formFromProfile(data), [data]);
   const [draft, setDraft] = useState<ProfileForm | null>(null);
-  const [notice, setNotice] = useState("");
-  const [error, setError] = useState("");
   const form = draft || baseline;
   const isDirty = useMemo(() => Boolean(draft && JSON.stringify(draft) !== JSON.stringify(baseline)), [baseline, draft]);
   const subscription = data?.subscription || null;
@@ -73,24 +79,35 @@ export function ProfileSettingsWorkspace({ title = "Profile & Settings" }: Props
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    setNotice("");
-    setError("");
-
-    if (!(draft || baseline).name.trim()) return setError("Restaurant name is required");
+    if (!(draft || baseline).name.trim()) {
+      showError("Restaurant name is required");
+      return;
+    }
 
     try {
       await updateProfile(toPayload(draft || baseline)).unwrap();
-      setNotice("Profile updated");
+      showSuccess("Profile updated");
       setDraft(null);
       refetch();
     } catch (e) {
-      setError(getErrorMessage(e));
+      showError(getErrorMessage(e));
     }
   }
 
   function resetForm() {
     setDraft(null);
-    setError("");
+  }
+
+  async function handleLogout() {
+    try {
+      await logout().unwrap();
+    } catch (e) {
+      showError(getErrorMessage(e));
+    } finally {
+      dispatch(clearSession());
+      clearStoredSession();
+      router.replace("/login");
+    }
   }
 
   return (
@@ -122,6 +139,14 @@ export function ProfileSettingsWorkspace({ title = "Profile & Settings" }: Props
               {formatSubscriptionDate(subscription?.startsAt)} to {formatSubscriptionDate(subscription?.endsAt)}
             </p>
           </div>
+          <button
+            type="button"
+            onClick={handleLogout}
+            disabled={isLoggingOut}
+            className="w-full rounded-xl border border-[#dfd2bb] bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 disabled:opacity-60"
+          >
+            {isLoggingOut ? "Signing out..." : "Logout"}
+          </button>
         </div>
       </article>
 
@@ -139,9 +164,6 @@ export function ProfileSettingsWorkspace({ title = "Profile & Settings" }: Props
             {isFetching ? "Refreshing..." : "Refresh"}
           </button>
         </div>
-
-        {notice ? <p className="mx-4 mt-3 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-700">{notice}</p> : null}
-        {error ? <p className="mx-4 mt-3 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-700">{error}</p> : null}
 
         <form onSubmit={submit} className="grid gap-3 p-4">
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">

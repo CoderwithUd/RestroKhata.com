@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import { downloadInvoicePdf } from "@/lib/invoice-pdf";
 import { getErrorMessage } from "@/lib/error";
+import { showError, showInfo, showSuccess } from "@/lib/feedback";
 import { useOrderSocket, type SocketOrderRole } from "@/lib/use-order-socket";
 import {
   useCreateInvoiceMutation,
@@ -21,7 +22,6 @@ type Props = {
   rawRole?: string;
 };
 
-type ToastType = "ok" | "err" | "info";
 type DiscountInput = { type: "PERCENTAGE" | "FLAT"; value: number };
 
 function normalizeRole(raw?: string): SocketOrderRole {
@@ -105,33 +105,6 @@ function Spinner() {
     <svg className="h-4 w-4 animate-spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
       <path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83" />
     </svg>
-  );
-}
-
-function Toast({
-  msg,
-  type,
-  onClose,
-}: {
-  msg: string;
-  type: ToastType;
-  onClose: () => void;
-}) {
-  return (
-    <div
-      className={`fixed bottom-20 left-1/2 z-50 w-full max-w-xs -translate-x-1/2 rounded-2xl border px-4 py-3 text-sm font-medium shadow-xl backdrop-blur sm:bottom-6 ${
-        type === "ok"
-          ? "border-emerald-300 bg-emerald-50 text-emerald-800"
-          : type === "info"
-            ? "border-amber-300 bg-amber-50 text-amber-900"
-            : "border-rose-300 bg-rose-50 text-rose-800"
-      }`}
-      role="status"
-      aria-live="polite"
-      onClick={onClose}
-    >
-      {msg}
-    </div>
   );
 }
 
@@ -289,8 +262,8 @@ export function InvoicesWorkspace({ rawRole }: Props) {
   const role = normalizeRole(rawRole);
   const [tableFilter, setTableFilter] = useState("");
   const [socketConnected, setSocketConnected] = useState(false);
-  const [toast, setToast] = useState<{ msg: string; type: ToastType } | null>(null);
   const [selectedInvoiceId, setSelectedInvoiceId] = useState<string | null>(null);
+  const [invoiceOverrides, setInvoiceOverrides] = useState<Record<string, InvoiceRecord>>({});
 
   const {
     data: tablesData,
@@ -302,14 +275,14 @@ export function InvoicesWorkspace({ rawRole }: Props) {
     isFetching: isOrdersFetching,
     refetch: refetchOrders,
   } = useGetOrdersQuery(
-    { status: ["PLACED", "IN_PROGRESS", "READY", "SERVED"], limit: 300 },
+    { status: ["PLACED", "IN_PROGRESS", "READY", "SERVED"] },
     { pollingInterval: 30000 },
   );
   const {
     data: invoicesData,
     isFetching: isInvoicesFetching,
     refetch: refetchInvoices,
-  } = useGetInvoicesQuery({ limit: 300 }, { pollingInterval: 30000 });
+  } = useGetInvoicesQuery(undefined, { pollingInterval: 30000 });
 
   const [createInvoice, { isLoading: isCreating }] = useCreateInvoiceMutation();
   const [payInvoice, { isLoading: isPaying }] = usePayInvoiceMutation();
@@ -323,7 +296,7 @@ export function InvoicesWorkspace({ rawRole }: Props) {
       if (event.type === "updated" && normalizeStatus(event.order?.status) === "READY") {
         const table = event.order?.table;
         const label = table?.name || (table?.number ? `Table ${table.number}` : "Table");
-        setToast({ msg: `${label} is ready for invoice / serve`, type: "info" });
+        showInfo(`${label} is ready for invoice / serve`);
       }
       refetchTables();
       refetchOrders();
@@ -336,7 +309,50 @@ export function InvoicesWorkspace({ rawRole }: Props) {
     return [...items].sort((left, right) => left.number - right.number);
   }, [tablesData]);
   const orders = useMemo(() => sortByLatest(ordersData?.items || []), [ordersData]);
-  const invoices = useMemo(() => sortByLatest(invoicesData?.items || []), [invoicesData]);
+  const tablesById = useMemo(
+    () => new Map((tablesData?.items || []).map((table) => [table.id, table])),
+    [tablesData?.items],
+  );
+  const ordersById = useMemo(
+    () => new Map((ordersData?.items || []).map((order) => [order.id, order])),
+    [ordersData?.items],
+  );
+  const invoices = useMemo(() => {
+    const merged = new Map<string, InvoiceRecord>();
+
+    const enrichInvoice = (invoice: InvoiceRecord): InvoiceRecord => {
+      const linkedOrder = ordersById.get(invoice.orderId);
+      const linkedTable = invoice.table?.id
+        ? tablesById.get(invoice.table.id)
+        : linkedOrder?.table?.id
+          ? tablesById.get(linkedOrder.table.id)
+          : undefined;
+
+      if (invoice.table?.id || linkedOrder?.table || linkedTable) {
+        return {
+          ...invoice,
+          table: invoice.table || linkedOrder?.table || (linkedTable
+            ? {
+                id: linkedTable.id,
+                number: linkedTable.number,
+                name: linkedTable.name,
+              }
+            : undefined),
+        };
+      }
+
+      return invoice;
+    };
+
+    (invoicesData?.items || []).forEach((invoice) => {
+      merged.set(invoice.id, enrichInvoice(invoice));
+    });
+    Object.values(invoiceOverrides).forEach((invoice) => {
+      merged.set(invoice.id, enrichInvoice(invoice));
+    });
+
+    return sortByLatest(Array.from(merged.values()));
+  }, [invoiceOverrides, invoicesData?.items, ordersById, tablesById]);
 
   const invoiceByOrderId = useMemo(() => {
     const map = new Map<string, InvoiceRecord>();
@@ -428,18 +444,16 @@ export function InvoicesWorkspace({ rawRole }: Props) {
       }).unwrap();
 
       if (response.invoice?.id) {
+        setInvoiceOverrides((prev) => ({ ...prev, [response.invoice.id]: response.invoice }));
         setSelectedInvoiceId(response.invoice.id);
       }
 
-      setToast({
-        msg: response.message || `Invoice created for ${order.table?.name || `Table ${order.table?.number}`}`,
-        type: "ok",
-      });
+      showSuccess(response.message || `Invoice created for ${order.table?.name || `Table ${order.table?.number}`}`);
       refetchTables();
       refetchOrders();
       refetchInvoices();
     } catch (error) {
-      setToast({ msg: getErrorMessage(error), type: "err" });
+      showError(getErrorMessage(error));
     }
   }
 
@@ -453,13 +467,18 @@ export function InvoicesWorkspace({ rawRole }: Props) {
         payload: { method, paidAmount: amount },
       }).unwrap();
 
-      setToast({ msg: response.message || "Payment done", type: "ok" });
-      setSelectedInvoiceId(invoice.id);
+      showSuccess(response.message || "Payment done");
+      if (response.invoice?.id) {
+        setInvoiceOverrides((prev) => ({ ...prev, [response.invoice.id]: response.invoice }));
+        setSelectedInvoiceId(response.invoice.id);
+      } else {
+        setSelectedInvoiceId(invoice.id);
+      }
       refetchTables();
       refetchOrders();
       refetchInvoices();
     } catch (error) {
-      setToast({ msg: getErrorMessage(error), type: "err" });
+      showError(getErrorMessage(error));
     }
   }
 
@@ -695,8 +714,6 @@ export function InvoicesWorkspace({ rawRole }: Props) {
           />
         </div>
       </section>
-
-      {toast ? <Toast msg={toast.msg} type={toast.type} onClose={() => setToast(null)} /> : null}
     </div>
   );
 }

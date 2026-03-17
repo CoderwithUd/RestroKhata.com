@@ -4,6 +4,7 @@ import type {
   CreateMenuOptionGroupPayload,
   CreateMenuCategoryPayload,
   CreateMenuItemPayload,
+  DeleteMenuCategoryArgs,
   DeleteMenuOptionGroupArgs,
   DeleteMenuItemArgs,
   DeleteMenuItemResponse,
@@ -500,6 +501,24 @@ export const menuApi = createApi({
       ],
     }),
 
+    deleteMenuCategory: builder.mutation<DeleteMenuItemResponse, DeleteMenuCategoryArgs>({
+      query: ({ categoryId }) => ({
+        url: `/menu/categories/${categoryId}`,
+        method: "DELETE",
+        credentials: "include",
+      }),
+      transformResponse: (response: unknown) => {
+        const root = asRecord(response);
+        return { message: asString(root?.message) || "Category deleted" };
+      },
+      invalidatesTags: (_result, _error, { categoryId }) => [
+        { type: "MenuCategories", id: "LIST" },
+        { type: "MenuCategories", id: categoryId },
+        { type: "MenuItems", id: "LIST" },
+        { type: "MenuAggregate", id: "TREE" },
+      ],
+    }),
+
     getMenuOptionGroups: builder.query<MenuOptionGroupsResponse, void>({
       query: () => ({
         url: "/menu/option-groups",
@@ -642,6 +661,7 @@ export const {
   useGetMenuCategoriesQuery,
   useCreateMenuCategoryMutation,
   useUpdateMenuCategoryMutation,
+  useDeleteMenuCategoryMutation,
   useGetMenuOptionGroupsQuery,
   useCreateMenuOptionGroupMutation,
   useUpdateMenuOptionGroupMutation,

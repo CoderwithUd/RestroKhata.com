@@ -1,11 +1,14 @@
 ﻿"use client";
 
 import { FormEvent, useMemo, useState } from "react";
+import { useConfirm } from "@/components/confirm-provider";
 import { getErrorMessage } from "@/lib/error";
+import { showError, showSuccess } from "@/lib/feedback";
 import {
   useCreateMenuOptionGroupMutation,
   useCreateMenuCategoryMutation,
   useCreateMenuItemMutation,
+  useDeleteMenuCategoryMutation,
   useDeleteMenuOptionGroupMutation,
   useDeleteMenuItemMutation,
   useGetMenuCategoriesQuery,
@@ -334,11 +337,13 @@ function OptionGroupFields({ groups, selected, onToggle }: { groups: MenuOptionG
 }
 
 export function MenuWorkspace({ tenantName }: Props) {
+  const confirm = useConfirm();
   const { data: categoriesPayload } = useGetMenuCategoriesQuery({ flat: true });
   const { data: optionGroupsPayload, error: optionGroupsError } = useGetMenuOptionGroupsQuery();
   const { data: itemsPayload, isLoading, isFetching, refetch } = useGetMenuItemsQuery({ page: 1, limit: 100 });
   const [createCategory, { isLoading: isCreatingCategory }] = useCreateMenuCategoryMutation();
   const [updateCategory, { isLoading: isUpdatingCategory }] = useUpdateMenuCategoryMutation();
+  const [deleteCategory, { isLoading: isDeletingCategory }] = useDeleteMenuCategoryMutation();
   const [createOptionGroup, { isLoading: isCreatingOptionGroup }] = useCreateMenuOptionGroupMutation();
   const [updateOptionGroup, { isLoading: isUpdatingOptionGroup }] = useUpdateMenuOptionGroupMutation();
   const [deleteOptionGroup, { isLoading: isDeletingOptionGroup }] = useDeleteMenuOptionGroupMutation();
@@ -362,8 +367,6 @@ export function MenuWorkspace({ tenantName }: Props) {
   const [subCategoryFilter, setSubCategoryFilter] = useState("all");
   const [availabilityFilter, setAvailabilityFilter] = useState<"all" | "available" | "unavailable">("all");
   const [groupUsageFilter, setGroupUsageFilter] = useState<"all" | "withGroups" | "withoutGroups">("all");
-  const [notice, setNotice] = useState("");
-  const [error, setError] = useState("");
 
   const categories = useMemo(() => flattenCategories(categoriesPayload?.items || []).sort((a, b) => a.name.localeCompare(b.name)), [categoriesPayload?.items]);
   const categoriesById = useMemo(() => new Map(categories.map((category) => [category.id, category])), [categories]);
@@ -399,6 +402,14 @@ export function MenuWorkspace({ tenantName }: Props) {
   );
   const optionGroups = useMemo(() => (optionGroupsPayload?.items || []).slice().sort((a, b) => a.name.localeCompare(b.name)), [optionGroupsPayload?.items]);
   const items = useMemo(() => (itemsPayload?.items || []).slice().sort((a, b) => a.name.localeCompare(b.name)), [itemsPayload?.items]);
+  const itemCountByCategoryId = useMemo(() => {
+    const counts = new Map<string, number>();
+    items.forEach((item) => {
+      if (!item.categoryId) return;
+      counts.set(item.categoryId, (counts.get(item.categoryId) || 0) + 1);
+    });
+    return counts;
+  }, [items]);
 
   const formatCategoryLabel = (category: MenuCategoryRecord): string => {
     if (!category.parentId) return category.name;
@@ -497,10 +508,14 @@ export function MenuWorkspace({ tenantName }: Props) {
 
   async function submitCreateCategory(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    setNotice("");
-    setError("");
-    if (!categoryName.trim()) return setError("Category name is required");
-    if (categoryType === "sub" && !categoryParentId) return setError("Sub category ke liye main category select karo");
+    if (!categoryName.trim()) {
+      showError("Category name is required");
+      return;
+    }
+    if (categoryType === "sub" && !categoryParentId) {
+      showError("Sub category ke liye main category select karo");
+      return;
+    }
 
     try {
       const parentId = categoryType === "sub" ? categoryParentId : null;
@@ -514,16 +529,17 @@ export function MenuWorkspace({ tenantName }: Props) {
       if (categoryType === "sub") {
         setCategoryParentId("");
       }
-      setNotice(response.message || "Category created");
+      showSuccess(response.message || "Category created");
     } catch (e) {
-      setError(getErrorMessage(e));
+      showError(getErrorMessage(e));
     }
   }
 
   async function submitCategoryEdit(category: MenuCategoryRecord) {
-    setNotice("");
-    setError("");
-    if (!editingCategoryName.trim()) return setError("Category name is required");
+    if (!editingCategoryName.trim()) {
+      showError("Category name is required");
+      return;
+    }
 
     try {
       const response = await updateCategory({
@@ -536,26 +552,64 @@ export function MenuWorkspace({ tenantName }: Props) {
       }).unwrap();
       setEditingCategoryId(null);
       setEditingCategoryName("");
-      setNotice(response.message || "Category updated");
+      showSuccess(response.message || "Category updated");
     } catch (e) {
-      setError(getErrorMessage(e));
+      showError(getErrorMessage(e));
+    }
+  }
+
+  async function removeCategory(category: MenuCategoryRecord) {
+    const subCategoryCount = subCategoriesByMainId.get(category.id)?.length || 0;
+    const itemCount = itemCountByCategoryId.get(category.id) || 0;
+    const detailParts = [
+      subCategoryCount ? `${subCategoryCount} sub categories` : "",
+      itemCount ? `${itemCount} items` : "",
+    ].filter(Boolean);
+    const detailText = detailParts.length ? ` Current usage: ${detailParts.join(", ")}.` : "";
+
+    const approved = await confirm({
+      title: "Delete Category",
+      message: `Delete category "${category.name}"?${detailText} Backend only allows delete when no child categories or items exist.`,
+      confirmText: "Delete Category",
+      cancelText: "Keep Category",
+      tone: "danger",
+    });
+    if (!approved) return;
+
+    try {
+      const response = await deleteCategory({ categoryId: category.id }).unwrap();
+      if (editingCategoryId === category.id) {
+        setEditingCategoryId(null);
+        setEditingCategoryName("");
+      }
+      if (categoryParentId === category.id) setCategoryParentId("");
+      if (mainCategoryFilter === category.id) {
+        setMainCategoryFilter("all");
+        setSubCategoryFilter("all");
+      } else if (subCategoryFilter === category.id) {
+        setSubCategoryFilter("all");
+      }
+      showSuccess(response.message || "Category deleted");
+    } catch (e) {
+      showError(getErrorMessage(e));
     }
   }
 
   async function submitCreateOptionGroup(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    setNotice("");
-    setError("");
 
     const validationError = validateOptionGroupForm(groupForm);
-    if (validationError) return setError(validationError);
+    if (validationError) {
+      showError(validationError);
+      return;
+    }
 
     try {
       const response = await createOptionGroup(toOptionGroupPayload(groupForm)).unwrap();
       setGroupForm(createEmptyOptionGroupForm());
-      setNotice(response.message || "Option group created");
+      showSuccess(response.message || "Option group created");
     } catch (e) {
-      setError(getErrorMessage(e));
+      showError(getErrorMessage(e));
     }
   }
 
@@ -577,11 +631,12 @@ export function MenuWorkspace({ tenantName }: Props) {
   async function submitUpdateOptionGroup(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!editingGroupId) return;
-    setNotice("");
-    setError("");
 
     const validationError = validateOptionGroupForm(editingGroupForm);
-    if (validationError) return setError(validationError);
+    if (validationError) {
+      showError(validationError);
+      return;
+    }
 
     try {
       const response = await updateOptionGroup({
@@ -589,40 +644,46 @@ export function MenuWorkspace({ tenantName }: Props) {
         payload: toOptionGroupPayload(editingGroupForm),
       }).unwrap();
       cancelEditOptionGroup();
-      setNotice(response.message || "Option group updated");
+      showSuccess(response.message || "Option group updated");
     } catch (e) {
-      setError(getErrorMessage(e));
+      showError(getErrorMessage(e));
     }
   }
 
   async function removeOptionGroup(group: MenuOptionGroupRecord) {
-    if (!window.confirm(`Delete option group "${group.name}"?`)) return;
-    setNotice("");
-    setError("");
+    const approved = await confirm({
+      title: "Delete Option Group",
+      message: `Delete option group "${group.name}"? Menu items linked with this group may lose option mapping.`,
+      confirmText: "Delete Group",
+      cancelText: "Keep Group",
+      tone: "danger",
+    });
+    if (!approved) return;
 
     try {
       const response = await deleteOptionGroup({ groupId: group.id }).unwrap();
       if (editingGroupId === group.id) cancelEditOptionGroup();
-      setNotice(response.message || "Option group deleted");
+      showSuccess(response.message || "Option group deleted");
     } catch (e) {
-      setError(getErrorMessage(e));
+      showError(getErrorMessage(e));
     }
   }
 
   async function submitCreateItem(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    setNotice("");
-    setError("");
 
     const validationError = validateForm(itemForm);
-    if (validationError) return setError(validationError);
+    if (validationError) {
+      showError(validationError);
+      return;
+    }
 
     try {
       const response = await createMenuItem(toCreatePayload(itemForm)).unwrap();
       setItemForm(createEmptyForm());
-      setNotice(response.message || "Menu item created");
+      showSuccess(response.message || "Menu item created");
     } catch (e) {
-      setError(getErrorMessage(e));
+      showError(getErrorMessage(e));
     }
   }
 
@@ -645,26 +706,26 @@ export function MenuWorkspace({ tenantName }: Props) {
     event.preventDefault();
     if (!editingItem) return;
 
-    setNotice("");
-    setError("");
-
     const validationError = validateForm(editForm);
-    if (validationError) return setError(validationError);
+    if (validationError) {
+      showError(validationError);
+      return;
+    }
 
     try {
       const response = await updateMenuItem({ itemId: editingItem.id, payload: toUpdatePayload(editingItem, editForm) }).unwrap();
       setEditingItem(null);
-      setNotice(response.message || "Menu item updated");
+      showSuccess(response.message || "Menu item updated");
     } catch (e) {
-      setError(getErrorMessage(e));
+      showError(getErrorMessage(e));
     }
   }
 
   async function toggleAvailability(item: MenuItemRecord) {
-    if (!item.categoryId) return setError("Category missing for this item. Edit item once.");
-
-    setNotice("");
-    setError("");
+    if (!item.categoryId) {
+      showError("Category missing for this item. Edit item once.");
+      return;
+    }
 
     const payload: UpdateMenuItemPayload = {
       categoryId: item.categoryId,
@@ -684,24 +745,28 @@ export function MenuWorkspace({ tenantName }: Props) {
 
     try {
       await updateMenuItem({ itemId: item.id, payload }).unwrap();
-      setNotice(`${item.name} marked ${item.isAvailable ? "unavailable" : "available"}`);
+      showSuccess(`${item.name} marked ${item.isAvailable ? "unavailable" : "available"}`);
     } catch (e) {
-      setError(getErrorMessage(e));
+      showError(getErrorMessage(e));
     }
   }
 
   async function removeItem(item: MenuItemRecord) {
-    if (!window.confirm(`Delete ${item.name}?`)) return;
-
-    setNotice("");
-    setError("");
+    const approved = await confirm({
+      title: "Delete Menu Item",
+      message: `Delete ${item.name}? This will remove the item from your menu.`,
+      confirmText: "Delete Item",
+      cancelText: "Keep Item",
+      tone: "danger",
+    });
+    if (!approved) return;
 
     try {
       const response = await deleteMenuItem({ itemId: item.id }).unwrap();
       if (editingItem?.id === item.id) setEditingItem(null);
-      setNotice(response.message || "Menu item deleted");
+      showSuccess(response.message || "Menu item deleted");
     } catch (e) {
-      setError(getErrorMessage(e));
+      showError(getErrorMessage(e));
     }
   }
 
@@ -784,7 +849,10 @@ export function MenuWorkspace({ tenantName }: Props) {
                           <p className="truncate text-xs font-semibold text-slate-800">{mainCategory.name}</p>
                           <p className="truncate text-[10px] text-slate-500">Main Category</p>
                         </div>
-                        <button type="button" onClick={() => { setEditingCategoryId(mainCategory.id); setEditingCategoryName(mainCategory.name); }} className="rounded-md border border-[#dfd2bb] bg-white px-2 py-1 text-[11px] font-semibold text-slate-700">Edit</button>
+                        <div className="flex gap-1.5">
+                          <button type="button" onClick={() => { setEditingCategoryId(mainCategory.id); setEditingCategoryName(mainCategory.name); }} className="rounded-md border border-[#dfd2bb] bg-white px-2 py-1 text-[11px] font-semibold text-slate-700">Edit</button>
+                          <button type="button" onClick={() => removeCategory(mainCategory)} disabled={isDeletingCategory} className="rounded-md border border-rose-200 bg-rose-50 px-2 py-1 text-[11px] font-semibold text-rose-700 disabled:opacity-60">{isDeletingCategory ? "..." : "Delete"}</button>
+                        </div>
                       </div>
                     )}
                     {subCategories.length ? (
@@ -805,7 +873,10 @@ export function MenuWorkspace({ tenantName }: Props) {
                                   <p className="truncate text-xs font-semibold text-slate-700">{subCategory.name}</p>
                                   <p className="truncate text-[10px] text-slate-500">Sub Category</p>
                                 </div>
-                                <button type="button" onClick={() => { setEditingCategoryId(subCategory.id); setEditingCategoryName(subCategory.name); }} className="rounded-md border border-[#dfd2bb] bg-white px-2 py-1 text-[11px] font-semibold text-slate-700">Edit</button>
+                                <div className="flex gap-1.5">
+                                  <button type="button" onClick={() => { setEditingCategoryId(subCategory.id); setEditingCategoryName(subCategory.name); }} className="rounded-md border border-[#dfd2bb] bg-white px-2 py-1 text-[11px] font-semibold text-slate-700">Edit</button>
+                                  <button type="button" onClick={() => removeCategory(subCategory)} disabled={isDeletingCategory} className="rounded-md border border-rose-200 bg-rose-50 px-2 py-1 text-[11px] font-semibold text-rose-700 disabled:opacity-60">{isDeletingCategory ? "..." : "Delete"}</button>
+                                </div>
                               </div>
                             )}
                           </div>
@@ -1033,8 +1104,6 @@ export function MenuWorkspace({ tenantName }: Props) {
             </div>
           </div>
 
-          {notice ? <p className="mx-4 mt-3 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-700">{notice}</p> : null}
-          {error ? <p className="mx-4 mt-3 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-700">{error}</p> : null}
           {optionGroupsError ? <p className="mx-4 mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-700">Option groups load issue: {getErrorMessage(optionGroupsError)}</p> : null}
 
           <div className="p-4">

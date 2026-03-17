@@ -1,7 +1,9 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useConfirm } from "@/components/confirm-provider";
 import { getErrorMessage } from "@/lib/error";
+import { showError, showInfo, showSuccess } from "@/lib/feedback";
 import { useOrderSocket } from "@/lib/use-order-socket";
 import {
   useCreateOrderMutation,
@@ -104,26 +106,6 @@ function Spinner() {
     <svg className="h-4 w-4 animate-spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
       <path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83" />
     </svg>
-  );
-}
-
-function Toast({ msg, type, onClose }: { msg: string; type: "ok" | "err" | "info"; onClose: () => void }) {
-  useEffect(() => {
-    const t = setTimeout(onClose, 5000);
-    return () => clearTimeout(t);
-  }, [onClose]);
-  return (
-    <div
-      className={`fixed bottom-20 left-1/2 z-50 -translate-x-1/2 max-w-xs w-full rounded-2xl border px-4 py-3 text-sm font-medium shadow-xl backdrop-blur sm:bottom-6 ${
-        type === "ok"
-          ? "border-emerald-300 bg-emerald-50 text-emerald-800"
-          : type === "info"
-            ? "border-amber-300 bg-amber-50 text-amber-900"
-            : "border-rose-300 bg-rose-50 text-rose-800"
-      }`}
-    >
-      {msg}
-    </div>
   );
 }
 
@@ -759,12 +741,11 @@ function WaiterActionBoard({
 function WaiterView({ onOrderPlaced }: { onOrderPlaced: () => void }) {
   const token = useAppSelector(selectAuthToken);
   const { data: tablesData } = useGetTablesQuery({ isActive: true });
-  const { data: ordersData, refetch: refetchOrders } = useGetOrdersQuery({ status: ["PLACED", "IN_PROGRESS", "READY", "SERVED"], limit: 100 });
-  const { data: invoicesData, refetch: refetchInvoices } = useGetInvoicesQuery({ limit: 200 });
+  const { data: ordersData, refetch: refetchOrders } = useGetOrdersQuery({ status: ["PLACED", "IN_PROGRESS", "READY", "SERVED"] });
+  const { data: invoicesData, refetch: refetchInvoices } = useGetInvoicesQuery();
   const [createOrder, { isLoading: isCreating }] = useCreateOrderMutation();
   const [updateOrder] = useUpdateOrderMutation();
   const [createInvoice, { isLoading: isCreatingInvoice }] = useCreateInvoiceMutation();
-  const [toast, setToast] = useState<{ msg: string; type: "ok" | "err" | "info" } | null>(null);
   const [socketConnected, setSocketConnected] = useState(false);
   const [creatingInvoiceOrderId, setCreatingInvoiceOrderId] = useState<string | null>(null);
   const [servingOrderId, setServingOrderId] = useState<string | null>(null);
@@ -782,21 +763,21 @@ function WaiterView({ onOrderPlaced }: { onOrderPlaced: () => void }) {
       if (event.type === "created") {
         const table = event.order?.table;
         const label = table?.name || (table?.number ? `Table ${table.number}` : "a table");
-        setToast({ msg: `New order - ${label}`, type: "info" });
+        showInfo(`New order - ${label}`);
         refetchOrders();
         refetchInvoices();
       } else if (event.type === "updated") {
         const status = (event.order?.status || "").toUpperCase();
         const table = event.order?.table;
         const label = table?.name || (table?.number ? `Table ${table.number}` : "a table");
-        if (status === "READY") setToast({ msg: `${label} ready for serve`, type: "ok" });
-        else if (status === "SERVED") setToast({ msg: `${label} served by waiter`, type: "ok" });
-        else if (status === "IN_PROGRESS") setToast({ msg: `${label} cooking started`, type: "info" });
-        else setToast({ msg: `${label} order updated`, type: "info" });
+        if (status === "READY") showSuccess(`${label} ready for serve`);
+        else if (status === "SERVED") showSuccess(`${label} served by waiter`);
+        else if (status === "IN_PROGRESS") showInfo(`${label} cooking started`);
+        else showInfo(`${label} order updated`);
         refetchOrders();
         refetchInvoices();
       } else if (event.type === "deleted") {
-        setToast({ msg: "An order was deleted", type: "info" });
+        showInfo("An order was deleted");
         refetchOrders();
         refetchInvoices();
       }
@@ -837,11 +818,11 @@ function WaiterView({ onOrderPlaced }: { onOrderPlaced: () => void }) {
     try {
       setCreatingInvoiceOrderId(order.id);
       const response = await createInvoice({ orderId: order.id }).unwrap();
-      setToast({ msg: response.message || `Invoice created for Table ${order.table?.number || ""}`, type: "ok" });
+      showSuccess(response.message || `Invoice created for Table ${order.table?.number || ""}`);
       refetchOrders();
       refetchInvoices();
     } catch (error) {
-      setToast({ msg: getErrorMessage(error), type: "err" });
+      showError(getErrorMessage(error));
     } finally {
       setCreatingInvoiceOrderId(null);
     }
@@ -851,10 +832,10 @@ function WaiterView({ onOrderPlaced }: { onOrderPlaced: () => void }) {
     try {
       setServingOrderId(order.id);
       await updateOrder({ orderId: order.id, payload: { status: "SERVED" } }).unwrap();
-      setToast({ msg: `${order.table?.name || `Table ${order.table?.number}`} served`, type: "ok" });
+      showSuccess(`${order.table?.name || `Table ${order.table?.number}`} served`);
       refetchOrders();
     } catch (error) {
-      setToast({ msg: getErrorMessage(error), type: "err" });
+      showError(getErrorMessage(error));
     } finally {
       setServingOrderId(null);
     }
@@ -880,10 +861,7 @@ function WaiterView({ onOrderPlaced }: { onOrderPlaced: () => void }) {
           ...(tableNote ? { note: tableNote } : {}),
           items,
         }).unwrap();
-        setToast({
-          msg: existingOrder ? "Items appended to active order!" : "Order placed successfully!",
-          type: "ok",
-        });
+        showSuccess(existingOrder ? "Items appended to active order!" : "Order placed successfully!");
         refetchOrders();
         refetchInvoices();
         onOrderPlaced();
@@ -891,7 +869,7 @@ function WaiterView({ onOrderPlaced }: { onOrderPlaced: () => void }) {
         setSelectedTable(null);
         setExistingOrder(undefined);
       } catch (e) {
-        setToast({ msg: getErrorMessage(e), type: "err" });
+        showError(getErrorMessage(e));
         setStep("menu");
       }
     },
@@ -953,8 +931,6 @@ function WaiterView({ onOrderPlaced }: { onOrderPlaced: () => void }) {
           />
         </div>
       )}
-
-      {toast && <Toast msg={toast.msg} type={toast.type} onClose={() => setToast(null)} />}
     </div>
   );
 }
@@ -1066,10 +1042,10 @@ function OrderCard({
 
 // ─── Manager View ─────────────────────────────────────────────────────────────
 function ManagerView({ role }: { role: RoleKey }) {
+  const confirm = useConfirm();
   const token = useAppSelector(selectAuthToken);
   const [statusFilter, setStatusFilter] = useState<string>("active");
   const [newOrderOpen, setNewOrderOpen] = useState(false);
-  const [toast, setToast] = useState<{ msg: string; type: "ok" | "err" | "info" } | null>(null);
   const [socketConnected, setSocketConnected] = useState(false);
   const [updateOrder] = useUpdateOrderMutation();
   const [deleteOrder] = useDeleteOrderMutation();
@@ -1081,7 +1057,7 @@ function ManagerView({ role }: { role: RoleKey }) {
   }, [statusFilter]);
 
   const { data: ordersData, isFetching, refetch } = useGetOrdersQuery(
-    queryStatus ? { status: queryStatus, limit: 100 } : { limit: 100 },
+    queryStatus ? { status: queryStatus } : undefined,
     { pollingInterval: 30000 },
   );
 
@@ -1095,15 +1071,15 @@ function ManagerView({ role }: { role: RoleKey }) {
       if (event.type === "created") {
         const table = event.order?.table;
         const label = table?.name || (table?.number ? `Table ${table.number}` : "a table");
-        setToast({ msg: `New order - ${label}`, type: "info" });
+        showInfo(`New order - ${label}`);
         refetch();
       } else if (event.type === "updated") {
         const status = (event.order?.status || "").toUpperCase();
         const table = event.order?.table;
         const label = table?.name || (table?.number ? `Table ${table.number}` : "a table");
-        if (status === "READY") setToast({ msg: `${label} ready for serve`, type: "ok" });
-        else if (status === "IN_PROGRESS") setToast({ msg: `${label} cooking started`, type: "info" });
-        else setToast({ msg: `${label} order updated`, type: "info" });
+        if (status === "READY") showSuccess(`${label} ready for serve`);
+        else if (status === "IN_PROGRESS") showInfo(`${label} cooking started`);
+        else showInfo(`${label} order updated`);
         refetch();
       } else {
         refetch();
@@ -1116,19 +1092,26 @@ function ManagerView({ role }: { role: RoleKey }) {
   async function handleStatusChange(orderId: string, status: OrderStatus) {
     try {
       await updateOrder({ orderId, payload: { status } }).unwrap();
-      setToast({ msg: `Order marked ${STATUS_LABELS[status] || status}`, type: "ok" });
+      showSuccess(`Order marked ${STATUS_LABELS[status] || status}`);
     } catch (e) {
-      setToast({ msg: getErrorMessage(e), type: "err" });
+      showError(getErrorMessage(e));
     }
   }
 
   async function handleDelete(orderId: string) {
-    if (!window.confirm("Delete this order?")) return;
+    const approved = await confirm({
+      title: "Delete Order",
+      message: "Delete this order? This action cannot be undone.",
+      confirmText: "Delete Order",
+      cancelText: "Keep Order",
+      tone: "danger",
+    });
+    if (!approved) return;
     try {
       const res = await deleteOrder(orderId).unwrap();
-      setToast({ msg: res.message || "Order deleted", type: "ok" });
+      showSuccess(res.message || "Order deleted");
     } catch (e) {
-      setToast({ msg: getErrorMessage(e), type: "err" });
+      showError(getErrorMessage(e));
     }
   }
 
@@ -1215,8 +1198,6 @@ function ManagerView({ role }: { role: RoleKey }) {
           </div>
         </div>
       )}
-
-      {toast && <Toast msg={toast.msg} type={toast.type} onClose={() => setToast(null)} />}
     </div>
   );
 }
@@ -1231,13 +1212,22 @@ const KOT_COLUMNS: { status: OrderStatus; label: string; color: string; bg: stri
 function KitchenView() {
   const token = useAppSelector(selectAuthToken);
   const { data: ordersData, isFetching, refetch } = useGetOrdersQuery(
-    { status: ["PLACED", "IN_PROGRESS", "READY"], limit: 100 },
+    { status: ["PLACED", "IN_PROGRESS", "READY"] },
     { pollingInterval: 30000 },
   );
   const [updateOrder] = useUpdateOrderMutation();
   const [toast, setToast] = useState<{ msg: string; type: "ok" | "err" | "info" } | null>(null);
   const [socketConnected, setSocketConnected] = useState(false);
   const orders = useMemo(() => ordersData?.items || [], [ordersData]);
+
+  useEffect(() => {
+    if (!toast) return;
+    if (toast.type === "ok") showSuccess(toast.msg);
+    else if (toast.type === "info") showInfo(toast.msg);
+    else showError(toast.msg);
+    const timer = window.setTimeout(() => setToast(null), 0);
+    return () => window.clearTimeout(timer);
+  }, [toast]);
 
   // ── Socket: real-time for kitchen ────────────────────────────────────────
   useOrderSocket({
@@ -1348,8 +1338,6 @@ function KitchenView() {
           </div>
         ))}
       </div>
-
-      {toast && <Toast msg={toast.msg} type={toast.type} onClose={() => setToast(null)} />}
     </div>
   );
 }
@@ -1365,6 +1353,14 @@ export function OrdersWorkspace({ rawRole }: Props) {
   const [toast, setToast] = useState<{ msg: string; type: "ok" | "err" } | null>(null);
   const isWaiter = role === "waiter";
   const isKitchen = role === "kitchen";
+
+  useEffect(() => {
+    if (!toast) return;
+    if (toast.type === "ok") showSuccess(toast.msg);
+    else showError(toast.msg);
+    const timer = window.setTimeout(() => setToast(null), 0);
+    return () => window.clearTimeout(timer);
+  }, [toast]);
 
   return (
     <div className="h-full">
@@ -1393,7 +1389,6 @@ export function OrdersWorkspace({ rawRole }: Props) {
           <ManagerView role={role} />
         </>
       )}
-      {toast && <Toast msg={toast.msg} type={toast.type} onClose={() => setToast(null)} />}
     </div>
   );
 }

@@ -561,7 +561,6 @@ export const authApi = createApi({
             tableId: params?.tableId,
             status,
             page: params?.page ?? 1,
-            limit: params?.limit ?? 20,
           },
         };
       },

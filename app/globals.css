@@ -16,8 +16,16 @@ body {
   min-height: 100vh;
   color: var(--c-brand);
   background:
-    radial-gradient(circle at 20% 10%, color-mix(in srgb, var(--c-accent) 25%, transparent) 0%, transparent 45%),
-    radial-gradient(circle at 85% 90%, color-mix(in srgb, var(--c-brand) 16%, transparent) 0%, transparent 48%),
+    radial-gradient(
+      circle at 20% 10%,
+      color-mix(in srgb, var(--c-accent) 25%, transparent) 0%,
+      transparent 45%
+    ),
+    radial-gradient(
+      circle at 85% 90%,
+      color-mix(in srgb, var(--c-brand) 16%, transparent) 0%,
+      transparent 48%
+    ),
     var(--c-bg);
   font-family: var(--font-manrope), sans-serif;
 }
@@ -32,6 +40,15 @@ h4 {
 a {
   color: inherit;
   text-decoration: none;
+}
+
+/* global.css */
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
 }
 
 .page-wrap {
@@ -60,7 +77,8 @@ a {
   border: 1px solid color-mix(in srgb, var(--c-brand) 25%, transparent);
   background: var(--c-surface);
   border-radius: 1.25rem;
-  box-shadow: 0 22px 36px -28px color-mix(in srgb, var(--c-brand) 48%, transparent);
+  box-shadow: 0 22px 36px -28px
+    color-mix(in srgb, var(--c-brand) 48%, transparent);
 }
 
 .showcase {
@@ -143,12 +161,18 @@ a {
   font-size: 0.95rem;
   font-weight: 700;
   cursor: pointer;
-  transition: transform 0.15s ease, filter 0.15s ease;
+  transition:
+    transform 0.15s ease,
+    filter 0.15s ease;
 }
 
 .btn-primary {
   color: var(--c-surface);
-  background: linear-gradient(130deg, var(--c-brand), color-mix(in srgb, var(--c-brand) 55%, var(--c-accent)));
+  background: linear-gradient(
+    130deg,
+    var(--c-brand),
+    color-mix(in srgb, var(--c-brand) 55%, var(--c-accent))
+  );
 }
 
 .btn-primary:hover {
@@ -211,7 +235,8 @@ a {
   border: 1px solid color-mix(in srgb, var(--c-brand) 23%, transparent);
   background: var(--c-surface);
   padding: clamp(1.1rem, 4vw, 2rem);
-  box-shadow: 0 24px 40px -30px color-mix(in srgb, var(--c-brand) 45%, transparent);
+  box-shadow: 0 24px 40px -30px
+    color-mix(in srgb, var(--c-brand) 45%, transparent);
   display: grid;
   gap: 1rem;
 }
@@ -251,9 +276,14 @@ a {
   border-radius: 1.25rem;
   border: 1px solid color-mix(in srgb, var(--c-brand) 24%, transparent);
   background:
-    linear-gradient(132deg, color-mix(in srgb, var(--c-surface) 78%, var(--c-bg)) 0%, var(--c-surface) 48%),
+    linear-gradient(
+      132deg,
+      color-mix(in srgb, var(--c-surface) 78%, var(--c-bg)) 0%,
+      var(--c-surface) 48%
+    ),
     var(--c-surface);
-  box-shadow: 0 26px 52px -36px color-mix(in srgb, var(--c-brand) 52%, transparent);
+  box-shadow: 0 26px 52px -36px
+    color-mix(in srgb, var(--c-brand) 52%, transparent);
   padding: clamp(1rem, 2.8vw, 2rem);
   display: grid;
   gap: 1rem;
@@ -360,7 +390,8 @@ a {
   border-radius: 1.4rem;
   border: 1px solid color-mix(in srgb, var(--c-brand) 20%, transparent);
   background: var(--c-surface);
-  box-shadow: 0 28px 60px -44px color-mix(in srgb, var(--c-brand) 62%, transparent);
+  box-shadow: 0 28px 60px -44px
+    color-mix(in srgb, var(--c-brand) 62%, transparent);
   display: grid;
   overflow: hidden;
 }
@@ -374,7 +405,11 @@ a {
 .saas-sidebar {
   border-right: 1px solid color-mix(in srgb, var(--c-brand) 15%, transparent);
   background:
-    linear-gradient(170deg, color-mix(in srgb, var(--c-brand) 10%, var(--c-surface)) 0%, var(--c-surface) 52%),
+    linear-gradient(
+      170deg,
+      color-mix(in srgb, var(--c-brand) 10%, var(--c-surface)) 0%,
+      var(--c-surface) 52%
+    ),
     var(--c-surface);
   padding: 1rem;
   display: grid;
@@ -405,7 +440,9 @@ a {
   border: 1px solid color-mix(in srgb, var(--c-brand) 18%, transparent);
   padding: 0.7rem;
   background: color-mix(in srgb, var(--c-surface) 92%, var(--c-brand) 4%);
-  transition: background 0.18s ease, transform 0.18s ease;
+  transition:
+    background 0.18s ease,
+    transform 0.18s ease;
 }
 
 .saas-nav-item:hover {
@@ -509,7 +546,11 @@ a {
   border-radius: 0.95rem;
   border: 1px solid color-mix(in srgb, var(--c-brand) 20%, transparent);
   background:
-    linear-gradient(152deg, color-mix(in srgb, var(--c-surface) 84%, var(--c-bg)) 0%, var(--c-surface) 55%),
+    linear-gradient(
+      152deg,
+      color-mix(in srgb, var(--c-surface) 84%, var(--c-bg)) 0%,
+      var(--c-surface) 55%
+    ),
     var(--c-surface);
   padding: 0.9rem;
 }

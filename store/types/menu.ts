@@ -153,6 +153,10 @@ export type UpdateMenuCategoryArgs = {
   payload: CreateMenuCategoryPayload;
 };
 
+export type DeleteMenuCategoryArgs = {
+  categoryId: string;
+};
+
 export type MenuItemQueryParams = {
   categoryId?: string;
   isAvailable?: boolean;

@@ -159,7 +159,6 @@ export const ordersApi = createApi({
             ? params.status.join(",")
             : (params?.status ?? undefined),
           page: params?.page ?? 1,
-          limit: params?.limit ?? 50,
         },
       }),
       transformResponse: (response: unknown) => parseOrdersList(response),
