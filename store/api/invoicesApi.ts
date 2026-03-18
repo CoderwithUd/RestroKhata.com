@@ -110,9 +110,9 @@ function parseInvoice(value: unknown): InvoiceRecord | null {
     items: asArray(record.items)
       .map(parseOrderItem)
       .filter((item): item is OrderItem => Boolean(item)),
-    subTotal: asNumber(record.subTotal),
-    taxTotal: asNumber(record.taxTotal),
-    grandTotal: asNumber(record.grandTotal),
+    subTotal: asNumber(record.subTotal) ?? asNumber(record.subtotal) ?? asNumber(record.sub_total),
+    taxTotal: asNumber(record.taxTotal) ?? asNumber(record.tax) ?? asNumber(record.taxAmount),
+    grandTotal: asNumber(record.grandTotal) ?? asNumber(record.total) ?? asNumber(record.totalAmount) ?? asNumber(record.amount),
     discount: discountRecord
       ? {
           type: asString(discountRecord.type) || "FLAT",
@@ -120,8 +120,8 @@ function parseInvoice(value: unknown): InvoiceRecord | null {
           amount: asNumber(discountRecord.amount) ?? 0,
         }
       : null,
-    totalDue: asNumber(record.totalDue),
-    balanceDue: asNumber(record.balanceDue),
+    totalDue: asNumber(record.totalDue) ?? asNumber(record.total_due),
+    balanceDue: asNumber(record.balanceDue) ?? asNumber(record.balance) ?? asNumber(record.dueAmount),
     payment: paymentRecord
       ? {
           method: asString(paymentRecord.method) || "CASH",
@@ -132,6 +132,7 @@ function parseInvoice(value: unknown): InvoiceRecord | null {
       : null,
     createdAt: asString(record.createdAt),
     updatedAt: asString(record.updatedAt),
+    raw: record,
   };
 }
 
@@ -203,6 +204,7 @@ export const invoicesApi = createApi({
             orderId: params?.orderId || undefined,
             status: statusForApi,
             page: params?.page ?? 1,
+            limit: params?.limit ?? 20,
           },
         };
       },

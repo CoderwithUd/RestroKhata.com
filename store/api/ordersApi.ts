@@ -101,13 +101,14 @@ function parseOrder(value: unknown): OrderRecord | null {
     items: asArray(r.items)
       .map(parseOrderItem)
       .filter((i): i is NonNullable<typeof i> => Boolean(i)),
-    subTotal: asNumber(r.subTotal),
-    taxTotal: asNumber(r.taxTotal),
-    grandTotal: asNumber(r.grandTotal),
+    subTotal: asNumber(r.subTotal) ?? asNumber(r.subtotal) ?? asNumber(r.sub_total),
+    taxTotal: asNumber(r.taxTotal) ?? asNumber(r.tax) ?? asNumber(r.taxAmount),
+    grandTotal: asNumber(r.grandTotal) ?? asNumber(r.total) ?? asNumber(r.totalAmount) ?? asNumber(r.amount),
     createdBy: parseUserRef(r.createdBy),
     updatedBy: parseUserRef(r.updatedBy),
     createdAt: asString(r.createdAt),
     updatedAt: asString(r.updatedAt),
+    raw: r,
   };
 }
 

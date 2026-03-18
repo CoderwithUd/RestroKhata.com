@@ -12,6 +12,8 @@ import type {
   CreateTenantStaffPayload,
   DeleteTenantStaffArgs,
   LoginPayload,
+  ReportsSummaryPayload,
+  ReportsSummaryQueryParams,
   RegisterPayload,
   SessionPayload,
   StaffRolesPayload,
@@ -246,6 +248,11 @@ function parseOrderRecord(value: unknown): OrderRecord | null {
     sourceLabel: tableName ? `${tableName} - Dine-in` : customerName ? `${customerName} - Takeaway` : "Order",
     itemsSummary: parseOrderItemsSummary(record),
     items: [],
+    subTotal: asNumber(record.subTotal),
+    taxTotal: asNumber(record.taxTotal),
+    grandTotal: asNumber(record.grandTotal),
+    createdAt: asString(record.createdAt),
+    updatedAt: asString(record.updatedAt),
     raw: record,
   };
 }
@@ -262,6 +269,65 @@ function parseOrdersList(data: unknown): OrdersListPayload {
       limit: asNumber(pagination?.limit) || 20,
       total: asNumber(pagination?.total) || items.length,
       totalPages: asNumber(pagination?.totalPages) || 1,
+    },
+  };
+}
+
+function parseNumberMap(value: unknown): Record<string, number> {
+  const record = asRecord(value);
+  if (!record) return {};
+
+  const output: Record<string, number> = {};
+  Object.entries(record).forEach(([key, entry]) => {
+    const parsed = asNumber(entry);
+    if (parsed !== undefined) output[key] = parsed;
+  });
+  return output;
+}
+
+function parseReportsSummary(data: unknown): ReportsSummaryPayload {
+  const root = asRecord(data);
+  const range = asRecord(root?.range);
+  const sales = asRecord(root?.sales);
+  const orders = asRecord(root?.orders);
+  const invoices = asRecord(root?.invoices);
+  const expenses = asRecord(root?.expenses);
+  const profitLoss = asRecord(root?.profitLoss);
+
+  return {
+    range: {
+      period: asString(range?.period),
+      from: asString(range?.from),
+      to: asString(range?.to),
+      tzOffsetMinutes: asNumber(range?.tzOffsetMinutes),
+      weekStartsOn: asNumber(range?.weekStartsOn),
+    },
+    sales: {
+      paidInvoices: asNumber(sales?.paidInvoices) ?? 0,
+      grossSales: asNumber(sales?.grossSales) ?? 0,
+      discountTotal: asNumber(sales?.discountTotal) ?? 0,
+      taxTotal: asNumber(sales?.taxTotal) ?? 0,
+      netSales: asNumber(sales?.netSales) ?? 0,
+      paidTotal: asNumber(sales?.paidTotal) ?? 0,
+      avgTicket: asNumber(sales?.avgTicket) ?? 0,
+    },
+    orders: {
+      total: asNumber(orders?.total) ?? 0,
+      byStatus: parseNumberMap(orders?.byStatus),
+    },
+    invoices: {
+      total: asNumber(invoices?.total) ?? 0,
+      byStatus: parseNumberMap(invoices?.byStatus),
+    },
+    expenses: {
+      total: asNumber(expenses?.total) ?? 0,
+      count: asNumber(expenses?.count) ?? 0,
+    },
+    profitLoss: {
+      netResult: asNumber(profitLoss?.netResult) ?? 0,
+      profit: asNumber(profitLoss?.profit) ?? 0,
+      loss: asNumber(profitLoss?.loss) ?? 0,
+      note: asString(profitLoss?.note),
     },
   };
 }
@@ -621,6 +687,25 @@ export const authApi = createApi({
       },
     }),
 
+    reportsSummary: builder.query<
+      ReportsSummaryPayload,
+      ReportsSummaryQueryParams | void
+    >({
+      query: (params) => ({
+        url: "/reports/summary",
+        method: "GET",
+        credentials: "include",
+        params: {
+          period: params?.period || "today",
+          from: params?.from || undefined,
+          to: params?.to || undefined,
+          tzOffsetMinutes: params?.tzOffsetMinutes,
+          weekStartsOn: params?.weekStartsOn,
+        },
+      }),
+      transformResponse: (response: unknown) => parseReportsSummary(response),
+    }),
+
     refreshSession: builder.mutation<SessionPayload, void>({
       async queryFn(_arg, _api, _extraOptions, fetchWithBQ) {
         const result = await postWithFallback(fetchWithBQ, ["/auth/refresh", "/auth/refresh-token"]);
@@ -668,6 +753,8 @@ export const {
   useDeleteTenantStaffMutation,
   useOrdersQuery,
   useLazyOrdersQuery,
+  useReportsSummaryQuery,
+  useLazyReportsSummaryQuery,
   useRefreshSessionMutation,
   useLogoutMutation,
 } = authApi;

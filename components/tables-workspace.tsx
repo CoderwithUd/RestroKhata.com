@@ -4,7 +4,7 @@ import { FormEvent, useMemo, useState } from "react";
 import Image from "next/image";
 import { useConfirm } from "@/components/confirm-provider";
 import { getErrorMessage } from "@/lib/error";
-import { showError, showInfo, showSuccess } from "@/lib/feedback";
+import { showError, showSuccess } from "@/lib/feedback";
 import {
   useCreateTableMutation,
   useCreateTableQrTokenMutation,
@@ -21,6 +21,7 @@ import type {
 
 type Props = { tenantName?: string; tenantSlug?: string };
 type Filter = "all" | "active" | "inactive";
+type TableListViewMode = "grid" | "table";
 type QrMode = "static" | "token";
 
 type FormState = {
@@ -184,6 +185,10 @@ function hasLegacyApiMenuPayload(payload?: string): boolean {
 export function TablesWorkspace({ tenantName, tenantSlug }: Props) {
   const confirm = useConfirm();
   const [filter, setFilter] = useState<Filter>("all");
+  const [isCreateTableOpen, setIsCreateTableOpen] = useState(false);
+  const [tableListViewMode, setTableListViewMode] =
+    useState<TableListViewMode>("grid");
+  const [searchText, setSearchText] = useState("");
   const queryArg =
     filter === "all" ? undefined : { isActive: filter === "active" };
   const { data, isLoading, isFetching, refetch } = useGetTablesQuery(queryArg);
@@ -207,6 +212,23 @@ export function TablesWorkspace({ tenantName, tenantSlug }: Props) {
     (t) => nStatus(t.status) === "RESERVED",
   ).length;
   const totalSeats = tables.reduce((sum, t) => sum + (t.capacity || 0), 0);
+  const filteredTables = useMemo(() => {
+    const q = searchText.trim().toLowerCase();
+    if (!q) return tables;
+    return tables.filter((table) => {
+      const content = [
+        table.number,
+        table.name,
+        table.customerId,
+        table.capacity,
+        nStatus(table.status),
+      ]
+        .filter((value) => value !== undefined && value !== null)
+        .join(" ")
+        .toLowerCase();
+      return content.includes(q);
+    });
+  }, [searchText, tables]);
 
   const [createForm, setCreateForm] = useState<FormState>({
     number: 1,
@@ -262,6 +284,7 @@ export function TablesWorkspace({ tenantName, tenantSlug }: Props) {
         number: number + 1,
         name: `Table ${number + 1}`,
       }));
+      setIsCreateTableOpen(false);
       showSuccess(`Table ${number} created`);
     } catch (e) {
       showError(getErrorMessage(e));
@@ -477,243 +500,492 @@ export function TablesWorkspace({ tenantName, tenantSlug }: Props) {
 
   return (
     <>
-      <section className="mt-4 grid gap-4 xl:grid-cols-[1.05fr_1.95fr]">
-        <article className="rounded-2xl border border-[#e6dfd1] bg-[#fffdf9] shadow-sm">
-          <div className="rounded-t-2xl bg-[linear-gradient(130deg,#f9df9f_0%,#f6c36f_40%,#d8eddf_100%)] px-4 py-4">
-            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-700">
-              Quick Control
-            </p>
-            <h3 className="mt-1 text-xl font-semibold text-slate-900">
-              Add Table Fast
-            </h3>
-            <p className="mt-1 text-xs text-slate-700">
-              Status can be updated later from each card or edit panel.
-            </p>
-          </div>
-          <form onSubmit={submitCreate} className="space-y-3 p-4">
-            <div className="grid grid-cols-2 gap-3">
-              <input
-                type="number"
-                min={1}
-                value={createForm.number}
-                onChange={(event) =>
-                  setCreateForm((prev) => ({
-                    ...prev,
-                    number: norm(Number(event.target.value), 1),
-                  }))
-                }
-                className="h-10 rounded-lg border border-[#ddd4c1] bg-white px-3 text-sm outline-none ring-amber-200 focus:ring-2"
-                placeholder="Number"
-              />
-              <input
-                type="number"
-                min={1}
-                value={createForm.capacity}
-                onChange={(event) =>
-                  setCreateForm((prev) => ({
-                    ...prev,
-                    capacity: norm(Number(event.target.value), 4),
-                  }))
-                }
-                className="h-10 rounded-lg border border-[#ddd4c1] bg-white px-3 text-sm outline-none ring-amber-200 focus:ring-2"
-                placeholder="Capacity"
-              />
-            </div>
-            <input
-              value={createForm.name}
-              onChange={(event) =>
-                setCreateForm((prev) => ({ ...prev, name: event.target.value }))
-              }
-              className="h-10 w-full rounded-lg border border-[#ddd4c1] bg-white px-3 text-sm outline-none ring-amber-200 focus:ring-2"
-              placeholder={`Table ${createForm.number}`}
+      <section className="mt-1 grid gap-3 sm:mt-2 sm:gap-4">
+        {isCreateTableOpen ? (
+          <div className="fixed inset-0 z-30 flex items-center justify-center p-3 sm:p-6">
+            <button
+              type="button"
+              aria-label="Close create table panel"
+              className="absolute inset-0 bg-slate-900/35"
+              onClick={() => setIsCreateTableOpen(false)}
             />
-            <div className="flex items-center justify-between gap-2">
-              <label className="inline-flex items-center gap-2 text-sm text-slate-700">
+            <article className="relative z-10 w-full max-w-2xl max-h-[90vh] overflow-y-auto rounded-3xl border border-[#e6dfd1] bg-[#fffdf9] p-3 shadow-2xl sm:p-5">
+              <div className="mb-3 flex items-center justify-between sm:mb-4">
+                <div>
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">
+                    Quick Add
+                  </p>
+                  <h4 className="text-lg font-semibold text-slate-900">
+                    Add Table
+                  </h4>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setIsCreateTableOpen(false)}
+                  className="h-8 w-8 rounded-full border border-[#e0d8c9] bg-white text-lg leading-none text-slate-700"
+                  aria-label="Close popup"
+                >
+                  x
+                </button>
+              </div>
+              <form onSubmit={submitCreate} className="space-y-3">
+                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                  <input
+                    type="number"
+                    min={1}
+                    value={createForm.number}
+                    onChange={(event) =>
+                      setCreateForm((prev) => ({
+                        ...prev,
+                        number: norm(Number(event.target.value), 1),
+                      }))
+                    }
+                    className="h-11 rounded-xl border border-[#ddd4c1] bg-white px-3 text-sm outline-none ring-amber-200 focus:ring-2"
+                    placeholder="Number"
+                  />
+                  <input
+                    type="number"
+                    min={1}
+                    value={createForm.capacity}
+                    onChange={(event) =>
+                      setCreateForm((prev) => ({
+                        ...prev,
+                        capacity: norm(Number(event.target.value), 4),
+                      }))
+                    }
+                    className="h-11 rounded-xl border border-[#ddd4c1] bg-white px-3 text-sm outline-none ring-amber-200 focus:ring-2"
+                    placeholder="Capacity"
+                  />
+                </div>
                 <input
-                  type="checkbox"
-                  checked={createForm.isActive}
+                  value={createForm.name}
                   onChange={(event) =>
                     setCreateForm((prev) => ({
                       ...prev,
-                      isActive: event.target.checked,
+                      name: event.target.value,
                     }))
                   }
-                  className="h-4 w-4 rounded border-slate-300 text-amber-500"
+                  className="h-11 w-full rounded-xl border border-[#ddd4c1] bg-white px-3 text-sm outline-none ring-amber-200 focus:ring-2"
+                  placeholder={`Table ${createForm.number}`}
                 />
-                Active
-              </label>
-              <button
-                type="button"
-                onClick={() =>
-                  setCreateForm((prev) => ({
-                    ...prev,
-                    number: maxNumber + 1,
-                    name: `Table ${maxNumber + 1}`,
-                  }))
-                }
-                className="rounded-lg border border-[#e0d8c9] bg-white px-3 py-1.5 text-xs font-semibold text-slate-700"
-              >
-                Use Next
-              </button>
-            </div>
-            <button
-              type="submit"
-              disabled={isCreating}
-              className="w-full rounded-xl bg-amber-500 px-4 py-2.5 text-sm font-semibold text-white shadow-lg shadow-amber-500/25 disabled:opacity-60"
-            >
-              {isCreating ? "Adding..." : "Add Table"}
-            </button>
-            <div className="grid grid-cols-3 gap-2 text-xs">
-              <div className="rounded-lg border border-[#ebdfc8] bg-white p-2">
-                <p className="text-slate-500">Tables</p>
-                <p className="mt-1 text-base font-semibold">{tables.length}</p>
-              </div>
-              <div className="rounded-lg border border-[#ebdfc8] bg-white p-2">
-                <p className="text-slate-500">Reserved</p>
-                <p className="mt-1 text-base font-semibold">{reservedCount}</p>
-              </div>
-              <div className="rounded-lg border border-[#ebdfc8] bg-white p-2">
-                <p className="text-slate-500">Seats</p>
-                <p className="mt-1 text-base font-semibold">{totalSeats}</p>
-              </div>
-            </div>
-          </form>
-        </article>
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <label className="inline-flex h-11 items-center gap-2 rounded-xl border border-[#ddd4c1] bg-white px-3 text-sm text-slate-700">
+                    <input
+                      type="checkbox"
+                      checked={createForm.isActive}
+                      onChange={(event) =>
+                        setCreateForm((prev) => ({
+                          ...prev,
+                          isActive: event.target.checked,
+                        }))
+                      }
+                      className="h-4 w-4 rounded border-slate-300 text-amber-500"
+                    />
+                    Active
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setCreateForm((prev) => ({
+                        ...prev,
+                        number: maxNumber + 1,
+                        name: `Table ${maxNumber + 1}`,
+                      }))
+                    }
+                    className="h-11 rounded-xl border border-[#e0d8c9] bg-white px-3 text-xs font-semibold text-slate-700"
+                  >
+                    Use Next
+                  </button>
+                </div>
+                <button
+                  type="submit"
+                  disabled={isCreating}
+                  className="w-full rounded-xl bg-amber-500 px-4 py-2.5 text-sm font-semibold text-white shadow-lg shadow-amber-500/25 disabled:opacity-60"
+                >
+                  {isCreating ? "Adding..." : "Add Table"}
+                </button>
+                <div className="grid grid-cols-3 gap-2 text-xs">
+                  <div className="rounded-xl border border-[#ebdfc8] bg-white p-2">
+                    <p className="text-slate-500">Tables</p>
+                    <p className="mt-1 text-base font-semibold">
+                      {tables.length}
+                    </p>
+                  </div>
+                  <div className="rounded-xl border border-[#ebdfc8] bg-white p-2">
+                    <p className="text-slate-500">Reserved</p>
+                    <p className="mt-1 text-base font-semibold">
+                      {reservedCount}
+                    </p>
+                  </div>
+                  <div className="rounded-xl border border-[#ebdfc8] bg-white p-2">
+                    <p className="text-slate-500">Seats</p>
+                    <p className="mt-1 text-base font-semibold">{totalSeats}</p>
+                  </div>
+                </div>
+              </form>
+            </article>
+          </div>
+        ) : null}
 
-        <article className="rounded-2xl border border-[#e6dfd1] bg-[#fffdf9] shadow-sm">
-          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[#eee7d8] px-4 py-3">
-            <div>
-              <h3 className="text-sm font-semibold text-slate-900">Tables</h3>
-              <p className="text-xs text-slate-500">
-                {isLoading ? "Loading..." : `${tables.length} tables`}
-              </p>
-            </div>
-            <div className="flex flex-wrap items-center gap-1.5">
+        <article className="min-w-0 rounded-2xl border border-[#e6dfd1] bg-[#fffdf9] shadow-sm">
+          <div className="border-b border-[#eee7d8] px-2.5 py-2.5 sm:px-4 sm:py-3">
+            <div className="mt-2.5 rounded-xl border border-[#eadfc9] bg-[#fffaf1] p-2.5 sm:mt-3 sm:p-3">
+              <div className="flex items-center gap-2">
+                <div className="flex shrink-0 flex-col items-center leading-none">
+                  <span className="text-lg font-bold text-slate-700">
+                    {isLoading ? "..." : filteredTables.length}
+                  </span>
+                  <span className="text-[10px] font-medium text-slate-700">
+                    tables
+                  </span>
+                </div>
+                <input
+                  value={searchText}
+                  onChange={(event) => setSearchText(event.target.value)}
+                  placeholder="Search..."
+                  className="h-10 min-w-0 flex-1 rounded-xl border border-[#dcccaf] bg-white px-3 text-sm outline-none ring-amber-200 focus:ring-2"
+                />
+                <div className="flex shrink-0 items-center rounded-lg border border-[#dccfb8] bg-white p-0.5">
+                  <button
+                    type="button"
+                    onClick={() => setTableListViewMode("grid")}
+                    className={`rounded-md px-2 py-1 text-[11px] font-semibold ${
+                      tableListViewMode === "grid"
+                        ? "bg-[#f6ead4] text-[#7a5a34]"
+                        : "text-slate-600"
+                    }`}
+                  >
+                    ⊞
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setTableListViewMode("table")}
+                    className={`rounded-md px-2 py-1 text-[11px] font-semibold ${
+                      tableListViewMode === "table"
+                        ? "bg-[#f6ead4] text-[#7a5a34]"
+                        : "text-slate-600"
+                    }`}
+                  >
+                    ☰
+                  </button>
+                </div>
+              </div>
+
+              <div className="mt-2 grid grid-cols-1 gap-2 md:grid-cols-10 md:items-center">
+                <div className="md:col-span-7">
+                  <div className="flex items-center gap-2 overflow-x-auto whitespace-nowrap no-scrollbar">
+                    <span className="shrink-0 text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                      Status
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setFilter("all")}
+                      className={`shrink-0 rounded-full border px-3 py-1 text-[11px] font-semibold ${
+                        filter === "all"
+                          ? "border-amber-300 bg-amber-100 text-amber-800"
+                          : "border-[#ddcfb7] bg-white text-slate-700"
+                      }`}
+                    >
+                      All
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setFilter("active")}
+                      className={`shrink-0 rounded-full border px-3 py-1 text-[11px] font-semibold ${
+                        filter === "active"
+                          ? "border-emerald-300 bg-emerald-100 text-emerald-800"
+                          : "border-[#ddcfb7] bg-white text-slate-700"
+                      }`}
+                    >
+                      Active {activeCount}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setFilter("inactive")}
+                      className={`shrink-0 rounded-full border px-3 py-1 text-[11px] font-semibold ${
+                        filter === "inactive"
+                          ? "border-slate-300 bg-slate-100 text-slate-700"
+                          : "border-[#ddcfb7] bg-white text-slate-700"
+                      }`}
+                    >
+                      Inactive {tables.length - activeCount}
+                    </button>
+                  </div>
+                </div>
+                <div className="md:col-span-3">
+                  <div className="flex items-center justify-start gap-2 md:justify-end">
+                    <button
+                      type="button"
+                      onClick={() => refetch()}
+                      className="rounded-lg border border-[#e0d8c9] bg-white px-3 py-1.5 text-xs font-semibold text-slate-700"
+                    >
+                      {isFetching ? "Refreshing..." : "Refresh"}
+                    </button>
+                  </div>
+                </div>
+              </div>
+
               <button
                 type="button"
-                onClick={() => setFilter("all")}
-                className={`rounded-full border px-3 py-1 text-xs font-semibold ${
-                  filter === "all"
-                    ? "border-amber-200 bg-amber-50 text-amber-800"
-                    : "border-slate-200 bg-white text-slate-600"
-                }`}
+                onClick={() => setIsCreateTableOpen(true)}
+                className="mt-3 w-full rounded-xl border-2 border-dashed border-amber-300 bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-700 shadow-sm transition-all hover:border-amber-400 hover:bg-amber-100 hover:shadow-md active:scale-[0.98]"
               >
-                All
-              </button>
-              <button
-                type="button"
-                onClick={() => setFilter("active")}
-                className={`rounded-full border px-3 py-1 text-xs font-semibold ${
-                  filter === "active"
-                    ? "border-emerald-200 bg-emerald-50 text-emerald-700"
-                    : "border-slate-200 bg-white text-slate-600"
-                }`}
-              >
-                Active {activeCount}
-              </button>
-              <button
-                type="button"
-                onClick={() => setFilter("inactive")}
-                className={`rounded-full border px-3 py-1 text-xs font-semibold ${
-                  filter === "inactive"
-                    ? "border-slate-300 bg-slate-100 text-slate-700"
-                    : "border-slate-200 bg-white text-slate-600"
-                }`}
-              >
-                Inactive {tables.length - activeCount}
-              </button>
-              <button
-                type="button"
-                onClick={() => refetch()}
-                className="rounded-lg border border-[#e0d8c9] bg-white px-3 py-1.5 text-xs font-semibold text-slate-700"
-              >
-                {isFetching ? "..." : "Refresh"}
+                + Add Table
               </button>
             </div>
           </div>
 
-          <div className="p-4">
-            {tables.length ? (
-              <div className="grid gap-3 sm:grid-cols-2">
-                {tables.map((table) => {
-                  const reserved = nStatus(table.status) === "RESERVED";
-                  return (
-                    <article
-                      key={table.id}
-                      className="rounded-2xl border border-[#eadfc9] bg-[linear-gradient(160deg,#fffcf6_0%,#fff7e8_100%)] p-3 shadow-sm"
-                    >
-                      <div className="flex items-start justify-between gap-2">
-                        <div>
-                          <span className="inline-flex rounded-full bg-slate-900 px-2.5 py-1 text-[10px] font-semibold text-white">
-                            T{table.number}
-                          </span>
-                          <p className="mt-2 text-base font-semibold text-slate-900">
-                            {table.name}
-                          </p>
-                          <p className="text-xs text-slate-500">
-                            {table.capacity} seats
-                          </p>
+          <div className="p-2.5 sm:p-4">
+            {filteredTables.length ? (
+              tableListViewMode === "grid" ? (
+                <div className="grid gap-2.5 sm:grid-cols-2 sm:gap-3">
+                  {filteredTables.map((table) => {
+                    const reserved = nStatus(table.status) === "RESERVED";
+                    return (
+                      <article
+                        key={table.id}
+                        className="rounded-2xl border border-[#eadfc9] bg-[linear-gradient(160deg,#fffcf6_0%,#fff7e8_100%)] p-2 shadow-sm sm:p-2.5"
+                      >
+                        <div className="flex items-start justify-between gap-2">
+                          <div>
+                            <span className="inline-flex rounded-full bg-slate-900 px-2.5 py-1 text-[10px] font-semibold text-white">
+                              T{table.number}
+                            </span>
+                            <p className="mt-2 text-base font-semibold text-slate-900">
+                              {table.name}
+                            </p>
+                            <p className="text-xs text-slate-500">
+                              {table.capacity} seats
+                            </p>
+                          </div>
+                          <div className="space-y-1 text-right">
+                            <span
+                              className={`inline-flex rounded-full border px-2.5 py-1 text-[10px] font-semibold ${sClass(table.status)}`}
+                            >
+                              {sLabel(table.status)}
+                            </span>
+                            <p className="text-[10px] text-slate-500">
+                              {table.isActive ? "Active Table" : "Inactive Table"}
+                            </p>
+                          </div>
                         </div>
-                        <div className="space-y-1 text-right">
-                          <span
-                            className={`inline-flex rounded-full border px-2.5 py-1 text-[10px] font-semibold ${sClass(table.status)}`}
+                        <p className="mt-3 rounded-lg border border-[#e8e1d4] bg-white px-2.5 py-2 text-[11px] text-slate-600">
+                          {reserved
+                            ? `Reserved by customer: ${table.customerId || "Not provided"}`
+                            : "Tap Set Reserved to assign customer and block table."}
+                        </p>
+                        <div className="mt-2.5 flex items-center justify-end gap-1.5 border-t border-[#ece3d3] pt-2">
+                          <button
+                            type="button"
+                            onClick={() => openQr(table)}
+                            title="Open QR"
+                            aria-label="Open QR"
+                            className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-[#d8ccb6] bg-white text-slate-700 transition-colors hover:bg-[#faf3e7]"
                           >
-                            {sLabel(table.status)}
-                          </span>
-                          <p className="text-[10px] text-slate-500">
-                            {table.isActive ? "Active Table" : "Inactive Table"}
-                          </p>
+                            <svg
+                              viewBox="0 0 24 24"
+                              aria-hidden="true"
+                              className="h-4 w-4"
+                              fill="none"
+                              stroke="currentColor"
+                              strokeWidth="1.8"
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                            >
+                              <path d="M3 3h7v7H3z" />
+                              <path d="M14 3h7v7h-7z" />
+                              <path d="M3 14h7v7H3z" />
+                              <path d="M14 14h3v3h-3z" />
+                              <path d="M21 14h-2v2h2v5h-5v-2" />
+                            </svg>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => openEdit(table)}
+                            title="Edit table"
+                            aria-label="Edit table"
+                            className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-[#d8ccb6] bg-white text-slate-700 transition-colors hover:bg-[#faf3e7]"
+                          >
+                            <svg
+                              viewBox="0 0 24 24"
+                              aria-hidden="true"
+                              className="h-4 w-4"
+                              fill="none"
+                              stroke="currentColor"
+                              strokeWidth="1.8"
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                            >
+                              <path d="M12 20h9" />
+                              <path d="m16.5 3.5 4 4L8 20H4v-4z" />
+                            </svg>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              quickStatus(
+                                table,
+                                reserved ? "AVAILABLE" : "RESERVED",
+                              )
+                            }
+                            title={reserved ? "Mark available" : "Mark reserved"}
+                            aria-label={
+                              reserved ? "Mark available" : "Mark reserved"
+                            }
+                            disabled={isUpdating}
+                            className={`inline-flex h-8 w-8 items-center justify-center rounded-lg border transition-colors disabled:opacity-60 ${
+                              reserved
+                                ? "border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100"
+                                : "border-slate-700 bg-slate-700 text-white hover:bg-slate-800"
+                            }`}
+                          >
+                            {reserved ? (
+                              <svg
+                                viewBox="0 0 24 24"
+                                aria-hidden="true"
+                                className="h-4 w-4"
+                                fill="none"
+                                stroke="currentColor"
+                                strokeWidth="2"
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                              >
+                                <path d="M20 6 9 17l-5-5" />
+                              </svg>
+                            ) : (
+                              <svg
+                                viewBox="0 0 24 24"
+                                aria-hidden="true"
+                                className="h-4 w-4"
+                                fill="none"
+                                stroke="currentColor"
+                                strokeWidth="1.8"
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                              >
+                                <path d="M8 11V8a4 4 0 1 1 8 0v3" />
+                                <rect x="6" y="11" width="12" height="9" rx="2" />
+                              </svg>
+                            )}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => removeTable(table)}
+                            title="Remove table"
+                            aria-label="Remove table"
+                            disabled={isDeleting}
+                            className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-rose-200 bg-white text-rose-700 transition-colors hover:bg-rose-50 disabled:opacity-60"
+                          >
+                            <svg
+                              viewBox="0 0 24 24"
+                              aria-hidden="true"
+                              className="h-4 w-4"
+                              fill="none"
+                              stroke="currentColor"
+                              strokeWidth="1.8"
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                            >
+                              <path d="M3 6h18" />
+                              <path d="M8 6V4h8v2" />
+                              <path d="m19 6-1 14H6L5 6" />
+                              <path d="M10 11v6" />
+                              <path d="M14 11v6" />
+                            </svg>
+                          </button>
                         </div>
-                      </div>
-                      <p className="mt-3 rounded-lg border border-[#e8e1d4] bg-white px-2.5 py-2 text-[11px] text-slate-600">
-                        {reserved
-                          ? `Reserved by customer: ${table.customerId || "Not provided"}`
-                          : "Tap Set Reserved to assign customer and block table."}
-                      </p>
-                      <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
-                        <button
-                          type="button"
-                          onClick={() => openQr(table)}
-                          className="rounded-lg border border-[#dfd2bb] bg-white px-2 py-2 text-xs font-semibold text-slate-700"
-                        >
-                          QR
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => openEdit(table)}
-                          className="rounded-lg border border-[#dfd2bb] bg-white px-2 py-2 text-xs font-semibold text-slate-700"
-                        >
-                          Edit
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() =>
-                            quickStatus(
-                              table,
-                              reserved ? "AVAILABLE" : "RESERVED",
-                            )
-                          }
-                          disabled={isUpdating}
-                          className={`rounded-lg border px-2 py-2 text-xs font-semibold ${reserved ? "border-emerald-200 bg-emerald-50 text-emerald-700" : "border-blue-200 bg-blue-50 text-blue-700"} disabled:opacity-60`}
-                        >
-                          {reserved ? "Set Available" : "Set Reserved"}
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => removeTable(table)}
-                          disabled={isDeleting}
-                          className="rounded-lg border border-rose-200 bg-rose-50 px-2 py-2 text-xs font-semibold text-rose-700 disabled:opacity-60"
-                        >
-                          Delete
-                        </button>
-                      </div>
-                    </article>
-                  );
-                })}
-              </div>
+                      </article>
+                    );
+                  })}
+                </div>
+              ) : (
+                <div className="no-scrollbar -mx-1 overflow-x-auto overscroll-x-contain px-1 sm:mx-0 sm:px-0">
+                  <table className="w-full min-w-[780px] divide-y divide-[#efe4d3] rounded-xl border border-[#eadfc9] bg-white text-left text-xs whitespace-nowrap sm:min-w-full">
+                    <thead className="bg-[#fff8ec]">
+                      <tr className="text-slate-700">
+                        <th className="px-2.5 py-2 font-semibold sm:px-3">Table</th>
+                        <th className="px-2.5 py-2 font-semibold sm:px-3">Capacity</th>
+                        <th className="px-2.5 py-2 font-semibold sm:px-3">Status</th>
+                        {/* <th className="px-2.5 py-2 font-semibold sm:px-3">Customer</th> */}
+                        <th className="px-2.5 py-2 font-semibold text-right sm:px-3">
+                          Actions
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-[#f1e7d9] bg-white">
+                      {filteredTables.map((table) => {
+                        const reserved = nStatus(table.status) === "RESERVED";
+                        return (
+                          <tr key={`table-row-${table.id}`}>
+                            <td className="px-2.5 py-2 font-semibold text-slate-900 sm:px-3">
+                              T{table.number} - {table.name}
+                            </td>
+                            <td className="px-2.5 py-2 text-slate-700 sm:px-3">
+                              {table.capacity}
+                            </td>
+                            <td className="px-2.5 py-2 sm:px-3">
+                              <span
+                                className={`inline-flex rounded-full border px-2 py-0.5 text-[10px] font-semibold ${sClass(table.status)}`}
+                              >
+                                {sLabel(table.status)}
+                              </span>
+                            </td>
+                            {/* <td className="px-2.5 py-2 text-slate-700 sm:px-3">
+                              {table.customerId || "-"}
+                            </td> */}
+                            <td className="px-2.5 py-2 sm:px-3">
+                              <div className="flex justify-end gap-1.5">
+                                <button
+                                  type="button"
+                                  onClick={() => openQr(table)}
+                                  className="rounded-lg border border-[#d8ccb6] bg-white px-2.5 py-1.5 text-[11px] font-semibold text-slate-700 transition-colors hover:bg-[#faf3e7]"
+                                >
+                                  Open QR
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => openEdit(table)}
+                                  className="rounded-lg border border-[#d8ccb6] bg-white px-2.5 py-1.5 text-[11px] font-semibold text-slate-700 transition-colors hover:bg-[#faf3e7]"
+                                >
+                                  Edit
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    quickStatus(
+                                      table,
+                                      reserved ? "AVAILABLE" : "RESERVED",
+                                    )
+                                  }
+                                  disabled={isUpdating}
+                                  className={`rounded-lg border px-2.5 py-1.5 text-[11px] font-semibold transition-colors disabled:opacity-60 ${
+                                    reserved
+                                      ? "border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100"
+                                      : "border-slate-700 bg-slate-700 text-white hover:bg-slate-800"
+                                  }`}
+                                >
+                                  {reserved ? "Available" : "Reserve"}
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => removeTable(table)}
+                                  disabled={isDeleting}
+                                  className="rounded-lg border border-rose-200 bg-white px-2.5 py-1.5 text-[11px] font-semibold text-rose-700 transition-colors hover:bg-rose-50 disabled:opacity-60"
+                                >
+                                  Remove
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )
             ) : (
               <div className="rounded-2xl border border-dashed border-[#e0d6c4] bg-[#fffcf7] px-4 py-10 text-center text-sm text-slate-600">
-                No tables. Add your first table from Quick Control.
+                No tables found for selected filters/search.
               </div>
             )}
           </div>
@@ -721,56 +993,66 @@ export function TablesWorkspace({ tenantName, tenantSlug }: Props) {
       </section>
 
       {editing ? (
-        <div className="fixed inset-0 z-40">
+        <div className="fixed inset-0 z-40 flex items-center justify-center p-3 sm:p-6">
           <button
             type="button"
             className="absolute inset-0 bg-slate-900/40"
             onClick={() => setEditing(null)}
           />
-          <aside className="absolute right-0 top-0 h-full w-full max-w-md overflow-y-auto border-l border-[#e6dfd1] bg-[#fffdf9] p-4 shadow-2xl">
-            <div className="mb-3 flex items-center justify-between border-b border-[#eee7d8] pb-3">
-              <h4 className="text-base font-semibold">Edit {editing.name}</h4>
+          <aside className="relative z-10 w-full max-w-2xl max-h-[90vh] overflow-y-auto rounded-3xl border border-[#e6dfd1] bg-[#fffdf9] p-3 shadow-2xl sm:p-5">
+            <div className="mb-3 flex items-center justify-between sm:mb-4">
+              <div>
+                <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">
+                  Quick Edit
+                </p>
+                <h4 className="text-lg font-semibold text-slate-900">
+                  Update Table
+                </h4>
+              </div>
               <button
                 type="button"
                 onClick={() => setEditing(null)}
-                className="rounded-lg border border-[#e0d8c9] bg-white px-3 py-1 text-xs font-semibold"
-              >
-                Close
+                className="h-8 w-8 rounded-full border border-[#e0d8c9] bg-white text-lg leading-none text-slate-700"
+                aria-label="Close popup"
+                >
+                x
               </button>
             </div>
             <form className="space-y-3" onSubmit={submitUpdate}>
-              <input
-                type="number"
-                min={1}
-                value={editForm.number}
-                onChange={(event) =>
-                  setEditForm((prev) => ({
-                    ...prev,
-                    number: norm(Number(event.target.value), prev.number),
-                  }))
-                }
-                className="h-10 w-full rounded-lg border border-[#ddd4c1] bg-white px-3 text-sm outline-none ring-amber-200 focus:ring-2"
-              />
-              <input
-                value={editForm.name}
-                onChange={(event) =>
-                  setEditForm((prev) => ({ ...prev, name: event.target.value }))
-                }
-                className="h-10 w-full rounded-lg border border-[#ddd4c1] bg-white px-3 text-sm outline-none ring-amber-200 focus:ring-2"
-              />
-              <input
-                type="number"
-                min={1}
-                value={editForm.capacity}
-                onChange={(event) =>
-                  setEditForm((prev) => ({
-                    ...prev,
-                    capacity: norm(Number(event.target.value), prev.capacity),
-                  }))
-                }
-                className="h-10 w-full rounded-lg border border-[#ddd4c1] bg-white px-3 text-sm outline-none ring-amber-200 focus:ring-2"
-              />
-              <div className="grid grid-cols-2 gap-2">
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                <input
+                  type="number"
+                  min={1}
+                  value={editForm.number}
+                  onChange={(event) =>
+                    setEditForm((prev) => ({
+                      ...prev,
+                      number: norm(Number(event.target.value), prev.number),
+                    }))
+                  }
+                  className="h-11 w-full rounded-xl border border-[#ddd4c1] bg-white px-3 text-sm outline-none ring-amber-200 focus:ring-2"
+                />
+                <input
+                  value={editForm.name}
+                  onChange={(event) =>
+                    setEditForm((prev) => ({ ...prev, name: event.target.value }))
+                  }
+                  className="h-11 w-full rounded-xl border border-[#ddd4c1] bg-white px-3 text-sm outline-none ring-amber-200 focus:ring-2"
+                />
+              </div>
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                <input
+                  type="number"
+                  min={1}
+                  value={editForm.capacity}
+                  onChange={(event) =>
+                    setEditForm((prev) => ({
+                      ...prev,
+                      capacity: norm(Number(event.target.value), prev.capacity),
+                    }))
+                  }
+                  className="h-11 w-full rounded-xl border border-[#ddd4c1] bg-white px-3 text-sm outline-none ring-amber-200 focus:ring-2"
+                />
                 <select
                   value={nStatus(editForm.status)}
                   onChange={(event) =>
@@ -779,7 +1061,7 @@ export function TablesWorkspace({ tenantName, tenantSlug }: Props) {
                       status: nStatus(event.target.value),
                     }))
                   }
-                  className="h-10 w-full rounded-lg border border-[#ddd4c1] bg-white px-3 text-sm"
+                  className="h-11 w-full rounded-xl border border-[#ddd4c1] bg-white px-3 text-sm"
                 >
                   {STATUS_OPTIONS.map((option) => (
                     <option key={option.value} value={option.value}>
@@ -787,32 +1069,34 @@ export function TablesWorkspace({ tenantName, tenantSlug }: Props) {
                     </option>
                   ))}
                 </select>
-                <input
-                  value={editForm.customerId}
-                  onChange={(event) =>
-                    setEditForm((prev) => ({
-                      ...prev,
-                      customerId: event.target.value,
-                    }))
-                  }
-                  placeholder="Customer id"
-                  className="h-10 w-full rounded-lg border border-[#ddd4c1] bg-white px-3 text-sm"
-                />
               </div>
-              <label className="inline-flex items-center gap-2 text-sm text-slate-700">
-                <input
-                  type="checkbox"
-                  checked={editForm.isActive}
-                  onChange={(event) =>
-                    setEditForm((prev) => ({
-                      ...prev,
-                      isActive: event.target.checked,
-                    }))
-                  }
-                  className="h-4 w-4"
-                />
-                Active
-              </label>
+              <input
+                value={editForm.customerId}
+                onChange={(event) =>
+                  setEditForm((prev) => ({
+                    ...prev,
+                    customerId: event.target.value,
+                  }))
+                }
+                placeholder="Customer id"
+                className="h-11 w-full rounded-xl border border-[#ddd4c1] bg-white px-3 text-sm"
+              />
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <label className="inline-flex h-11 items-center gap-2 rounded-xl border border-[#ddd4c1] bg-white px-3 text-sm text-slate-700">
+                  <input
+                    type="checkbox"
+                    checked={editForm.isActive}
+                    onChange={(event) =>
+                      setEditForm((prev) => ({
+                        ...prev,
+                        isActive: event.target.checked,
+                      }))
+                    }
+                    className="h-4 w-4 rounded border-slate-300 text-amber-500"
+                  />
+                  {editForm.isActive ? "Active" : "Inactive"}
+                </label>
+              </div>
               <button
                 type="submit"
                 disabled={isUpdating}

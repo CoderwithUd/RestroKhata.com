@@ -39,6 +39,7 @@ export type InvoiceRecord = {
   payment?: InvoicePayment | null;
   createdAt?: string;
   updatedAt?: string;
+  raw?: Record<string, unknown>;
 };
 
 export type InvoicesPagination = {

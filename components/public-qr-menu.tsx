@@ -258,17 +258,79 @@ export function PublicQrMenu({ tenantSlug: tenantSlugFromPath }: PublicQrMenuPro
     return () => controller.abort();
   }, [queryKey, searchParams, tenantSlugFromPath]);
 
+  const [activeCategoryId, setActiveCategoryId] = useState<string>("all");
   const flatCategories = useMemo(() => flattenCategoryTree(data?.categories || []), [data?.categories]);
+  const categoriesWithItems = useMemo(
+    () => flatCategories.filter(({ category }) => category.items.length > 0),
+    [flatCategories],
+  );
+  const visibleCategories = useMemo(
+    () =>
+      activeCategoryId === "all"
+        ? categoriesWithItems
+        : categoriesWithItems.filter(({ category }) => category.id === activeCategoryId),
+    [activeCategoryId, categoriesWithItems],
+  );
+  const visibleItemCount = useMemo(
+    () => visibleCategories.reduce((sum, { category }) => sum + category.items.length, 0),
+    [visibleCategories],
+  );
   const tenantName = data?.tenant?.name || data?.tenant?.slug || "Restaurant";
   const tableLabel = data?.table?.name || (Number.isFinite(data?.table?.number) ? `Table ${data?.table?.number}` : "Walk-in");
 
+  useEffect(() => {
+    if (!categoriesWithItems.length) {
+      setActiveCategoryId("all");
+      return;
+    }
+    const exists = categoriesWithItems.some(({ category }) => category.id === activeCategoryId);
+    if (activeCategoryId !== "all" && !exists) {
+      setActiveCategoryId("all");
+    }
+  }, [activeCategoryId, categoriesWithItems]);
+
   return (
     <main className="min-h-screen bg-[#f6f4ef] px-3 py-4 text-slate-900 md:px-6 md:py-8">
-      <div className="mx-auto w-full max-w-5xl">
-        <header className="rounded-2xl border border-[#e6dfd1] bg-[#fffdf9] p-4 shadow-sm md:p-6">
-          <p className="text-xs font-semibold uppercase tracking-[0.16em] text-amber-700">Public QR Menu</p>
-          <h1 className="mt-2 text-2xl font-semibold md:text-3xl">{tenantName}</h1>
-          <p className="mt-1 text-sm text-slate-600">Serving for: {tableLabel}</p>
+      <div className="mx-auto w-full max-w-6xl space-y-4">
+        <header className="rounded-2xl border border-[#e6dfd1] bg-[linear-gradient(145deg,#fff6e6_0%,#fffdf9_58%,#eff7f2_100%)] p-4 shadow-sm md:p-6">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-[0.16em] text-amber-700">Public QR Menu</p>
+              <h1 className="mt-2 text-2xl font-semibold md:text-3xl">{tenantName}</h1>
+              <p className="mt-1 text-sm text-slate-600">Serving for: {tableLabel}</p>
+            </div>
+            <div className="grid min-w-[150px] grid-cols-1 gap-2 text-xs sm:grid-cols-2 sm:text-right">
+              <p className="rounded-lg border border-[#eadfc9] bg-white px-3 py-2 font-medium text-slate-700">Categories: {categoriesWithItems.length}</p>
+              <p className="rounded-lg border border-[#eadfc9] bg-white px-3 py-2 font-medium text-slate-700">Items: {visibleItemCount}</p>
+            </div>
+          </div>
+
+          {categoriesWithItems.length ? (
+            <div className="no-scrollbar mt-4 flex gap-2 overflow-x-auto pb-1">
+              <button
+                type="button"
+                onClick={() => setActiveCategoryId("all")}
+                className={`whitespace-nowrap rounded-full border px-3 py-1.5 text-xs font-semibold ${
+                  activeCategoryId === "all" ? "border-amber-200 bg-amber-50 text-amber-800" : "border-[#e0d8c9] bg-white text-slate-700"
+                }`}
+              >
+                All Menu
+              </button>
+              {categoriesWithItems.map(({ category, depth }) => (
+                <button
+                  key={category.id}
+                  type="button"
+                  onClick={() => setActiveCategoryId(category.id)}
+                  className={`whitespace-nowrap rounded-full border px-3 py-1.5 text-xs font-semibold ${
+                    activeCategoryId === category.id ? "border-amber-200 bg-amber-50 text-amber-800" : "border-[#e0d8c9] bg-white text-slate-700"
+                  }`}
+                >
+                  {depth ? `${"• ".repeat(Math.min(depth, 2))}` : ""}
+                  {category.name}
+                </button>
+              ))}
+            </div>
+          ) : null}
         </header>
 
         {isLoading ? (
@@ -283,19 +345,19 @@ export function PublicQrMenu({ tenantSlug: tenantSlugFromPath }: PublicQrMenuPro
 
         {!isLoading && !error ? (
           <section className="mt-4 space-y-4">
-            {flatCategories.length ? (
-              flatCategories.map(({ category, depth }) => (
-                <article key={category.id} className="rounded-2xl border border-[#e6dfd1] bg-[#fffdf9] shadow-sm">
-                  <div className="border-b border-[#eee7d8] px-4 py-3" style={{ paddingLeft: `${16 + depth * 14}px` }}>
+            {visibleCategories.length ? (
+              visibleCategories.map(({ category, depth }) => (
+                <article key={category.id} className="overflow-hidden rounded-2xl border border-[#e6dfd1] bg-[#fffdf9] shadow-sm">
+                  <div className="border-b border-[#eee7d8] bg-[linear-gradient(145deg,#fff9ef_0%,#fffdf9_90%)] px-4 py-3" style={{ paddingLeft: `${16 + depth * 12}px` }}>
                     <h2 className="text-lg font-semibold text-slate-900">{category.name}</h2>
                     <p className="text-xs text-slate-500">{category.items.length} items</p>
                   </div>
-                  <div className="grid gap-3 p-4 sm:grid-cols-2">
+                  <div className="grid gap-3 p-4 md:grid-cols-2">
                     {category.items.length ? (
                       category.items.map((item) => (
-                        <div key={item.id} className="rounded-xl border border-[#eadfc9] bg-[linear-gradient(160deg,#fffcf6_0%,#fff7e8_100%)] p-3">
-                          <div className="flex items-start justify-between gap-2">
-                            <p className="text-sm font-semibold text-slate-900">{item.name}</p>
+                        <div key={item.id} className="rounded-xl border border-[#eadfc9] bg-[linear-gradient(165deg,#fffcf6_0%,#fff7e8_100%)] p-3">
+                          <div className="flex items-start justify-between gap-3">
+                            <p className="text-base font-semibold text-slate-900">{item.name}</p>
                             <span
                               className={`inline-flex rounded-full border px-2 py-0.5 text-[10px] font-semibold ${
                                 item.isAvailable
@@ -307,12 +369,12 @@ export function PublicQrMenu({ tenantSlug: tenantSlugFromPath }: PublicQrMenuPro
                             </span>
                           </div>
                           {item.image ? (
-                            <div className="mt-2 overflow-hidden rounded-lg border border-[#eadfc9] bg-white">
+                            <div className="mt-2 overflow-hidden rounded-lg border border-[#eadfc9] bg-white shadow-sm">
                               {/* eslint-disable-next-line @next/next/no-img-element */}
-                              <img src={item.image} alt={item.name} loading="lazy" className="h-32 w-full object-cover" />
+                              <img src={item.image} alt={item.name} loading="lazy" className="h-36 w-full object-cover" />
                             </div>
                           ) : null}
-                          {item.description ? <p className="mt-1 text-xs text-slate-600">{item.description}</p> : null}
+                          {item.description ? <p className="mt-2 text-xs text-slate-600">{item.description}</p> : null}
                           <div className="mt-2 flex flex-wrap gap-1.5">
                             {item.variants.length ? (
                               item.variants.map((variant) => (

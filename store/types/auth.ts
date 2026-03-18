@@ -45,6 +45,61 @@ export type StaffRolesPayload = {
   roles: string[];
 };
 
+export type ReportPeriod =
+  | "today"
+  | "yesterday"
+  | "this_week"
+  | "last_week"
+  | "this_month"
+  | "last_month"
+  | "all"
+  | "custom";
+
+export type ReportsSummaryQueryParams = {
+  period?: ReportPeriod;
+  from?: string;
+  to?: string;
+  tzOffsetMinutes?: number;
+  weekStartsOn?: number;
+};
+
+export type ReportsSummaryPayload = {
+  range: {
+    period?: string;
+    from?: string;
+    to?: string;
+    tzOffsetMinutes?: number;
+    weekStartsOn?: number;
+  };
+  sales: {
+    paidInvoices: number;
+    grossSales: number;
+    discountTotal: number;
+    taxTotal: number;
+    netSales: number;
+    paidTotal: number;
+    avgTicket: number;
+  };
+  orders: {
+    total: number;
+    byStatus: Record<string, number>;
+  };
+  invoices: {
+    total: number;
+    byStatus: Record<string, number>;
+  };
+  expenses: {
+    total: number;
+    count: number;
+  };
+  profitLoss: {
+    netResult: number;
+    profit: number;
+    loss: number;
+    note?: string;
+  };
+};
+
 export type TenantStaffUser = {
   id?: string;
   name?: string;

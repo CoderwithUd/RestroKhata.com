@@ -17,8 +17,10 @@ import { TablesWorkspace } from "@/components/tables-workspace";
 import {
   useLogoutMutation,
   useOrdersQuery,
+  useReportsSummaryQuery,
   useTentantProfileQuery,
 } from "@/store/api/authApi";
+import { useGetInvoicesQuery } from "@/store/api/invoicesApi";
 import { useGetMenuItemsQuery } from "@/store/api/menuApi";
 import { useAppDispatch, useAppSelector } from "@/store/hooks";
 import {
@@ -410,36 +412,6 @@ const SECTION_LIBRARY: Record<SectionId, DashboardSection> = {
   },
 };
 
-const KOT_TICKETS = [
-  {
-    table: "Table 3",
-    time: "18 min ago",
-    items: "Pasta Arrabbiata, Cold Coffee x 2, Brownie",
-    tone: "red",
-  },
-  {
-    table: "Table 11",
-    time: "12 min ago",
-    items: "Veg Thali x 5, Sweet Lassi x 3",
-    tone: "amber",
-  },
-  {
-    table: "Table 8",
-    time: "Ready",
-    items: "Cheese Burger x 2, Loaded Fries",
-    tone: "green",
-  },
-];
-
-const SALES_WEEK = [55, 72, 48, 85, 63, 74, 40];
-
-const TOP_ITEMS = [
-  { name: "Cappuccino", price: "INR 180", sold: "34 sold" },
-  { name: "Paneer Pizza", price: "INR 380", sold: "18 sold" },
-  { name: "Cheese Burger", price: "INR 260", sold: "22 sold" },
-  { name: "Choco Brownie", price: "INR 140", sold: "29 sold" },
-];
-
 const APP_VERSION = `v${packageInfo.version}`;
 
 function normalizeRole(rawRole?: string): RoleKey {
@@ -473,6 +445,56 @@ function roleLabel(role: RoleKey): string {
   if (role === "waiter") return "Waiter";
   if (role === "kitchen") return "Kitchen";
   return "Manager";
+}
+
+function formatMoney(value: number): string {
+  return new Intl.NumberFormat("en-IN", {
+    style: "currency",
+    currency: "INR",
+    maximumFractionDigits: 0,
+  }).format(Number.isFinite(value) ? value : 0);
+}
+
+function formatRelativeTime(value?: string): string {
+  if (!value) return "Just now";
+  const timestamp = new Date(value).getTime();
+  if (!Number.isFinite(timestamp)) return "Just now";
+
+  const diffMs = Date.now() - timestamp;
+  if (diffMs <= 0) return "Just now";
+
+  const minutes = Math.floor(diffMs / 60000);
+  if (minutes < 1) return "Just now";
+  if (minutes < 60) return `${minutes}m ago`;
+
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h ago`;
+
+  const days = Math.floor(hours / 24);
+  return `${days}d ago`;
+}
+
+function countStatuses(
+  source: Record<string, number> | undefined,
+  statuses: string[],
+): number {
+  if (!source) return 0;
+  const normalized: Record<string, number> = {};
+  Object.entries(source).forEach(([status, value]) => {
+    const key = status.trim().toUpperCase();
+    normalized[key] = (normalized[key] || 0) + value;
+  });
+  return statuses.reduce((sum, status) => {
+    return sum + (normalized[status.trim().toUpperCase()] || 0);
+  }, 0);
+}
+
+function isSameLocalDate(first: Date, second: Date): boolean {
+  return (
+    first.getFullYear() === second.getFullYear() &&
+    first.getMonth() === second.getMonth() &&
+    first.getDate() === second.getDate()
+  );
 }
 
 function orderTone(status?: string): "amber" | "green" | "blue" | "red" {
@@ -735,7 +757,7 @@ export function DashboardCard({ section }: DashboardCardProps) {
   const { data: tentantProfile, isLoading: isTenantProfileLoading } =
     useTentantProfileQuery();
   const { data: ordersPayload, isFetching: isOrdersFetching } = useOrdersQuery({
-    status: ["PLACED", "IN_PROGRESS"],
+    status: ["PLACED", "IN_PROGRESS", "READY"],
     page: 1,
   });
   const subscriptionExpired = isSubscriptionExpired(
@@ -747,6 +769,49 @@ export function DashboardCard({ section }: DashboardCardProps) {
     () => normalizeRole(tentantProfile?.role || user?.role),
     [tentantProfile?.role, user?.role],
   );
+  const reportsEnabled = role === "owner" || role === "manager";
+  const tzOffsetMinutes = -new Date().getTimezoneOffset();
+  const { data: todaySummary, isFetching: isTodaySummaryFetching } =
+    useReportsSummaryQuery(
+      {
+        period: "today",
+        tzOffsetMinutes,
+      },
+      {
+        skip: !reportsEnabled,
+        pollingInterval: 30000,
+        refetchOnFocus: true,
+        refetchOnReconnect: true,
+        refetchOnMountOrArgChange: true,
+      },
+    );
+  const { data: weekSummary, isFetching: isWeekSummaryFetching } =
+    useReportsSummaryQuery(
+      {
+        period: "this_week",
+        tzOffsetMinutes,
+      },
+      {
+        skip: !reportsEnabled,
+        pollingInterval: 30000,
+        refetchOnFocus: true,
+        refetchOnReconnect: true,
+        refetchOnMountOrArgChange: true,
+      },
+    );
+  const { data: paidInvoicesPayload, isFetching: isPaidInvoicesFetching } =
+    useGetInvoicesQuery(
+      {
+        status: "PAID",
+        page: 1,
+        limit: 100,
+      },
+      {
+        pollingInterval: 30000,
+        refetchOnFocus: true,
+        refetchOnReconnect: true,
+      },
+    );
   const allowedIds = ROLE_SECTIONS[role];
   const defaultId = allowedIds[0];
   const activeId =
@@ -804,6 +869,81 @@ export function DashboardCard({ section }: DashboardCardProps) {
           100,
       ) / 100
     : 0;
+  const todaySales = todaySummary?.sales;
+  const weekSales = weekSummary?.sales;
+  const todayOrdersByStatus = todaySummary?.orders.byStatus;
+  const todayInvoicesByStatus = todaySummary?.invoices.byStatus;
+  const weekOrdersByStatus = weekSummary?.orders.byStatus;
+  const weekInvoicesByStatus = weekSummary?.invoices.byStatus;
+  const reportLoading =
+    reportsEnabled && (isTodaySummaryFetching || isWeekSummaryFetching);
+  const now = new Date();
+  const paidInvoicesToday = (paidInvoicesPayload?.items || []).filter(
+    (invoice) => {
+      const paidAt =
+        invoice.payment?.paidAt || invoice.updatedAt || invoice.createdAt;
+      if (!paidAt) return false;
+      const paidDate = new Date(paidAt);
+      if (Number.isNaN(paidDate.getTime())) return false;
+      return isSameLocalDate(paidDate, now);
+    },
+  );
+  const paidInvoicesTodayAmount = paidInvoicesToday.reduce((sum, invoice) => {
+    const amount =
+      invoice.payment?.paidAmount ??
+      invoice.totalDue ??
+      invoice.grandTotal ??
+      invoice.subTotal ??
+      0;
+    return sum + amount;
+  }, 0);
+  const todayPaidSalesValue = reportsEnabled
+    ? Math.max(todaySales?.paidTotal ?? 0, paidInvoicesTodayAmount)
+    : paidInvoicesTodayAmount;
+  const todayKitchenQueue = countStatuses(todayOrdersByStatus, [
+    "PLACED",
+    "NEW",
+    "IN_PROGRESS",
+    "COOKING",
+    "PREPARING",
+  ]);
+  const todayReadyCount = countStatuses(todayOrdersByStatus, ["READY"]);
+  const todayServedCount = countStatuses(todayOrdersByStatus, [
+    "SERVED",
+    "COMPLETED",
+    "DELIVERED",
+  ]);
+  const todayCancelledCount = countStatuses(todayOrdersByStatus, ["CANCELLED"]);
+  const todayPendingInvoices = countStatuses(todayInvoicesByStatus, [
+    "ISSUED",
+    "PENDING",
+    "UNPAID",
+  ]);
+  const todayPaidInvoices = countStatuses(todayInvoicesByStatus, ["PAID"]);
+  const weekPendingInvoices = countStatuses(weekInvoicesByStatus, [
+    "ISSUED",
+    "PENDING",
+    "UNPAID",
+  ]);
+  const weekPaidInvoices = countStatuses(weekInvoicesByStatus, ["PAID"]);
+  const weekOrderReady = countStatuses(weekOrdersByStatus, ["READY"]);
+  const weekOrderServed = countStatuses(weekOrdersByStatus, [
+    "SERVED",
+    "COMPLETED",
+    "DELIVERED",
+  ]);
+  const weekOrderCancelled = countStatuses(weekOrdersByStatus, ["CANCELLED"]);
+  const kitchenTickets = (ordersPayload?.items || []).slice(0, 5).map((order) => {
+    const label = order.tableName || order.sourceLabel || order.orderNumber || "Order";
+    return {
+      id: order.id,
+      label,
+      time: formatRelativeTime(order.updatedAt || order.createdAt),
+      items: order.itemsSummary || "Order items unavailable",
+      status: order.status || "PLACED",
+      tone: orderTone(order.status),
+    };
+  });
 
   useEffect(() => {
     if (!section || !activeId) {
@@ -879,62 +1019,115 @@ export function DashboardCard({ section }: DashboardCardProps) {
     return undefined;
   };
   const activeSectionKpis =
-    activeSection.id === "tables"
+    activeSection.id === "overview"
       ? [
           {
-            label: "Total Tables",
-            value: `${totalTablesCount}`,
+            label: "Today's Revenue",
+            value: formatMoney(todayPaidSalesValue),
             tone: "amber" as const,
           },
           {
-            label: "Active",
-            value: `${activeTablesCount}`,
+            label: "Today's Orders",
+            value: `${reportsEnabled ? todaySummary?.orders.total ?? 0 : activeOrderCount}`,
             tone: "green" as const,
           },
           {
-            label: "Reserved",
-            value: `${reservedTablesCount}`,
+            label: "Tables Occupied",
+            value: `${occupiedTablesCount}/${totalTablesCount || 0}`,
             tone: "blue" as const,
           },
           {
-            label: "Occupied",
-            value: `${occupiedTablesCount}`,
+            label: "Avg Ticket",
+            value: reportsEnabled
+              ? formatMoney(todaySales?.avgTicket ?? 0)
+              : paidInvoicesToday.length
+                ? formatMoney(todayPaidSalesValue / paidInvoicesToday.length)
+                : formatMoney(0),
             tone: "red" as const,
           },
         ]
-      : activeSection.id === "menu"
+      : activeSection.id === "reports"
         ? [
             {
-              label: "Total Items",
-              value: `${menuTotalCount}`,
-              tone: "blue" as const,
-            },
-            {
-              label: "Available",
-              value: `${menuAvailableCount}`,
+              label: "Sales Today",
+              value: formatMoney(todaySales?.paidTotal ?? 0),
               tone: "green" as const,
             },
             {
-              label: "Hidden",
-              value: `${menuUnavailableCount}`,
+              label: "Sales This Week",
+              value: formatMoney(weekSales?.paidTotal ?? 0),
+              tone: "amber" as const,
+            },
+            {
+              label: "Expenses This Week",
+              value: formatMoney(weekSummary?.expenses.total ?? 0),
               tone: "red" as const,
             },
             {
-              label: menuCategoriesCount ? "Avg Price" : "Categories",
-              value: menuCategoriesCount
-                ? `INR ${menuAvgPrice}`
-                : `${menuCategoriesCount}`,
-              tone: "amber" as const,
+              label: "Net Result (Week)",
+              value: formatMoney(weekSummary?.profitLoss.netResult ?? 0),
+              tone:
+                (weekSummary?.profitLoss.netResult ?? 0) >= 0
+                  ? ("green" as const)
+                  : ("red" as const),
             },
           ]
-        : activeSection.kpis;
+        : activeSection.id === "tables"
+          ? [
+              {
+                label: "Total Tables",
+                value: `${totalTablesCount}`,
+                tone: "amber" as const,
+              },
+              {
+                label: "Active",
+                value: `${activeTablesCount}`,
+                tone: "green" as const,
+              },
+              {
+                label: "Reserved",
+                value: `${reservedTablesCount}`,
+                tone: "blue" as const,
+              },
+              {
+                label: "Occupied",
+                value: `${occupiedTablesCount}`,
+                tone: "red" as const,
+              },
+            ]
+          : activeSection.id === "menu"
+            ? [
+                {
+                  label: "Total Items",
+                  value: `${menuTotalCount}`,
+                  tone: "blue" as const,
+                },
+                {
+                  label: "Available",
+                  value: `${menuAvailableCount}`,
+                  tone: "green" as const,
+                },
+                {
+                  label: "Hidden",
+                  value: `${menuUnavailableCount}`,
+                  tone: "red" as const,
+                },
+                {
+                  label: menuCategoriesCount ? "Avg Price" : "Categories",
+                  value: menuCategoriesCount
+                    ? `INR ${menuAvgPrice}`
+                    : `${menuCategoriesCount}`,
+                  tone: "amber" as const,
+                },
+              ]
+            : activeSection.kpis;
 
   return (
-    <main className="min-h-screen overflow-x-hidden bg-[#f6f4ef] text-slate-900">
+    <main className="min-h-screen overflow-x-hidden bg-[#f6f4ef] text-slate-900 lg:h-screen lg:overflow-hidden">
       <div className="fixed inset-0 -z-10 bg-[radial-gradient(circle_at_top_right,#fbe8c6_0%,transparent_38%),radial-gradient(circle_at_bottom_left,#e4efe7_0%,transparent_35%)]" />
 
       <div className="mx-auto flex w-full max-w-[1460px] gap-4 px-3 py-3 md:px-4 md:py-4 lg:gap-6 lg:px-6 lg:py-6">
-        <aside className="hidden h-[calc(100vh-3rem)] w-[258px] shrink-0 rounded-[28px] border border-[#e6dfd1] bg-[#fffdf9] p-3.5 shadow-sm lg:flex lg:flex-col">
+        <aside className="hidden h-[calc(100vh-3rem)] w-[258px] shrink-0 rounded-[28px] border border-[#e6dfd1] bg-[#fffdf9] p-3.5 shadow-sm lg:sticky lg:top-3 lg:flex lg:flex-col">
           <div className="border-b border-[#eee7d8] pb-4">
             <div className="flex items-start justify-between gap-3">
               <div className="inline-flex h-10 w-10 items-center justify-center rounded-2xl bg-amber-500 text-sm font-bold text-white shadow-lg shadow-amber-500/20">
@@ -981,7 +1174,7 @@ export function DashboardCard({ section }: DashboardCardProps) {
           </nav>
         </aside>
 
-        <div className="min-w-0 flex-1">
+        <div className="min-w-0 flex-1 lg:flex lg:h-[calc(100vh-3rem)] lg:flex-col">
           <header className="sticky top-0 z-20 rounded-[26px] border border-[#e6dfd1] bg-[#fffdf9]/95 px-3 py-3 shadow-sm backdrop-blur sm:top-3 md:px-4 lg:px-5">
             <div className="flex items-center justify-between gap-3">
               <div className="flex min-w-0 items-center gap-3">
@@ -1036,70 +1229,50 @@ export function DashboardCard({ section }: DashboardCardProps) {
                   Profile
                 </button>
               ) : null}
+              <button
+                type="button"
+                onClick={() => setNewOrderOpen(true)}
+                className="hidden rounded-xl border border-[#e6dfd1] bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-amber-50 md:inline-flex"
+              >
+                + New Order
+              </button>
+              {allowedIds.includes("invoices") ? (
                 <button
                   type="button"
-                  onClick={() => setNewOrderOpen(true)}
-                  className="hidden rounded-xl border border-[#e6dfd1] bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-amber-50 md:inline-flex"
+                  onClick={() => router.push("/dashboard/invoices")}
+                  className="hidden items-center justify-center rounded-xl bg-amber-500 px-3 py-2 text-sm font-semibold text-white hover:bg-amber-600 sm:inline-flex"
                 >
-                  + New Order
+                  Billing
                 </button>
-                {allowedIds.includes("invoices") ? (
-                  <button
-                    type="button"
-                    onClick={() => router.push("/dashboard/invoices")}
-                    className="hidden items-center justify-center rounded-xl bg-amber-500 px-3 py-2 text-sm font-semibold text-white hover:bg-amber-600 sm:inline-flex"
-                  >
-                    Billing
-                  </button>
-                ) : null}
-                {tenantSlug ? (
-                  <Link
-                    href={`/${tenantSlug}`}
-                    className="hidden"
-                  >
-                    Public URL
-                  </Link>
-                ) : null}
-                <button
-                  type="button"
-                  onClick={onLogout}
-                  disabled={isLoggingOut}
-                  className="hidden"
-                >
-                  {isLoggingOut ? "Signing out..." : "Logout"}
-                </button>
+              ) : null}
+              {tenantSlug ? (
+                <Link href={`/${tenantSlug}`} className="hidden">
+                  Public URL
+                </Link>
+              ) : null}
+              <button
+                type="button"
+                onClick={onLogout}
+                disabled={isLoggingOut}
+                className="hidden"
+              >
+                {isLoggingOut ? "Signing out..." : "Logout"}
+              </button>
             </div>
           </header>
 
-          {/* <section className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-            {activeSectionKpis.map((kpi, index) => (
-              <article key={kpi.label} className="rounded-2xl border border-[#e6dfd1] bg-[#fffdf9] p-4 shadow-sm">
-                <div className={`mb-3 inline-flex rounded-full border px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide ${toneClasses(kpi.tone)}`}>
-                  {kpi.label} 
-                </div>
-                <p className="text-2xl font-semibold text-slate-900">{kpi.value}</p>
-           
-              </article>
-            ))}
-          </section> */}
-
-          <section className="mt-4 flex gap-2 sm:gap-3 overflow-x-auto no-scrollbar scroll-smooth px-1">
+          <div className="no-scrollbar pb-[calc(env(safe-area-inset-bottom)+5.5rem)] lg:min-h-0 lg:flex-1 lg:overflow-y-auto lg:pr-1 lg:pb-0">
+{
+   ( activeSection.id === "overview" || activeSection?.id === "reports" )&&
+          <section className="no-scrollbar mt-4 flex gap-2 overflow-x-auto px-1 sm:gap-3">
             {activeSectionKpis.map((kpi) => (
               <article
                 key={kpi.label}
-                className="flex-shrink-0 
-                 w-[140px] sm:w-[180px] md:w-[220px] 
-                 rounded-xl sm:rounded-2xl 
-                 border border-[#e6dfd1] 
-                 bg-[#fffdf9] 
-                 p-2 sm:p-3 md:p-4 
+                className="w-[150px] shrink-0 rounded-xl border border-[#e6dfd1] bg-[#fffdf9] p-2 shadow-sm sm:w-[190px] sm:rounded-2xl sm:p-3 md:w-[220px] md:p-4
                  shadow-sm"
               >
                 <div
-                  className={`mb-1 sm:mb-2 inline-flex rounded-full border 
-                    px-2 py-0.5 sm:px-2.5 sm:py-1 
-                    text-[9px] sm:text-[10px] 
-                    font-semibold uppercase tracking-wide 
+                  className={`mb-1 inline-flex rounded-full border px-2 py-0.5 text-[9px] font-semibold uppercase tracking-wide sm:mb-2 sm:px-2.5 sm:py-1 sm:text-[10px]
                     ${toneClasses(kpi.tone)}`}
                 >
                   {kpi.label}
@@ -1111,6 +1284,7 @@ export function DashboardCard({ section }: DashboardCardProps) {
               </article>
             ))}
           </section>
+}
           {activeSection.id === "overview" ? (
             <>
               <section className="mt-4 grid gap-4 xl:grid-cols-[1.6fr_1fr]">
@@ -1244,95 +1418,348 @@ export function DashboardCard({ section }: DashboardCardProps) {
                 <article className="rounded-2xl border border-[#e6dfd1] bg-[#fffdf9] shadow-sm">
                   <div className="flex items-center justify-between border-b border-[#eee7d8] px-4 py-3">
                     <div>
-                      <p className="text-sm font-semibold">Kitchen Display</p>
+                      <p className="text-sm font-semibold">Kitchen Queue</p>
                       <p className="text-xs text-slate-500">
-                        3 pending tickets
+                        {isOrdersFetching
+                          ? "Syncing live orders..."
+                          : `${kitchenTickets.length} active tickets`}
                       </p>
                     </div>
                     <span className="rounded-full border border-rose-200 bg-rose-50 px-2.5 py-1 text-[10px] font-semibold text-rose-700">
-                      3 Urgent
+                      {kitchenActiveCount} Cooking
                     </span>
                   </div>
                   <div className="space-y-3 p-4">
-                    {KOT_TICKETS.map((ticket, index) => (
-                      <div
-                        key={index}
-                        className={`rounded-xl border-l-4 border p-3 ${
-                          ticket.tone === "red"
-                            ? "border-rose-300 bg-rose-50"
-                            : ticket.tone === "green"
-                              ? "border-emerald-300 bg-emerald-50"
-                              : "border-amber-300 bg-amber-50"
-                        }`}
-                      >
-                        <div className="mb-1.5 flex items-center justify-between">
-                          <p className="text-sm font-semibold">
-                            {ticket.table}
+                    {kitchenTickets.length ? (
+                      kitchenTickets.map((ticket) => (
+                        <div
+                          key={ticket.id}
+                          className={`rounded-xl border-l-4 border p-3 ${
+                            ticket.tone === "red"
+                              ? "border-rose-300 bg-rose-50"
+                              : ticket.tone === "green"
+                                ? "border-emerald-300 bg-emerald-50"
+                                : ticket.tone === "blue"
+                                  ? "border-blue-300 bg-blue-50"
+                                  : "border-amber-300 bg-amber-50"
+                          }`}
+                        >
+                          <div className="mb-1.5 flex items-center justify-between gap-2">
+                            <p className="truncate text-sm font-semibold">
+                              {ticket.label}
+                            </p>
+                            <p className="shrink-0 text-xs text-slate-500">
+                              {ticket.time}
+                            </p>
+                          </div>
+                          <p className="truncate text-xs text-slate-600">
+                            {ticket.items}
                           </p>
-                          <p className="text-xs text-slate-500">
-                            {ticket.time}
-                          </p>
+                          <div className="mt-2">
+                            <span
+                              className={`rounded-full border px-2 py-1 text-[10px] font-semibold ${toneClasses(ticket.tone)}`}
+                            >
+                              {ticket.status}
+                            </span>
+                          </div>
                         </div>
-                        <p className="text-xs text-slate-600">{ticket.items}</p>
-                      </div>
-                    ))}
+                      ))
+                    ) : (
+                      <p className="text-sm text-slate-500">
+                        No active kitchen tickets.
+                      </p>
+                    )}
                   </div>
                 </article>
 
                 <div className="grid gap-4">
                   <article className="rounded-2xl border border-[#e6dfd1] bg-[#fffdf9] shadow-sm">
-                    <div className="border-b border-[#eee7d8] px-4 py-3">
-                      <p className="text-sm font-semibold">Sales This Week</p>
-                      <p className="text-xs text-slate-500">
-                        Total INR 1,12,400
-                      </p>
-                    </div>
-                    <div className="p-4">
-                      <div className="flex h-24 items-end gap-1.5">
-                        {SALES_WEEK.map((height, i) => (
-                          <div
-                            key={i}
-                            className={`w-full rounded-t ${i === 5 ? "bg-amber-500" : "bg-amber-200"}`}
-                            style={{ height: `${height}%` }}
-                          />
-                        ))}
+                    <div className="flex items-center justify-between border-b border-[#eee7d8] px-4 py-3">
+                      <div>
+                        <p className="text-sm font-semibold">Today Summary</p>
+                        <p className="text-xs text-slate-500">
+                          {reportsEnabled
+                            ? reportLoading
+                              ? "Refreshing data..."
+                              : todaySummary?.range?.from
+                                ? "From reports API"
+                                : "No records yet"
+                            : "Visible for owner/manager"}
+                        </p>
                       </div>
-                      <div className="mt-2 grid grid-cols-7 text-center text-[10px] text-slate-500">
-                        <span>Mon</span>
-                        <span>Tue</span>
-                        <span>Wed</span>
-                        <span>Thu</span>
-                        <span>Fri</span>
-                        <span>Sat</span>
-                        <span>Sun</span>
+                      {reportsEnabled ? (
+                        <span className="rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-[10px] font-semibold text-emerald-700">
+                          Paid {todayPaidInvoices}
+                        </span>
+                      ) : null}
+                    </div>
+                    <div className="grid gap-2 p-4 sm:grid-cols-2">
+                      <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+                        <p className="text-[11px] font-medium text-slate-500">
+                          Paid Sales
+                        </p>
+                        <p className="mt-1 text-base font-semibold text-slate-900">
+                          {reportsEnabled
+                            ? formatMoney(todayPaidSalesValue)
+                            : isPaidInvoicesFetching
+                              ? "Syncing..."
+                              : formatMoney(todayPaidSalesValue)}
+                        </p>
+                      </div>
+                      <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+                        <p className="text-[11px] font-medium text-slate-500">
+                          Kitchen Queue
+                        </p>
+                        <p className="mt-1 text-base font-semibold text-slate-900">
+                          {reportsEnabled
+                            ? `${todayKitchenQueue}`
+                            : `${kitchenActiveCount}`}
+                        </p>
+                      </div>
+                      <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+                        <p className="text-[11px] font-medium text-slate-500">
+                          Ready / Served
+                        </p>
+                        <p className="mt-1 text-base font-semibold text-slate-900">
+                          {reportsEnabled
+                            ? `${todayReadyCount} / ${todayServedCount}`
+                            : `- / -`}
+                        </p>
+                      </div>
+                      <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+                        <p className="text-[11px] font-medium text-slate-500">
+                          Pending Invoices
+                        </p>
+                        <p className="mt-1 text-base font-semibold text-slate-900">
+                          {reportsEnabled ? `${todayPendingInvoices}` : "-"}
+                        </p>
                       </div>
                     </div>
                   </article>
 
                   <article className="rounded-2xl border border-[#e6dfd1] bg-[#fffdf9] shadow-sm">
                     <div className="border-b border-[#eee7d8] px-4 py-3">
-                      <p className="text-sm font-semibold">Top Selling Items</p>
+                      <p className="text-sm font-semibold">This Week</p>
+                      <p className="text-xs text-slate-500">
+                        Orders, invoices, expense and net result
+                      </p>
                     </div>
-                    <div className="grid grid-cols-2 gap-2 p-4">
-                      {TOP_ITEMS.map((item) => (
-                        <div
-                          key={item.name}
-                          className="rounded-xl border border-slate-200 bg-slate-50 p-3"
+                    <div className="space-y-2 p-4 text-xs">
+                      <div className="flex items-center justify-between rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
+                        <span className="text-slate-600">Paid Sales</span>
+                        <span className="font-semibold text-slate-900">
+                          {reportsEnabled
+                            ? formatMoney(weekSales?.paidTotal ?? 0)
+                            : "Role restricted"}
+                        </span>
+                      </div>
+                      <div className="flex items-center justify-between rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
+                        <span className="text-slate-600">Ready / Served</span>
+                        <span className="font-semibold text-slate-900">
+                          {reportsEnabled
+                            ? `${weekOrderReady} / ${weekOrderServed}`
+                            : "- / -"}
+                        </span>
+                      </div>
+                      <div className="flex items-center justify-between rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
+                        <span className="text-slate-600">Paid / Pending Bills</span>
+                        <span className="font-semibold text-slate-900">
+                          {reportsEnabled
+                            ? `${weekPaidInvoices} / ${weekPendingInvoices}`
+                            : "- / -"}
+                        </span>
+                      </div>
+                      <div className="flex items-center justify-between rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
+                        <span className="text-slate-600">Expenses</span>
+                        <span className="font-semibold text-slate-900">
+                          {reportsEnabled
+                            ? formatMoney(weekSummary?.expenses.total ?? 0)
+                            : "Role restricted"}
+                        </span>
+                      </div>
+                      <div className="flex items-center justify-between rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
+                        <span className="text-slate-600">Net Result</span>
+                        <span
+                          className={`font-semibold ${
+                            (weekSummary?.profitLoss.netResult ?? 0) >= 0
+                              ? "text-emerald-700"
+                              : "text-rose-700"
+                          }`}
                         >
-                          <p className="text-sm font-semibold">{item.name}</p>
-                          <p className="mt-1 text-xs font-semibold text-amber-700">
-                            {item.price}
-                          </p>
-                          <p className="mt-1 text-[11px] text-slate-500">
-                            {item.sold} today
-                          </p>
-                        </div>
-                      ))}
+                          {reportsEnabled
+                            ? formatMoney(weekSummary?.profitLoss.netResult ?? 0)
+                            : "Role restricted"}
+                        </span>
+                      </div>
+                      <div className="flex items-center justify-between rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
+                        <span className="text-slate-600">Cancelled Orders</span>
+                        <span className="font-semibold text-slate-900">
+                          {reportsEnabled ? weekOrderCancelled : "-"}
+                        </span>
+                      </div>
                     </div>
                   </article>
                 </div>
               </section>
             </>
+          ) : activeSection.id === "reports" ? (
+            <section className="mt-4 grid gap-4 xl:grid-cols-[1.4fr_1fr]">
+              <article className="rounded-2xl border border-[#e6dfd1] bg-[#fffdf9] shadow-sm">
+                <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[#eee7d8] px-4 py-3">
+                  <div>
+                    <p className="text-sm font-semibold">Reports Summary</p>
+                      <p className="text-xs text-slate-500">
+                        {reportLoading
+                          ? "Syncing report data..."
+                        : "Live values from /reports/summary + paid invoices"}
+                      </p>
+                    </div>
+                  <span className="rounded-full border border-blue-200 bg-blue-50 px-2.5 py-1 text-[10px] font-semibold text-blue-700">
+                    {todaySummary?.range?.period || "today"}
+                  </span>
+                </div>
+                <div className="grid gap-3 p-4 md:grid-cols-2">
+                  <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+                    <p className="text-[11px] font-medium text-slate-500">
+                      Today Sales
+                    </p>
+                    <p className="mt-1 text-lg font-semibold text-slate-900">
+                      {formatMoney(todayPaidSalesValue)}
+                    </p>
+                    <p className="mt-1 text-[11px] text-slate-500">
+                      Avg Ticket {formatMoney(todaySales?.avgTicket ?? 0)}
+                    </p>
+                  </div>
+                  <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+                    <p className="text-[11px] font-medium text-slate-500">
+                      This Week Sales
+                    </p>
+                    <p className="mt-1 text-lg font-semibold text-slate-900">
+                      {formatMoney(weekSales?.paidTotal ?? 0)}
+                    </p>
+                    <p className="mt-1 text-[11px] text-slate-500">
+                      Net {formatMoney(weekSummary?.profitLoss.netResult ?? 0)}
+                    </p>
+                  </div>
+                </div>
+                <div className="grid gap-3 border-t border-[#eee7d8] p-4 md:grid-cols-2">
+                  <div className="rounded-xl border border-[#e4dccb] bg-[#fffcf7] p-3">
+                    <p className="text-xs font-semibold text-slate-700">
+                      Order Status (Today)
+                    </p>
+                    <div className="mt-2 space-y-2 text-xs">
+                      <div className="flex items-center justify-between">
+                        <span className="text-slate-600">Placed</span>
+                        <span className="font-semibold">
+                          {countStatuses(todayOrdersByStatus, ["PLACED", "NEW"])}
+                        </span>
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <span className="text-slate-600">In Progress</span>
+                        <span className="font-semibold">
+                          {countStatuses(todayOrdersByStatus, [
+                            "IN_PROGRESS",
+                            "COOKING",
+                            "PREPARING",
+                          ])}
+                        </span>
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <span className="text-slate-600">Ready / Served</span>
+                        <span className="font-semibold">
+                          {todayReadyCount} / {todayServedCount}
+                        </span>
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <span className="text-slate-600">Cancelled</span>
+                        <span className="font-semibold">{todayCancelledCount}</span>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="rounded-xl border border-[#e4dccb] bg-[#fffcf7] p-3">
+                    <p className="text-xs font-semibold text-slate-700">
+                      Invoice Status
+                    </p>
+                    <div className="mt-2 space-y-2 text-xs">
+                      <div className="flex items-center justify-between">
+                        <span className="text-slate-600">Today Paid</span>
+                        <span className="font-semibold">{todayPaidInvoices}</span>
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <span className="text-slate-600">Today Pending</span>
+                        <span className="font-semibold">{todayPendingInvoices}</span>
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <span className="text-slate-600">Week Paid</span>
+                        <span className="font-semibold">{weekPaidInvoices}</span>
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <span className="text-slate-600">Week Pending</span>
+                        <span className="font-semibold">{weekPendingInvoices}</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </article>
+
+              <article className="rounded-2xl border border-[#e6dfd1] bg-[#fffdf9] shadow-sm">
+                <div className="border-b border-[#eee7d8] px-4 py-3">
+                  <p className="text-sm font-semibold">Finance Snapshot</p>
+                  <p className="text-xs text-slate-500">
+                    Weekly profit and expense from reports API
+                  </p>
+                </div>
+                <div className="space-y-2 p-4 text-xs">
+                  <div className="flex items-center justify-between rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
+                    <span className="text-slate-600">Gross Sales</span>
+                    <span className="font-semibold text-slate-900">
+                      {formatMoney(weekSales?.grossSales ?? 0)}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
+                    <span className="text-slate-600">Discounts</span>
+                    <span className="font-semibold text-slate-900">
+                      {formatMoney(weekSales?.discountTotal ?? 0)}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
+                    <span className="text-slate-600">Tax</span>
+                    <span className="font-semibold text-slate-900">
+                      {formatMoney(weekSales?.taxTotal ?? 0)}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
+                    <span className="text-slate-600">Net Sales</span>
+                    <span className="font-semibold text-slate-900">
+                      {formatMoney(weekSales?.netSales ?? 0)}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
+                    <span className="text-slate-600">Expenses</span>
+                    <span className="font-semibold text-slate-900">
+                      {formatMoney(weekSummary?.expenses.total ?? 0)}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
+                    <span className="text-slate-600">Profit</span>
+                    <span className="font-semibold text-emerald-700">
+                      {formatMoney(weekSummary?.profitLoss.profit ?? 0)}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
+                    <span className="text-slate-600">Loss</span>
+                    <span className="font-semibold text-rose-700">
+                      {formatMoney(weekSummary?.profitLoss.loss ?? 0)}
+                    </span>
+                  </div>
+                </div>
+                {weekSummary?.profitLoss.note ? (
+                  <p className="border-t border-[#eee7d8] px-4 py-3 text-[11px] text-slate-500">
+                    {weekSummary.profitLoss.note}
+                  </p>
+                ) : null}
+              </article>
+            </section>
           ) : activeSection.id === "orders" ||
             activeSection.id === "kitchen" ? (
             <section className="mt-4">
@@ -1345,7 +1772,7 @@ export function DashboardCard({ section }: DashboardCardProps) {
           ) : activeSection.id === "tables" ? (
             <TablesWorkspace tenantName={tenantName} tenantSlug={tenantSlug} />
           ) : activeSection.id === "menu" ? (
-            <MenuWorkspace tenantName={tenantName} />
+            <MenuWorkspace tenantName={tenantName} tenantSlug={tenantSlug} />
           ) : activeSection.id === "staff" ? (
             <StaffWorkspace tenantName={tenantName} />
           ) : activeSection.id === "profile" ||
@@ -1375,6 +1802,7 @@ export function DashboardCard({ section }: DashboardCardProps) {
               ))}
             </section>
           )}
+          </div>
         </div>
       </div>
 
@@ -1464,7 +1892,6 @@ export function DashboardCard({ section }: DashboardCardProps) {
                   </div>
                 )}
               </div>
-
             </div>
 
             <div className="mt-5">
@@ -1472,16 +1899,16 @@ export function DashboardCard({ section }: DashboardCardProps) {
                 Navigation
               </p>
               <nav className="space-y-1">
-              {navSections.map((item) => (
-                <NavItem
-                  key={item.id}
-                  item={item}
-                  href={`/dashboard/${item.id}`}
-                  active={item.id === activeSection.id}
-                  onClick={() => setDrawerOpen(false)}
-                  badge={getNavBadge(item.id)}
-                />
-              ))}
+                {navSections.map((item) => (
+                  <NavItem
+                    key={item.id}
+                    item={item}
+                    href={`/dashboard/${item.id}`}
+                    active={item.id === activeSection.id}
+                    onClick={() => setDrawerOpen(false)}
+                    badge={getNavBadge(item.id)}
+                  />
+                ))}
               </nav>
             </div>
           </aside>
