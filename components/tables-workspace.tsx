@@ -2,6 +2,7 @@
 
 import { FormEvent, useMemo, useState } from "react";
 import Image from "next/image";
+import { useRouter } from "next/navigation";
 import { useConfirm } from "@/components/confirm-provider";
 import { getErrorMessage } from "@/lib/error";
 import { showError, showSuccess } from "@/lib/feedback";
@@ -183,6 +184,7 @@ function hasLegacyApiMenuPayload(payload?: string): boolean {
 }
 
 export function TablesWorkspace({ tenantName, tenantSlug }: Props) {
+  const router = useRouter();
   const confirm = useConfirm();
   const [filter, setFilter] = useState<Filter>("all");
   const [isCreateTableOpen, setIsCreateTableOpen] = useState(false);
@@ -229,6 +231,15 @@ export function TablesWorkspace({ tenantName, tenantSlug }: Props) {
       return content.includes(q);
     });
   }, [searchText, tables]);
+
+  function canOpenOrder(table: TableRecord): boolean {
+    const status = nStatus(table.status);
+    return status === "OCCUPIED" || status === "BILLING";
+  }
+
+  function openTableOrder(table: TableRecord) {
+    router.push(`/dashboard/orders?tableId=${encodeURIComponent(table.id)}`);
+  }
 
   const [createForm, setCreateForm] = useState<FormState>({
     number: 1,
@@ -751,9 +762,19 @@ export function TablesWorkspace({ tenantName, tenantSlug }: Props) {
                             <span className="inline-flex rounded-full bg-slate-900 px-2.5 py-1 text-[10px] font-semibold text-white">
                               T{table.number}
                             </span>
-                            <p className="mt-2 text-base font-semibold text-slate-900">
-                              {table.name}
-                            </p>
+                            {canOpenOrder(table) ? (
+                              <button
+                                type="button"
+                                onClick={() => openTableOrder(table)}
+                                className="mt-2 text-left text-base font-semibold text-amber-900 underline decoration-amber-300 underline-offset-2"
+                              >
+                                {table.name}
+                              </button>
+                            ) : (
+                              <p className="mt-2 text-base font-semibold text-slate-900">
+                                {table.name}
+                              </p>
+                            )}
                             <p className="text-xs text-slate-500">
                               {table.capacity} seats
                             </p>
@@ -765,7 +786,9 @@ export function TablesWorkspace({ tenantName, tenantSlug }: Props) {
                               {sLabel(table.status)}
                             </span>
                             <p className="text-[10px] text-slate-500">
-                              {table.isActive ? "Active Table" : "Inactive Table"}
+                              {table.isActive
+                                ? "Active Table"
+                                : "Inactive Table"}
                             </p>
                           </div>
                         </div>
@@ -774,6 +797,15 @@ export function TablesWorkspace({ tenantName, tenantSlug }: Props) {
                             ? `Reserved by customer: ${table.customerId || "Not provided"}`
                             : "Tap Set Reserved to assign customer and block table."}
                         </p>
+                        {canOpenOrder(table) ? (
+                          <button
+                            type="button"
+                            onClick={() => openTableOrder(table)}
+                            className="mt-2 w-full rounded-lg border border-amber-300 bg-amber-100 px-3 py-2 text-xs font-semibold text-amber-900 transition hover:bg-amber-200"
+                          >
+                            Open Order
+                          </button>
+                        ) : null}
                         <div className="mt-2.5 flex items-center justify-end gap-1.5 border-t border-[#ece3d3] pt-2">
                           <button
                             type="button"
@@ -828,7 +860,9 @@ export function TablesWorkspace({ tenantName, tenantSlug }: Props) {
                                 reserved ? "AVAILABLE" : "RESERVED",
                               )
                             }
-                            title={reserved ? "Mark available" : "Mark reserved"}
+                            title={
+                              reserved ? "Mark available" : "Mark reserved"
+                            }
                             aria-label={
                               reserved ? "Mark available" : "Mark reserved"
                             }
@@ -864,7 +898,13 @@ export function TablesWorkspace({ tenantName, tenantSlug }: Props) {
                                 strokeLinejoin="round"
                               >
                                 <path d="M8 11V8a4 4 0 1 1 8 0v3" />
-                                <rect x="6" y="11" width="12" height="9" rx="2" />
+                                <rect
+                                  x="6"
+                                  y="11"
+                                  width="12"
+                                  height="9"
+                                  rx="2"
+                                />
                               </svg>
                             )}
                           </button>
@@ -899,30 +939,159 @@ export function TablesWorkspace({ tenantName, tenantSlug }: Props) {
                   })}
                 </div>
               ) : (
-                <div className="no-scrollbar -mx-1 overflow-x-auto overscroll-x-contain px-1 sm:mx-0 sm:px-0">
-                  <table className="w-full min-w-[780px] divide-y divide-[#efe4d3] rounded-xl border border-[#eadfc9] bg-white text-left text-xs whitespace-nowrap sm:min-w-full">
+                // <div className="no-scrollbar -mx-1 overflow-x-auto overscroll-x-contain px-1 sm:mx-0 sm:px-0">
+                //   <table className="w-full min-w-[780px] divide-y divide-[#efe4d3] rounded-xl border border-[#eadfc9] bg-white text-left text-xs whitespace-nowrap sm:min-w-full">
+                //     <thead className="bg-[#fff8ec]">
+                //       <tr className="text-slate-700">
+                //         <th className="px-2.5 py-2 font-semibold sm:px-3">Table</th>
+                //         <th className="px-2.5 py-2 font-semibold sm:px-3">Capacity</th>
+                //         <th className="px-2.5 py-2 font-semibold sm:px-3">Status</th>
+                //         {/* <th className="px-2.5 py-2 font-semibold sm:px-3">Customer</th> */}
+                //         <th className="px-2.5 py-2 font-semibold text-right sm:px-3">
+                //           Actions
+                //         </th>
+                //       </tr>
+                //     </thead>
+                //     <tbody className="divide-y divide-[#f1e7d9] bg-white">
+                //       {filteredTables.map((table) => {
+                //         const reserved = nStatus(table.status) === "RESERVED";
+                //         return (
+                //           <tr key={`table-row-${table.id}`}>
+                //             <td className="px-2.5 py-2 font-semibold text-slate-900 sm:px-3">
+                //               {canOpenOrder(table) ? (
+                //                 <button
+                //                   type="button"
+                //                   onClick={() => openTableOrder(table)}
+                //                   className="text-left text-amber-900 underline decoration-amber-300 underline-offset-2"
+                //                 >
+                //                   T{table.number} - {table.name}
+                //                 </button>
+                //               ) : (
+                //                 <span>T{table.number} - {table.name}</span>
+                //               )}
+                //             </td>
+                //             <td className="px-2.5 py-2 text-slate-700 sm:px-3">
+                //               {table.capacity}
+                //             </td>
+                //             <td className="px-2.5 py-2 sm:px-3">
+                //               <span
+                //                 className={`inline-flex rounded-full border px-2 py-0.5 text-[10px] font-semibold ${sClass(table.status)}`}
+                //               >
+                //                 {sLabel(table.status)}
+                //               </span>
+                //             </td>
+                //             {/* <td className="px-2.5 py-2 text-slate-700 sm:px-3">
+                //               {table.customerId || "-"}
+                //             </td> */}
+                //             <td className="px-2.5 py-2 sm:px-3">
+                //               <div className="flex justify-end gap-1.5">
+                //                 {canOpenOrder(table) ? (
+                //                   <button
+                //                     type="button"
+                //                     onClick={() => openTableOrder(table)}
+                //                     className="rounded-lg border border-amber-300 bg-amber-100 px-2.5 py-1.5 text-[11px] font-semibold text-amber-900 transition-colors hover:bg-amber-200"
+                //                   >
+                //                     Open Order
+                //                   </button>
+                //                 ) : null}
+                //                 <button
+                //                   type="button"
+                //                   onClick={() => openQr(table)}
+                //                   className="rounded-lg border border-[#d8ccb6] bg-white px-2.5 py-1.5 text-[11px] font-semibold text-slate-700 transition-colors hover:bg-[#faf3e7]"
+                //                 >
+                //                   Open QR
+                //                 </button>
+                //                 <button
+                //                   type="button"
+                //                   onClick={() => openEdit(table)}
+                //                   className="rounded-lg border border-[#d8ccb6] bg-white px-2.5 py-1.5 text-[11px] font-semibold text-slate-700 transition-colors hover:bg-[#faf3e7]"
+                //                 >
+                //                   Edit
+                //                 </button>
+                //                 <button
+                //                   type="button"
+                //                   onClick={() =>
+                //                     quickStatus(
+                //                       table,
+                //                       reserved ? "AVAILABLE" : "RESERVED",
+                //                     )
+                //                   }
+                //                   disabled={isUpdating}
+                //                   className={`rounded-lg border px-2.5 py-1.5 text-[11px] font-semibold transition-colors disabled:opacity-60 ${
+                //                     reserved
+                //                       ? "border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100"
+                //                       : "border-slate-700 bg-slate-700 text-white hover:bg-slate-800"
+                //                   }`}
+                //                 >
+                //                   {reserved ? "Available" : "Reserve"}
+                //                 </button>
+                //                 <button
+                //                   type="button"
+                //                   onClick={() => removeTable(table)}
+                //                   disabled={isDeleting}
+                //                   className="rounded-lg border border-rose-200 bg-white px-2.5 py-1.5 text-[11px] font-semibold text-rose-700 transition-colors hover:bg-rose-50 disabled:opacity-60"
+                //                 >
+                //                   Remove
+                //                 </button>
+                //               </div>
+                //             </td>
+                //           </tr>
+                //         );
+                //       })}
+                //     </tbody>
+                //   </table>
+                // </div>
+                <div className="w-full overflow-x-auto no-scrollbar">
+                  <table className="w-full min-w-[780px] sm:min-w-full border border-[#eadfc9] bg-white text-left text-xs">
                     <thead className="bg-[#fff8ec]">
                       <tr className="text-slate-700">
-                        <th className="px-2.5 py-2 font-semibold sm:px-3">Table</th>
-                        <th className="px-2.5 py-2 font-semibold sm:px-3">Capacity</th>
-                        <th className="px-2.5 py-2 font-semibold sm:px-3">Status</th>
-                        {/* <th className="px-2.5 py-2 font-semibold sm:px-3">Customer</th> */}
-                        <th className="px-2.5 py-2 font-semibold text-right sm:px-3">
+                        {/* 👇 auto width */}
+                        <th className="px-2.5 py-2 font-semibold whitespace-nowrap sm:px-3">
+                          Table
+                        </th>
+
+                        <th className="px-2.5 py-2 font-semibold whitespace-nowrap sm:px-3">
+                          Capacity
+                        </th>
+
+                        <th className="px-2.5 py-2 font-semibold whitespace-nowrap sm:px-3">
+                          Status
+                        </th>
+
+                        {/* 👇 auto shrink */}
+                        <th className="px-2.5 py-2 font-semibold text-right whitespace-nowrap sm:px-3">
                           Actions
                         </th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-[#f1e7d9] bg-white">
+
+                    <tbody className="divide-y divide-[#f1e7d9]">
                       {filteredTables.map((table) => {
                         const reserved = nStatus(table.status) === "RESERVED";
+
                         return (
                           <tr key={`table-row-${table.id}`}>
+                            {/* 👇 allow natural width */}
                             <td className="px-2.5 py-2 font-semibold text-slate-900 sm:px-3">
-                              T{table.number} - {table.name}
+                              {canOpenOrder(table) ? (
+                                <button
+                                  type="button"
+                                  onClick={() => openTableOrder(table)}
+                                  className="text-left text-amber-900 underline decoration-amber-300 underline-offset-2"
+                                >
+                                  T{table.number} - {table.name}
+                                </button>
+                              ) : (
+                                <span>
+                                  T{table.number} - {table.name}
+                                </span>
+                              )}
                             </td>
+
                             <td className="px-2.5 py-2 text-slate-700 sm:px-3">
                               {table.capacity}
                             </td>
+
                             <td className="px-2.5 py-2 sm:px-3">
                               <span
                                 className={`inline-flex rounded-full border px-2 py-0.5 text-[10px] font-semibold ${sClass(table.status)}`}
@@ -930,25 +1099,36 @@ export function TablesWorkspace({ tenantName, tenantSlug }: Props) {
                                 {sLabel(table.status)}
                               </span>
                             </td>
-                            {/* <td className="px-2.5 py-2 text-slate-700 sm:px-3">
-                              {table.customerId || "-"}
-                            </td> */}
+
+                            {/* 👇 important fix */}
                             <td className="px-2.5 py-2 sm:px-3">
-                              <div className="flex justify-end gap-1.5">
+                              <div className="flex justify-end gap-1.5 flex-nowrap">
+                                {canOpenOrder(table) && (
+                                  <button
+                                    type="button"
+                                    onClick={() => openTableOrder(table)}
+                                    className="shrink-0 rounded-lg border border-amber-300 bg-amber-100 px-2.5 py-1.5 text-[11px] font-semibold text-amber-900 hover:bg-amber-200"
+                                  >
+                                    Open Order
+                                  </button>
+                                )}
+
                                 <button
                                   type="button"
                                   onClick={() => openQr(table)}
-                                  className="rounded-lg border border-[#d8ccb6] bg-white px-2.5 py-1.5 text-[11px] font-semibold text-slate-700 transition-colors hover:bg-[#faf3e7]"
+                                  className="shrink-0 rounded-lg border border-[#d8ccb6] bg-white px-2.5 py-1.5 text-[11px] font-semibold text-slate-700 hover:bg-[#faf3e7]"
                                 >
                                   Open QR
                                 </button>
+
                                 <button
                                   type="button"
                                   onClick={() => openEdit(table)}
-                                  className="rounded-lg border border-[#d8ccb6] bg-white px-2.5 py-1.5 text-[11px] font-semibold text-slate-700 transition-colors hover:bg-[#faf3e7]"
+                                  className="shrink-0 rounded-lg border border-[#d8ccb6] bg-white px-2.5 py-1.5 text-[11px] font-semibold text-slate-700 hover:bg-[#faf3e7]"
                                 >
                                   Edit
                                 </button>
+
                                 <button
                                   type="button"
                                   onClick={() =>
@@ -958,7 +1138,7 @@ export function TablesWorkspace({ tenantName, tenantSlug }: Props) {
                                     )
                                   }
                                   disabled={isUpdating}
-                                  className={`rounded-lg border px-2.5 py-1.5 text-[11px] font-semibold transition-colors disabled:opacity-60 ${
+                                  className={`shrink-0 rounded-lg border px-2.5 py-1.5 text-[11px] font-semibold disabled:opacity-60 ${
                                     reserved
                                       ? "border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100"
                                       : "border-slate-700 bg-slate-700 text-white hover:bg-slate-800"
@@ -966,11 +1146,12 @@ export function TablesWorkspace({ tenantName, tenantSlug }: Props) {
                                 >
                                   {reserved ? "Available" : "Reserve"}
                                 </button>
+
                                 <button
                                   type="button"
                                   onClick={() => removeTable(table)}
                                   disabled={isDeleting}
-                                  className="rounded-lg border border-rose-200 bg-white px-2.5 py-1.5 text-[11px] font-semibold text-rose-700 transition-colors hover:bg-rose-50 disabled:opacity-60"
+                                  className="shrink-0 rounded-lg border border-rose-200 bg-white px-2.5 py-1.5 text-[11px] font-semibold text-rose-700 hover:bg-rose-50 disabled:opacity-60"
                                 >
                                   Remove
                                 </button>
@@ -1014,7 +1195,7 @@ export function TablesWorkspace({ tenantName, tenantSlug }: Props) {
                 onClick={() => setEditing(null)}
                 className="h-8 w-8 rounded-full border border-[#e0d8c9] bg-white text-lg leading-none text-slate-700"
                 aria-label="Close popup"
-                >
+              >
                 x
               </button>
             </div>
@@ -1035,7 +1216,10 @@ export function TablesWorkspace({ tenantName, tenantSlug }: Props) {
                 <input
                   value={editForm.name}
                   onChange={(event) =>
-                    setEditForm((prev) => ({ ...prev, name: event.target.value }))
+                    setEditForm((prev) => ({
+                      ...prev,
+                      name: event.target.value,
+                    }))
                   }
                   className="h-11 w-full rounded-xl border border-[#ddd4c1] bg-white px-3 text-sm outline-none ring-amber-200 focus:ring-2"
                 />

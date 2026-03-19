@@ -23,18 +23,22 @@ export type OrderItemOption = {
 
 // ─── Full order item (response) ──────────────────────────────────────────────
 export type OrderItem = {
+  lineId?: string;
   itemId: string;
   variantId?: string;
   name: string;
   variantName?: string;
   quantity: number;
   unitPrice: number;
+  status?: OrderStatus;
   taxPercentage?: number;
   options?: OrderItemOption[];
   note?: string;
   lineSubTotal?: number;
   lineTax?: number;
   lineTotal?: number;
+  createdAt?: string;
+  updatedAt?: string;
 };
 
 // ─── Creator / updater ref ───────────────────────────────────────────────────
@@ -98,6 +102,40 @@ export type OrdersQueryParams = {
   limit?: number;
 };
 
+export type KitchenItemsQueryParams = {
+  status?: string | string[];
+  includeDone?: boolean;
+  tableId?: string;
+  page?: number;
+  limit?: number;
+};
+
+export type KitchenQueueItem = {
+  lineId: string;
+  orderId: string;
+  orderNumber?: string;
+  table?: OrderTableRef;
+  tableId?: string;
+  tableName?: string;
+  itemId: string;
+  variantId?: string;
+  name: string;
+  variantName?: string;
+  quantity: number;
+  note?: string;
+  kitchenStatus: OrderStatus;
+  addedAt?: string;
+  ageMinutes?: number;
+  priorityLabel?: string;
+  priorityScore?: number;
+  raw?: Record<string, unknown>;
+};
+
+export type KitchenItemsResponse = {
+  items: KitchenQueueItem[];
+  pagination: OrdersPagination;
+};
+
 // ─── Create payload ──────────────────────────────────────────────────────────
 export type OrderItemPayload = {
   itemId: string;
@@ -118,6 +156,10 @@ export type UpdateOrderPayload = {
   status?: OrderStatus;
   note?: string;
   items?: OrderItemPayload[];
+  itemStatusUpdates?: Array<{
+    lineId: string;
+    status: OrderStatus;
+  }>;
 };
 
 export type UpdateOrderArgs = {

@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useConfirm } from "@/components/confirm-provider";
 import { getErrorMessage } from "@/lib/error";
 import { showError, showInfo, showSuccess } from "@/lib/feedback";
@@ -8,6 +9,7 @@ import { useOrderSocket } from "@/lib/use-order-socket";
 import {
   useCreateOrderMutation,
   useDeleteOrderMutation,
+  useGetKitchenOrderItemsQuery,
   useGetOrdersQuery,
   useUpdateOrderMutation,
 } from "@/store/api/ordersApi";
@@ -16,7 +18,7 @@ import { useGetTablesQuery } from "@/store/api/tablesApi";
 import { useGetMenuAggregateQuery } from "@/store/api/menuApi";
 import { useAppSelector } from "@/store/hooks";
 import { selectAuthToken } from "@/store/slices/authSlice";
-import type { OrderRecord, OrderStatus } from "@/store/types/orders";
+import type { KitchenQueueItem, OrderItem, OrderRecord, OrderStatus } from "@/store/types/orders";
 import type { TableRecord } from "@/store/types/tables";
 import type { MenuItemRecord } from "@/store/types/menu";
 
@@ -78,9 +80,14 @@ function fmtCurrency(n?: number): string {
   return `₹${n.toLocaleString("en-IN")}`;
 }
 
-function timeAgo(iso?: string): string {
-  if (!iso) return "";
-  const diff = Math.floor((Date.now() - new Date(iso).getTime()) / 60000);
+function timeAgo(value?: string | number): string {
+  if (value == null) return "";
+  const timestamp =
+    typeof value === "number"
+      ? value
+      : new Date(value).getTime();
+  if (!Number.isFinite(timestamp)) return "";
+  const diff = Math.floor((Date.now() - timestamp) / 60000);
   if (diff < 1) return "just now";
   if (diff === 1) return "1 min ago";
   if (diff < 60) return `${diff} min ago`;
@@ -98,6 +105,115 @@ function sortOrdersByLatest(orders: OrderRecord[]): OrderRecord[] {
 function canGenerateInvoiceForStatus(status?: string): boolean {
   const normalized = normalizeStatus(status);
   return normalized === "READY" || normalized === "SERVED";
+}
+
+type OrderItemDelta = {
+  key: string;
+  itemId: string;
+  variantId?: string;
+  name: string;
+  variantName?: string;
+  quantityAdded: number;
+};
+
+type OrderAppendSignal = {
+  detectedAt: number;
+  totalAddedQty: number;
+  items: OrderItemDelta[];
+  byItemKey: Record<string, OrderItemDelta>;
+};
+
+function orderItemKey(item: Pick<OrderItem, "itemId" | "variantId" | "lineId">): string {
+  if (item.lineId) return `line::${item.lineId}`;
+  return `${item.itemId}::${item.variantId || "base"}`;
+}
+
+function itemStatusLabel(status?: string): string {
+  const normalized = normalizeStatus(status);
+  if (!normalized) return "Pending";
+  return STATUS_LABELS[normalized] || normalized.replace(/_/g, " ");
+}
+
+function itemStatusClass(status?: string): string {
+  const normalized = normalizeStatus(status);
+  if (!normalized || normalized === "PLACED") return "border-amber-200 bg-amber-50 text-amber-700";
+  if (normalized === "IN_PROGRESS") return "border-rose-200 bg-rose-50 text-rose-700";
+  if (normalized === "READY") return "border-emerald-200 bg-emerald-50 text-emerald-700";
+  if (normalized === "SERVED") return "border-blue-200 bg-blue-50 text-blue-700";
+  if (normalized === "CANCELLED") return "border-slate-200 bg-slate-100 text-slate-500";
+  return "border-slate-200 bg-slate-100 text-slate-600";
+}
+
+function nextKitchenItemStatus(status?: string): OrderStatus | undefined {
+  const normalized = normalizeStatus(status);
+  if (normalized === "PLACED") return "IN_PROGRESS";
+  if (normalized === "IN_PROGRESS") return "READY";
+  return undefined;
+}
+
+function kitchenItemActionLabel(nextStatus?: OrderStatus): string {
+  if (nextStatus === "IN_PROGRESS") return "Start";
+  if (nextStatus === "READY") return "Ready";
+  return "Done";
+}
+
+function toTimestamp(value?: string): number | null {
+  if (!value) return null;
+  const timestamp = new Date(value).getTime();
+  return Number.isFinite(timestamp) ? timestamp : null;
+}
+
+function buildAppendSignals(orders: OrderRecord[]): Record<string, OrderAppendSignal> {
+  const signals: Record<string, OrderAppendSignal> = {};
+
+  for (const order of orders) {
+    const orderCreatedAt = toTimestamp(order.createdAt);
+    const orderUpdatedAt = toTimestamp(order.updatedAt) || orderCreatedAt;
+    const orderStatus = normalizeStatus(order.status);
+    const appendItems: OrderItemDelta[] = [];
+    let latestItemTimestamp = orderUpdatedAt || 0;
+
+    for (const item of order.items || []) {
+      const key = orderItemKey(item);
+      const itemTimestamp = toTimestamp(item.createdAt || item.updatedAt);
+      if (itemTimestamp && itemTimestamp > latestItemTimestamp) latestItemTimestamp = itemTimestamp;
+
+      const isLikelyLaterItem =
+        orderCreatedAt != null &&
+        itemTimestamp != null &&
+        itemTimestamp - orderCreatedAt >= 60 * 1000;
+      const isPendingInRunningOrder =
+        ["IN_PROGRESS", "READY", "SERVED"].includes(orderStatus) &&
+        normalizeStatus(item.status) === "PLACED";
+
+      if (!isLikelyLaterItem && !isPendingInRunningOrder) continue;
+
+      appendItems.push({
+        key,
+        itemId: item.itemId,
+        variantId: item.variantId,
+        name: item.name,
+        variantName: item.variantName,
+        quantityAdded: item.quantity || 0,
+      });
+    }
+
+    if (!appendItems.length) continue;
+
+    const byItemKey = appendItems.reduce<Record<string, OrderItemDelta>>((accumulator, item) => {
+      accumulator[item.key] = item;
+      return accumulator;
+    }, {});
+
+    signals[order.id] = {
+      detectedAt: latestItemTimestamp || orderUpdatedAt || 0,
+      totalAddedQty: appendItems.reduce((sum, item) => sum + item.quantityAdded, 0),
+      items: appendItems,
+      byItemKey,
+    };
+  }
+
+  return signals;
 }
 
 // ─── Tiny reusable components ─────────────────────────────────────────────────
@@ -131,6 +247,7 @@ function TableGrid({
   orders,
   invoicedOrderIds,
   issuedInvoiceTableIds,
+  appendSignals,
   onSelectTable,
   onCreateInvoice,
   creatingInvoiceOrderId,
@@ -139,6 +256,7 @@ function TableGrid({
   orders: OrderRecord[];
   invoicedOrderIds: Set<string>;
   issuedInvoiceTableIds: Set<string>;
+  appendSignals: Record<string, OrderAppendSignal>;
   onSelectTable: (table: TableRecord, existingOrder?: OrderRecord) => void;
   onCreateInvoice: (order: OrderRecord) => void;
   creatingInvoiceOrderId?: string | null;
@@ -165,10 +283,12 @@ function TableGrid({
           const hasOrder = Boolean(existing);
           const billingLocked = issuedInvoiceTableIds.has(table.id);
           const canInvoice = Boolean(existing && canGenerateInvoiceForStatus(existing.status));
+          const appendSignal = existing ? appendSignals[existing.id] : undefined;
+          const visualStatus = hasOrder ? "OCCUPIED" : table.status;
           return (
             <div
               key={table.id}
-              className={`flex aspect-square flex-col rounded-2xl border-2 text-center text-xs font-semibold ${tableStatusClass(table.status)}`}
+              className={`flex aspect-square flex-col rounded-2xl border-2 text-center text-xs font-semibold ${tableStatusClass(visualStatus)}`}
             >
               <button
                 type="button"
@@ -198,6 +318,12 @@ function TableGrid({
                 <div className="px-1 pb-1">
                   <span className="block w-full rounded-full border border-slate-300 bg-white px-1.5 py-0.5 text-[9px] font-bold text-slate-600">
                     Invoice Issued
+                  </span>
+                </div>
+              ) : appendSignal ? (
+                <div className="px-1 pb-1">
+                  <span className="block w-full rounded-full border border-amber-300 bg-amber-100 px-1.5 py-0.5 text-[9px] font-bold text-amber-900">
+                    +{appendSignal.totalAddedQty} new
                   </span>
                 </div>
               ) : hasOrder && canInvoice ? (
@@ -626,16 +752,20 @@ type WaiterStep = "tables" | "menu" | "placing";
 
 function WaiterActionBoard({
   orders,
+  appendSignals,
   servingOrderId,
   creatingInvoiceOrderId,
   onMarkServed,
   onCreateInvoice,
+  className,
 }: {
   orders: OrderRecord[];
+  appendSignals: Record<string, OrderAppendSignal>;
   servingOrderId?: string | null;
   creatingInvoiceOrderId?: string | null;
   onMarkServed: (order: OrderRecord) => void;
   onCreateInvoice: (order: OrderRecord) => void;
+  className?: string;
 }) {
   const readyCount = orders.filter((order) => normalizeStatus(order.status) === "READY").length;
   const billingCount = orders.filter((order) => canGenerateInvoiceForStatus(order.status)).length;
@@ -644,7 +774,7 @@ function WaiterActionBoard({
   ).length;
 
   return (
-    <div className="mt-4 space-y-3">
+    <div className={`${className || "mt-4"} space-y-3`}>
       <div className="grid gap-2 sm:grid-cols-3">
         <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-3">
           <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-emerald-800">Ready To Serve</p>
@@ -681,6 +811,7 @@ function WaiterActionBoard({
               const status = normalizeStatus(order.status);
               const canServe = status === "READY";
               const canInvoice = canGenerateInvoiceForStatus(status);
+              const appendSignal = appendSignals[order.id];
 
               return (
                 <div key={order.id} className="rounded-2xl border border-slate-200 bg-slate-50 p-3">
@@ -700,6 +831,11 @@ function WaiterActionBoard({
                       <p className="mt-1 text-xs text-slate-500">
                         {order.items.length} item(s) | {fmtCurrency(order.grandTotal ?? order.subTotal)} | {timeAgo(order.updatedAt || order.createdAt)}
                       </p>
+                      {appendSignal ? (
+                        <p className="mt-1 inline-flex rounded-full border border-amber-300 bg-amber-100 px-2 py-0.5 text-[10px] font-semibold text-amber-900">
+                          +{appendSignal.totalAddedQty} newly added item qty
+                        </p>
+                      ) : null}
                     </div>
                     <div className="grid gap-2 sm:min-w-[180px]">
                       {canServe ? (
@@ -728,6 +864,35 @@ function WaiterActionBoard({
                       )}
                     </div>
                   </div>
+                  <div className="mt-3 space-y-1.5 rounded-xl border border-slate-200 bg-white p-2.5">
+                    {order.items.map((item, index) => {
+                      const delta = appendSignal?.byItemKey[orderItemKey(item)]?.quantityAdded ?? 0;
+                      return (
+                        <div
+                          key={`${item.itemId}-${item.variantId || "base"}-${index}`}
+                          className="flex items-start justify-between gap-2 text-xs"
+                        >
+                          <div className="min-w-0">
+                            <p className="font-medium text-slate-800">
+                              {item.quantity}x {item.name}
+                              {item.variantName ? ` (${item.variantName})` : ""}
+                            </p>
+                            {item.note ? <p className="text-[11px] italic text-amber-700">{item.note}</p> : null}
+                          </div>
+                          <div className="flex shrink-0 items-center gap-1">
+                            {delta > 0 ? (
+                              <span className="rounded-full border border-amber-300 bg-amber-100 px-2 py-0.5 text-[10px] font-semibold text-amber-900">
+                                +{delta} new
+                              </span>
+                            ) : null}
+                            <span className={`rounded-full border px-2 py-0.5 text-[10px] font-semibold ${itemStatusClass(item.status)}`}>
+                              {itemStatusLabel(item.status)}
+                            </span>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
                 </div>
               );
             })
@@ -738,9 +903,14 @@ function WaiterActionBoard({
   );
 }
 
-function WaiterView({ onOrderPlaced }: { onOrderPlaced: () => void }) {
+type WaiterViewProps = {
+  onOrderPlaced: () => void;
+  initialTableId?: string;
+};
+
+function WaiterView({ onOrderPlaced, initialTableId }: WaiterViewProps) {
   const token = useAppSelector(selectAuthToken);
-  const { data: tablesData } = useGetTablesQuery({ isActive: true });
+  const { data: tablesData, refetch: refetchTables } = useGetTablesQuery({ isActive: true });
   const { data: ordersData, refetch: refetchOrders } = useGetOrdersQuery({ status: ["PLACED", "IN_PROGRESS", "READY", "SERVED"] });
   const { data: invoicesData, refetch: refetchInvoices } = useGetInvoicesQuery();
   const [createOrder, { isLoading: isCreating }] = useCreateOrderMutation();
@@ -752,6 +922,7 @@ function WaiterView({ onOrderPlaced }: { onOrderPlaced: () => void }) {
   const [step, setStep] = useState<WaiterStep>("tables");
   const [selectedTable, setSelectedTable] = useState<TableRecord | null>(null);
   const [existingOrder, setExistingOrder] = useState<OrderRecord | undefined>(undefined);
+  const autoSelectedTableRef = useRef<string | null>(null);
 
   // ── Socket: real-time updates ──────────────────────────────────────────────
   useOrderSocket({
@@ -766,6 +937,7 @@ function WaiterView({ onOrderPlaced }: { onOrderPlaced: () => void }) {
         showInfo(`New order - ${label}`);
         refetchOrders();
         refetchInvoices();
+        refetchTables();
       } else if (event.type === "updated") {
         const status = (event.order?.status || "").toUpperCase();
         const table = event.order?.table;
@@ -776,10 +948,12 @@ function WaiterView({ onOrderPlaced }: { onOrderPlaced: () => void }) {
         else showInfo(`${label} order updated`);
         refetchOrders();
         refetchInvoices();
+        refetchTables();
       } else if (event.type === "deleted") {
         showInfo("An order was deleted");
         refetchOrders();
         refetchInvoices();
+        refetchTables();
       }
     },
   });
@@ -806,6 +980,33 @@ function WaiterView({ onOrderPlaced }: { onOrderPlaced: () => void }) {
       }),
     [invoicedOrderIds, orders],
   );
+  const appendSignals = useMemo(
+    () => buildAppendSignals(waiterActionOrders),
+    [waiterActionOrders],
+  );
+
+  useEffect(() => {
+    const targetTableId = initialTableId?.trim();
+    if (!targetTableId) {
+      autoSelectedTableRef.current = null;
+      return;
+    }
+    if (autoSelectedTableRef.current === targetTableId) return;
+
+    const table = tables.find((row) => row.id === targetTableId);
+    if (!table) return;
+
+    const existing = orders.find((order) => {
+      const orderTableId = order.table?.id || order.tableId;
+      if (orderTableId !== table.id) return false;
+      return normalizeStatus(order.status) !== "CANCELLED";
+    });
+
+    setSelectedTable(table);
+    setExistingOrder(existing);
+    setStep("menu");
+    autoSelectedTableRef.current = targetTableId;
+  }, [initialTableId, orders, tables]);
 
   function handleSelectTable(table: TableRecord, existing?: OrderRecord) {
     setSelectedTable(table);
@@ -821,6 +1022,7 @@ function WaiterView({ onOrderPlaced }: { onOrderPlaced: () => void }) {
       showSuccess(response.message || `Invoice created for Table ${order.table?.number || ""}`);
       refetchOrders();
       refetchInvoices();
+      refetchTables();
     } catch (error) {
       showError(getErrorMessage(error));
     } finally {
@@ -834,6 +1036,7 @@ function WaiterView({ onOrderPlaced }: { onOrderPlaced: () => void }) {
       await updateOrder({ orderId: order.id, payload: { status: "SERVED" } }).unwrap();
       showSuccess(`${order.table?.name || `Table ${order.table?.number}`} served`);
       refetchOrders();
+      refetchTables();
     } catch (error) {
       showError(getErrorMessage(error));
     } finally {
@@ -854,7 +1057,7 @@ function WaiterView({ onOrderPlaced }: { onOrderPlaced: () => void }) {
           optionIds: [],
         }));
 
-        // Order_API.md: incremental add should use POST /orders.
+        // API_REFERENCE.md: incremental add should use POST /orders.
         // Backend appends into the active open order for the same table.
         await createOrder({
           tableId: selectedTable.id,
@@ -864,6 +1067,7 @@ function WaiterView({ onOrderPlaced }: { onOrderPlaced: () => void }) {
         showSuccess(existingOrder ? "Items appended to active order!" : "Order placed successfully!");
         refetchOrders();
         refetchInvoices();
+        refetchTables();
         onOrderPlaced();
         setStep("tables");
         setSelectedTable(null);
@@ -873,7 +1077,7 @@ function WaiterView({ onOrderPlaced }: { onOrderPlaced: () => void }) {
         setStep("menu");
       }
     },
-    [createOrder, existingOrder, onOrderPlaced, refetchInvoices, refetchOrders, selectedTable],
+    [createOrder, existingOrder, onOrderPlaced, refetchInvoices, refetchOrders, refetchTables, selectedTable],
   );
 
   return (
@@ -893,24 +1097,27 @@ function WaiterView({ onOrderPlaced }: { onOrderPlaced: () => void }) {
       </div>
 
       {step === "tables" && (
-        <>
+        <div className="grid gap-4 xl:grid-cols-[minmax(0,1.15fr)_minmax(0,0.85fr)] xl:items-start">
           <TableGrid
             tables={tables}
             orders={orders}
             invoicedOrderIds={invoicedOrderIds}
             issuedInvoiceTableIds={issuedInvoiceTableIds}
+            appendSignals={appendSignals}
             onSelectTable={handleSelectTable}
             onCreateInvoice={handleCreateInvoice}
             creatingInvoiceOrderId={creatingInvoiceOrderId}
           />
           <WaiterActionBoard
             orders={waiterActionOrders}
+            appendSignals={appendSignals}
             servingOrderId={servingOrderId}
             creatingInvoiceOrderId={creatingInvoiceOrderId}
             onMarkServed={handleMarkServed}
             onCreateInvoice={handleCreateInvoice}
+            className="mt-0"
           />
-        </>
+        </div>
       )}
 
       {(step === "menu" || step === "placing") && selectedTable && (
@@ -1042,10 +1249,10 @@ function OrderCard({
 
 // ─── Manager View ─────────────────────────────────────────────────────────────
 function ManagerView({ role }: { role: RoleKey }) {
+  const router = useRouter();
   const confirm = useConfirm();
   const token = useAppSelector(selectAuthToken);
   const [statusFilter, setStatusFilter] = useState<string>("active");
-  const [newOrderOpen, setNewOrderOpen] = useState(false);
   const [socketConnected, setSocketConnected] = useState(false);
   const [updateOrder] = useUpdateOrderMutation();
   const [deleteOrder] = useDeleteOrderMutation();
@@ -1150,7 +1357,7 @@ function ManagerView({ role }: { role: RoleKey }) {
           </button>
           <button
             type="button"
-            onClick={() => setNewOrderOpen(true)}
+            onClick={() => router.push("/dashboard/orders?new=1")}
             className="rounded-xl bg-amber-500 px-3 py-2 text-xs font-bold text-white shadow-sm shadow-amber-200"
           >
             + New Order
@@ -1181,23 +1388,6 @@ function ManagerView({ role }: { role: RoleKey }) {
         </div>
       )}
 
-      {/* New order modal (reuses waiter flow) */}
-      {newOrderOpen && (
-        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 sm:items-center" onClick={() => setNewOrderOpen(false)}>
-          <div
-            className="flex h-[90vh] w-full max-w-3xl flex-col rounded-t-3xl bg-[#f6f4ef] p-4 shadow-2xl sm:rounded-2xl sm:h-auto sm:max-h-[90vh]"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="mb-3 flex items-center justify-between">
-              <p className="text-base font-bold">New Order</p>
-              <button onClick={() => setNewOrderOpen(false)} className="text-slate-400 hover:text-slate-700">✕</button>
-            </div>
-            <div className="flex-1 overflow-y-auto">
-              <WaiterView onOrderPlaced={() => { setNewOrderOpen(false); refetch(); }} />
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }
@@ -1211,14 +1401,81 @@ const KOT_COLUMNS: { status: OrderStatus; label: string; color: string; bg: stri
 
 function KitchenView() {
   const token = useAppSelector(selectAuthToken);
-  const { data: ordersData, isFetching, refetch } = useGetOrdersQuery(
-    { status: ["PLACED", "IN_PROGRESS", "READY"] },
+  const { data: kitchenData, isFetching, refetch } = useGetKitchenOrderItemsQuery(
+    { status: ["PLACED", "IN_PROGRESS", "READY"], includeDone: false, limit: 200 },
     { pollingInterval: 30000 },
   );
   const [updateOrder] = useUpdateOrderMutation();
   const [toast, setToast] = useState<{ msg: string; type: "ok" | "err" | "info" } | null>(null);
   const [socketConnected, setSocketConnected] = useState(false);
-  const orders = useMemo(() => ordersData?.items || [], [ordersData]);
+  const [viewMode, setViewMode] = useState<"cards" | "table">("cards");
+  const [searchText, setSearchText] = useState("");
+  const [statusFilter, setStatusFilter] = useState<"all" | "PLACED" | "IN_PROGRESS" | "READY">("all");
+  const [updatingItemKey, setUpdatingItemKey] = useState<string | null>(null);
+
+  const queueItems = useMemo(() => kitchenData?.items || [], [kitchenData]);
+
+  const filteredItems = useMemo(() => {
+    const query = searchText.trim().toLowerCase();
+
+    return queueItems.filter((item) => {
+      const status = normalizeStatus(item.kitchenStatus);
+      if (statusFilter !== "all" && status !== statusFilter) return false;
+
+      if (!query) return true;
+
+      const tableLabel = item.tableName || item.table?.name || (item.table?.number ? `Table ${item.table.number}` : "");
+      const content = [
+        tableLabel,
+        item.table?.number,
+        item.orderNumber,
+        item.itemId,
+        item.name,
+        item.variantName,
+        item.note,
+      ]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase();
+
+      return content.includes(query);
+    });
+  }, [queueItems, searchText, statusFilter]);
+
+  const groupedByStatus = useMemo(() => {
+    const map: Record<string, KitchenQueueItem[]> = { PLACED: [], IN_PROGRESS: [], READY: [] };
+    for (const item of filteredItems) {
+      const status = normalizeStatus(item.kitchenStatus);
+      if (map[status]) map[status].push(item);
+    }
+    return map;
+  }, [filteredItems]);
+
+  const tableRows = useMemo(
+    () =>
+      [...filteredItems].sort((left, right) => {
+        const a = new Date(left.addedAt || 0).getTime();
+        const b = new Date(right.addedAt || 0).getTime();
+        return a - b;
+      }),
+    [filteredItems],
+  );
+
+  const uniqueOrderCount = useMemo(
+    () => new Set(filteredItems.map((item) => item.orderId).filter(Boolean)).size,
+    [filteredItems],
+  );
+
+  const statusCounts = useMemo(() => {
+    const counts = { PLACED: 0, IN_PROGRESS: 0, READY: 0 };
+    for (const item of queueItems) {
+      const status = normalizeStatus(item.kitchenStatus);
+      if (status === "PLACED") counts.PLACED += 1;
+      if (status === "IN_PROGRESS") counts.IN_PROGRESS += 1;
+      if (status === "READY") counts.READY += 1;
+    }
+    return counts;
+  }, [queueItems]);
 
   useEffect(() => {
     if (!toast) return;
@@ -1229,7 +1486,6 @@ function KitchenView() {
     return () => window.clearTimeout(timer);
   }, [toast]);
 
-  // ── Socket: real-time for kitchen ────────────────────────────────────────
   useOrderSocket({
     token,
     enabled: true,
@@ -1240,119 +1496,307 @@ function KitchenView() {
         const table = event.order?.table;
         const label = table?.name || (table?.number ? `Table ${table.number}` : "a table");
         setToast({ msg: `New order - ${label}`, type: "info" });
-        refetch();
       } else if (event.type === "updated") {
         const status = (event.order?.status || "").toUpperCase();
         const table = event.order?.table;
         const label = table?.name || (table?.number ? `Table ${table.number}` : "a table");
         if (status === "IN_PROGRESS") setToast({ msg: `${label} cooking started`, type: "ok" });
-        else if (status === "READY") setToast({ msg: `${label} cooked and ready`, type: "ok" });
+        else if (status === "READY") setToast({ msg: `${label} ready for serve`, type: "ok" });
         else setToast({ msg: `${label} order updated`, type: "info" });
-        refetch();
-      } else if (event.type === "deleted") {
-        refetch();
       }
+      refetch();
     },
   });
 
-  async function bump(order: OrderRecord) {
-    const next =
-      order.status === "PLACED" ? "IN_PROGRESS" : order.status === "IN_PROGRESS" ? "READY" : undefined;
-    if (!next) return;
+  async function bumpItem(item: KitchenQueueItem, next: OrderStatus) {
+    const actionKey = `${item.orderId}:${item.lineId}:${next}`;
+
     try {
-      await updateOrder({ orderId: order.id, payload: { status: next } }).unwrap();
-      setToast({ msg: `Table ${order.table?.number} → ${STATUS_LABELS[next]}`, type: "ok" });
-    } catch (e) {
-      setToast({ msg: getErrorMessage(e), type: "err" });
+      setUpdatingItemKey(actionKey);
+      await updateOrder({
+        orderId: item.orderId,
+        payload: {
+          itemStatusUpdates: [{ lineId: item.lineId, status: next }],
+        },
+      }).unwrap();
+      setToast({ msg: `${item.name} -> ${STATUS_LABELS[next] || next}`, type: "ok" });
+      refetch();
+    } catch (error) {
+      setToast({ msg: getErrorMessage(error), type: "err" });
+    } finally {
+      setUpdatingItemKey(null);
     }
   }
 
-  const byStatus = useMemo(() => {
-    const map: Record<string, OrderRecord[]> = { PLACED: [], IN_PROGRESS: [], READY: [] };
-    for (const o of orders) {
-      if (map[o.status]) map[o.status].push(o);
-    }
-    return map;
-  }, [orders]);
+  function tableLabel(item: KitchenQueueItem): string {
+    if (item.tableName) return item.tableName;
+    if (item.table?.name) return item.table.name;
+    if (item.table?.number) return `Table ${item.table.number}`;
+    return "Table";
+  }
+
+  function ageLabel(item: KitchenQueueItem): string {
+    if (typeof item.ageMinutes === "number") return `${item.ageMinutes} min`;
+    return timeAgo(item.addedAt);
+  }
 
   return (
     <div>
-      <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
-        <div className="flex items-center gap-2">
-          <p className="text-sm text-slate-500">{orders.length} active orders</p>
-          <LiveBadge connected={socketConnected} />
-        </div>
-        <button
-          type="button"
-          onClick={() => refetch()}
-          className="flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700"
-        >
-          {isFetching ? <Spinner /> : null}
-          Refresh
-        </button>
-      </div>
-
-      <div className="grid gap-3 sm:grid-cols-3">
-        {KOT_COLUMNS.map((col) => (
-          <div key={col.status} className={`rounded-2xl border-2 ${col.border} ${col.bg} p-3`}>
-            <div className="mb-3 flex items-center justify-between">
-              <p className={`text-xs font-bold uppercase tracking-wide ${col.color}`}>{col.label}</p>
-              <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${col.color} ${col.bg}`}>{byStatus[col.status]?.length ?? 0}</span>
+      <article className="rounded-2xl border border-[#e6dfd1] bg-[#fffdf9] shadow-sm">
+        <div className="border-b border-[#eee7d8] px-2.5 py-2.5 sm:px-4 sm:py-3">
+          <div className="mt-2.5 rounded-xl border border-[#eadfc9] bg-[#fffaf1] p-2.5 sm:mt-3 sm:p-3">
+            <div className="flex items-center gap-2">
+              <div className="flex shrink-0 flex-col items-center leading-none">
+                <span className="text-lg font-bold text-slate-700">{filteredItems.length}</span>
+                <span className="text-[10px] font-medium text-slate-700">items</span>
+              </div>
+              <input
+                value={searchText}
+                onChange={(event) => setSearchText(event.target.value)}
+                placeholder="Search table or item..."
+                className="h-10 min-w-0 flex-1 rounded-xl border border-[#dcccaf] bg-white px-3 text-sm outline-none ring-amber-200 focus:ring-2"
+              />
+              <div className="flex shrink-0 items-center rounded-lg border border-[#dccfb8] bg-white p-0.5">
+                <button
+                  type="button"
+                  onClick={() => setViewMode("cards")}
+                  className={`rounded-md px-2 py-1 text-[11px] font-semibold ${viewMode === "cards" ? "bg-[#f6ead4] text-[#7a5a34]" : "text-slate-600"}`}
+                >
+                  Cards
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setViewMode("table")}
+                  className={`rounded-md px-2 py-1 text-[11px] font-semibold ${viewMode === "table" ? "bg-[#f6ead4] text-[#7a5a34]" : "text-slate-600"}`}
+                >
+                  Table
+                </button>
+              </div>
             </div>
-            <div className="space-y-2">
-              {byStatus[col.status]?.length === 0 && (
-                <div className="rounded-xl border border-dashed border-current/20 py-6 text-center text-xs opacity-50">
-                  {col.status === "PLACED" ? "No new orders" : col.status === "IN_PROGRESS" ? "Nothing cooking" : "Nothing ready"}
+
+            <div className="mt-2 grid grid-cols-1 gap-2 md:grid-cols-10 md:items-center">
+              <div className="md:col-span-7">
+                <div className="flex items-center gap-2 overflow-x-auto whitespace-nowrap no-scrollbar">
+                  <span className="shrink-0 text-[11px] font-semibold uppercase tracking-wide text-slate-500">Status</span>
+                  <button
+                    type="button"
+                    onClick={() => setStatusFilter("all")}
+                    className={`shrink-0 rounded-full border px-3 py-1 text-[11px] font-semibold ${statusFilter === "all" ? "border-amber-300 bg-amber-100 text-amber-800" : "border-[#ddcfb7] bg-white text-slate-700"}`}
+                  >
+                    All {queueItems.length}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setStatusFilter("PLACED")}
+                    className={`shrink-0 rounded-full border px-3 py-1 text-[11px] font-semibold ${statusFilter === "PLACED" ? "border-amber-300 bg-amber-100 text-amber-800" : "border-[#ddcfb7] bg-white text-slate-700"}`}
+                  >
+                    New {statusCounts.PLACED}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setStatusFilter("IN_PROGRESS")}
+                    className={`shrink-0 rounded-full border px-3 py-1 text-[11px] font-semibold ${statusFilter === "IN_PROGRESS" ? "border-rose-300 bg-rose-100 text-rose-800" : "border-[#ddcfb7] bg-white text-slate-700"}`}
+                  >
+                    Cooking {statusCounts.IN_PROGRESS}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setStatusFilter("READY")}
+                    className={`shrink-0 rounded-full border px-3 py-1 text-[11px] font-semibold ${statusFilter === "READY" ? "border-emerald-300 bg-emerald-100 text-emerald-800" : "border-[#ddcfb7] bg-white text-slate-700"}`}
+                  >
+                    Ready {statusCounts.READY}
+                  </button>
+                  <span className="shrink-0 rounded-full border border-slate-200 bg-white px-3 py-1 text-[11px] font-semibold text-slate-600">
+                    Orders {uniqueOrderCount}
+                  </span>
                 </div>
-              )}
-              {(byStatus[col.status] || []).map((order) => (
-                <div key={order.id} className="rounded-xl border border-white/60 bg-white p-3 shadow-sm">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="text-sm font-bold">T{order.table?.number} — {order.table?.name}</p>
-                      <p className="text-[10px] text-slate-500">{timeAgo(order.createdAt)}</p>
-                    </div>
-                    {(order.status === "PLACED" || order.status === "IN_PROGRESS") && (
-                      <button
-                        type="button"
-                        onClick={() => bump(order)}
-                        className={`rounded-lg px-2.5 py-1.5 text-[11px] font-bold text-white shadow active:scale-95 transition ${col.status === "PLACED" ? "bg-red-500" : col.status === "IN_PROGRESS" ? "bg-emerald-500" : "bg-blue-500"}`}
-                      >
-                        {col.status === "PLACED" ? "Start" : "Ready"}
-                      </button>
-                    )}
-                  </div>
-                  {order.note && <p className="mt-1 text-[10px] italic text-slate-400">{`"${order.note}"`}</p>}
-                  <div className="mt-2 space-y-0.5 border-t border-slate-100 pt-2">
-                    {order.items.map((item, i) => (
-                      <p key={i} className="text-xs text-slate-700">
-                        <span className="font-bold">{item.quantity}×</span> {item.name}
-                        {item.variantName ? <span className="text-slate-400"> ({item.variantName})</span> : null}
-                        {item.note ? <span className="italic text-amber-600"> — {item.note}</span> : null}
-                      </p>
-                    ))}
-                  </div>
+              </div>
+              <div className="md:col-span-3">
+                <div className="flex items-center justify-start gap-2 md:justify-end">
+                  <button
+                    type="button"
+                    onClick={() => refetch()}
+                    className="rounded-lg border border-[#e0d8c9] bg-white px-3 py-1.5 text-xs font-semibold text-slate-700"
+                  >
+                    {isFetching ? "Refreshing..." : "Refresh"}
+                  </button>
+                  <LiveBadge connected={socketConnected} />
                 </div>
-              ))}
+              </div>
             </div>
           </div>
-        ))}
-      </div>
+        </div>
+
+        <div className="p-2.5 sm:p-4">
+          {filteredItems.length === 0 ? (
+            <div className="rounded-2xl border border-dashed border-slate-300 py-12 text-center text-sm text-slate-500">
+              No kitchen items found.
+            </div>
+          ) : viewMode === "cards" ? (
+            <div className="grid gap-2.5 sm:grid-cols-3 sm:gap-3">
+              {KOT_COLUMNS.map((col) => (
+                <article
+                  key={col.status}
+                  className={`rounded-2xl border ${col.border} ${col.bg} p-2 shadow-sm sm:p-2.5`}
+                >
+                  <div className="mb-2 flex items-center justify-between">
+                    <p className={`text-[11px] font-semibold uppercase tracking-wide ${col.color}`}>{col.label}</p>
+                    <span className={`rounded-full border px-2 py-0.5 text-[10px] font-bold ${col.color} ${col.bg}`}>
+                      {groupedByStatus[col.status]?.length ?? 0}
+                    </span>
+                  </div>
+                  <div className="max-h-[60vh] space-y-2 overflow-y-auto pr-1">
+                    {groupedByStatus[col.status]?.length === 0 ? (
+                      <div className="rounded-xl border border-dashed border-current/20 py-6 text-center text-xs opacity-60">No items</div>
+                    ) : (
+                      groupedByStatus[col.status].map((item) => {
+                        const status = normalizeStatus(item.kitchenStatus);
+                        const nextStatus = nextKitchenItemStatus(status);
+                        const actionKey = `${item.orderId}:${item.lineId}:${nextStatus || "none"}`;
+
+                        return (
+                          <div key={`${item.orderId}-${item.lineId}`} className="rounded-xl border border-white/70 bg-white p-3">
+                            <div className="flex items-start justify-between gap-2">
+                              <div className="min-w-0">
+                                <p className="text-xs font-semibold text-slate-900">{tableLabel(item)}</p>
+                                <p className="text-[10px] text-slate-500">
+                                  {item.orderNumber ? `Order ${item.orderNumber}` : item.orderId.slice(-6)}
+                                </p>
+                              </div>
+                              <span className={`rounded-full border px-2 py-0.5 text-[10px] font-semibold ${itemStatusClass(status)}`}>
+                                {itemStatusLabel(status)}
+                              </span>
+                            </div>
+
+                            <p className="mt-2 text-sm font-semibold text-slate-900">
+                              {item.quantity}x {item.name}
+                              {item.variantName ? ` (${item.variantName})` : ""}
+                            </p>
+                            {item.note ? <p className="mt-0.5 text-[11px] italic text-amber-700">{item.note}</p> : null}
+
+                            <div className="mt-2 flex items-center justify-between text-[11px] text-slate-500">
+                              <span>Age: {ageLabel(item)}</span>
+                              {item.priorityLabel ? (
+                                <span className="rounded-full border border-amber-300 bg-amber-100 px-2 py-0.5 font-semibold text-amber-900">
+                                  {item.priorityLabel}
+                                </span>
+                              ) : null}
+                            </div>
+
+                            {nextStatus ? (
+                              <button
+                                type="button"
+                                onClick={() => bumpItem(item, nextStatus)}
+                                disabled={updatingItemKey === actionKey}
+                                className={`mt-2 w-full rounded-lg px-2.5 py-1.5 text-[11px] font-bold text-white shadow transition active:scale-95 disabled:opacity-50 ${status === "PLACED" ? "bg-red-500" : "bg-emerald-500"}`}
+                              >
+                                {updatingItemKey === actionKey ? "Updating..." : kitchenItemActionLabel(nextStatus)}
+                              </button>
+                            ) : null}
+                          </div>
+                        );
+                      })
+                    )}
+                  </div>
+                </article>
+              ))}
+            </div>
+          ) : (
+            <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
+              <div className="max-h-[68vh] overflow-auto">
+                <table className="min-w-[940px] w-full text-left text-xs">
+                  <thead className="sticky top-0 z-10 bg-slate-100 text-slate-700">
+                    <tr>
+                      <th className="px-3 py-2 font-semibold">Table</th>
+                      <th className="px-3 py-2 font-semibold">Order</th>
+                      <th className="px-3 py-2 font-semibold">Item</th>
+                      <th className="px-3 py-2 font-semibold">Qty</th>
+                      <th className="px-3 py-2 font-semibold">Status</th>
+                      <th className="px-3 py-2 font-semibold">Age</th>
+                      <th className="px-3 py-2 font-semibold">Priority</th>
+                      <th className="px-3 py-2 font-semibold">Action</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {tableRows.map((item) => {
+                      const status = normalizeStatus(item.kitchenStatus);
+                      const nextStatus = nextKitchenItemStatus(status);
+                      const actionKey = `${item.orderId}:${item.lineId}:${nextStatus || "none"}`;
+
+                      return (
+                        <tr key={`${item.orderId}-${item.lineId}`} className="border-t border-slate-100 align-top">
+                          <td className="px-3 py-2">
+                            <p className="font-semibold text-slate-900">{tableLabel(item)}</p>
+                            <p className="text-slate-500">{item.table?.number ? `T${item.table.number}` : "-"}</p>
+                          </td>
+                          <td className="px-3 py-2 text-slate-700">{item.orderNumber || item.orderId.slice(-6)}</td>
+                          <td className="px-3 py-2">
+                            <p className="font-medium text-slate-800">
+                              {item.name}
+                              {item.variantName ? ` (${item.variantName})` : ""}
+                            </p>
+                            {item.note ? <p className="text-[11px] italic text-amber-700">{item.note}</p> : null}
+                          </td>
+                          <td className="px-3 py-2 font-semibold text-slate-700">{item.quantity}</td>
+                          <td className="px-3 py-2">
+                            <span className={`rounded-full border px-2 py-0.5 text-[10px] font-semibold ${itemStatusClass(status)}`}>
+                              {itemStatusLabel(status)}
+                            </span>
+                          </td>
+                          <td className="px-3 py-2 text-slate-500">{ageLabel(item)}</td>
+                          <td className="px-3 py-2 text-slate-600">{item.priorityLabel || "-"}</td>
+                          <td className="px-3 py-2">
+                            {nextStatus ? (
+                              <button
+                                type="button"
+                                onClick={() => bumpItem(item, nextStatus)}
+                                disabled={updatingItemKey === actionKey}
+                                className="rounded-lg border border-slate-300 bg-slate-100 px-2.5 py-1 text-[11px] font-semibold text-slate-700 disabled:opacity-50"
+                              >
+                                {updatingItemKey === actionKey ? "Updating..." : kitchenItemActionLabel(nextStatus)}
+                              </button>
+                            ) : (
+                              <span className="text-[11px] text-slate-400">-</span>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+        </div>
+      </article>
     </div>
   );
 }
+// Main Workspace
 
-// ─── Main Workspace ──────────────────────────────────────────────────────────
 type Props = {
   rawRole?: string;
 };
 
 export function OrdersWorkspace({ rawRole }: Props) {
+  const router = useRouter();
+  const searchParams = useSearchParams();
   const role = normalizeRole(rawRole);
+  const routeTableId = searchParams.get("tableId")?.trim() || undefined;
+  const routeNewOrder = searchParams.get("new") === "1";
 
   const [toast, setToast] = useState<{ msg: string; type: "ok" | "err" } | null>(null);
   const isWaiter = role === "waiter";
   const isKitchen = role === "kitchen";
+  const forceOrderComposer = !isKitchen && (routeNewOrder || Boolean(routeTableId));
+  const showWaiterView = isWaiter || forceOrderComposer;
+
+  const handleOrderPlaced = useCallback(() => {
+    setToast({ msg: "Order placed!", type: "ok" });
+    if (routeNewOrder || routeTableId) {
+      router.push("/dashboard/orders");
+    }
+  }, [routeNewOrder, routeTableId, router]);
 
   useEffect(() => {
     if (!toast) return;
@@ -1364,19 +1808,25 @@ export function OrdersWorkspace({ rawRole }: Props) {
 
   return (
     <div className="h-full">
-      {isWaiter ? (
+      {showWaiterView ? (
         <>
           <div className="mb-4">
-            <h2 className="text-lg font-bold text-slate-900">Take Order</h2>
-            <p className="text-xs text-slate-500">Pick a table, add items, and place the order in 3 taps.</p>
+            <h2 className="text-lg font-bold text-slate-900">
+              {forceOrderComposer && !isWaiter ? "Create / Update Order" : "Take Order"}
+            </h2>
+            <p className="text-xs text-slate-500">
+              {routeTableId
+                ? "Selected table opened. Add items to append in the same active order."
+                : "Pick a table, add items, and place the order in 3 taps."}
+            </p>
           </div>
-          <WaiterView onOrderPlaced={() => setToast({ msg: "Order placed!", type: "ok" })} />
+          <WaiterView onOrderPlaced={handleOrderPlaced} initialTableId={routeTableId} />
         </>
       ) : isKitchen ? (
         <>
           <div className="mb-4">
             <h2 className="text-lg font-bold text-slate-900">Kitchen Display</h2>
-            <p className="text-xs text-slate-500">Live KOT board — tap to update order status.</p>
+            <p className="text-xs text-slate-500">Item queue view - tap to update kitchen item status.</p>
           </div>
           <KitchenView />
         </>

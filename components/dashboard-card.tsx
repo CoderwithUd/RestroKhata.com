@@ -753,7 +753,6 @@ export function DashboardCard({ section }: DashboardCardProps) {
   const tenant = useAppSelector(selectAuthTenant);
   const [logout, { isLoading: isLoggingOut }] = useLogoutMutation();
   const [drawerOpen, setDrawerOpen] = useState(false);
-  const [newOrderOpen, setNewOrderOpen] = useState(false);
   const { data: tentantProfile, isLoading: isTenantProfileLoading } =
     useTentantProfileQuery();
   const { data: ordersPayload, isFetching: isOrdersFetching } = useOrdersQuery({
@@ -1231,7 +1230,7 @@ export function DashboardCard({ section }: DashboardCardProps) {
               ) : null}
               <button
                 type="button"
-                onClick={() => setNewOrderOpen(true)}
+                onClick={() => router.push("/dashboard/orders?new=1")}
                 className="hidden rounded-xl border border-[#e6dfd1] bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-amber-50 md:inline-flex"
               >
                 + New Order
@@ -1293,7 +1292,7 @@ export function DashboardCard({ section }: DashboardCardProps) {
                     <div>
                       <p className="text-sm font-semibold">Table Floor Plan</p>
                       <p className="text-xs text-slate-500">
-                        Tap a table to manage
+                        Tap occupied table to open its order
                       </p>
                     </div>
                     <div className="flex gap-1.5">
@@ -1314,7 +1313,14 @@ export function DashboardCard({ section }: DashboardCardProps) {
                         <button
                           key={table.id}
                           type="button"
-                          onClick={() => router.push("/dashboard/tables")}
+                          onClick={() => {
+                            const status = (table.status || "").toUpperCase();
+                            if (status === "OCCUPIED" || status === "BILLING") {
+                              router.push(`/dashboard/orders?tableId=${encodeURIComponent(table.id)}`);
+                              return;
+                            }
+                            router.push("/dashboard/tables");
+                          }}
                           className={`flex aspect-square flex-col items-center justify-center rounded-xl border text-xs font-medium transition hover:scale-[1.02] ${tableStatusClass(
                             table.status,
                           )}`}
@@ -1760,10 +1766,13 @@ export function DashboardCard({ section }: DashboardCardProps) {
                 ) : null}
               </article>
             </section>
-          ) : activeSection.id === "orders" ||
-            activeSection.id === "kitchen" ? (
+          ) : activeSection.id === "orders" ? (
             <section className="mt-4">
               <OrdersWorkspace rawRole={tentantProfile?.role || user?.role} />
+            </section>
+          ) : activeSection.id === "kitchen" ? (
+            <section className="mt-4">
+              <OrdersWorkspace rawRole="kitchen" />
             </section>
           ) : activeSection.id === "invoices" ? (
             <section className="mt-4">
@@ -1806,31 +1815,6 @@ export function DashboardCard({ section }: DashboardCardProps) {
         </div>
       </div>
 
-      {/* Global + New Order modal (accessible from header button) */}
-      {newOrderOpen && (
-        <div
-          className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 sm:items-center"
-          onClick={() => setNewOrderOpen(false)}
-        >
-          <div
-            className="flex h-[90vh] w-full max-w-3xl flex-col rounded-t-3xl bg-[#f6f4ef] p-4 shadow-2xl sm:rounded-2xl sm:h-auto sm:max-h-[90vh]"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="mb-3 flex items-center justify-between">
-              <p className="text-base font-bold">New Order</p>
-              <button
-                onClick={() => setNewOrderOpen(false)}
-                className="text-slate-400 hover:text-slate-700"
-              >
-                ✕
-              </button>
-            </div>
-            <div className="flex-1 overflow-y-auto">
-              <OrdersWorkspace rawRole="waiter" />
-            </div>
-          </div>
-        </div>
-      )}
 
       {drawerOpen ? (
         <div className="fixed inset-0 z-40 lg:hidden">
