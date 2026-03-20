@@ -295,14 +295,11 @@ export function PublicQrMenu({ tenantSlug: tenantSlugFromPath }: PublicQrMenuPro
         <header className="rounded-2xl border border-[#e6dfd1] bg-[linear-gradient(145deg,#fff6e6_0%,#fffdf9_58%,#eff7f2_100%)] p-4 shadow-sm md:p-6">
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
-              <p className="text-xs font-semibold uppercase tracking-[0.16em] text-amber-700">Public QR Menu</p>
+              <p className="text-xs font-semibold uppercase tracking-[0.16em] text-amber-700">Public  Menu</p>
               <h1 className="mt-2 text-2xl font-semibold md:text-3xl">{tenantName}</h1>
               <p className="mt-1 text-sm text-slate-600">Serving for: {tableLabel}</p>
             </div>
-            <div className="grid min-w-[150px] grid-cols-1 gap-2 text-xs sm:grid-cols-2 sm:text-right">
-              <p className="rounded-lg border border-[#eadfc9] bg-white px-3 py-2 font-medium text-slate-700">Categories: {categoriesWithItems.length}</p>
-              <p className="rounded-lg border border-[#eadfc9] bg-white px-3 py-2 font-medium text-slate-700">Items: {visibleItemCount}</p>
-            </div>
+         
           </div>
 
           {categoriesWithItems.length ? (

@@ -1,6 +1,7 @@
 ﻿"use client";
 
 import { useEffect, useRef } from "react";
+import { usePathname } from "next/navigation";
 import { clearStoredSession, readStoredSession, writeStoredSession } from "@/lib/auth-session";
 import { useLazyMeQuery, useRefreshSessionMutation } from "@/store/api/authApi";
 import { useAppDispatch, useAppSelector } from "@/store/hooks";
@@ -15,12 +16,22 @@ import {
 
 export function SessionBootstrap() {
   const dispatch = useAppDispatch();
+  const pathname = usePathname() || "/";
   const bootstrapStatus = useAppSelector(selectAuthBootstrapStatus);
   const [loadMe] = useLazyMeQuery();
   const [refreshSession] = useRefreshSessionMutation();
   const hydratedFromStorageRef = useRef(false);
 
   useEffect(() => {
+    const segments = pathname.split("/").filter(Boolean);
+    const isPublicTenantPath =
+      segments.length === 1 &&
+      !["dashboard", "login", "register", "plan", "qr"].includes(
+        segments[0]?.toLowerCase() || "",
+      );
+    const isPublicQrPath = pathname === "/qr" || isPublicTenantPath;
+    if (isPublicQrPath) return;
+
     if (bootstrapStatus !== "idle") return;
 
     if (!hydratedFromStorageRef.current) {
@@ -85,7 +96,7 @@ export function SessionBootstrap() {
     };
 
     void runBootstrap();
-  }, [bootstrapStatus, dispatch, loadMe, refreshSession]);
+  }, [bootstrapStatus, dispatch, loadMe, pathname, refreshSession]);
 
   return null;
 }

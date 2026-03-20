@@ -24,6 +24,7 @@ type Props = { tenantName?: string; tenantSlug?: string };
 type Filter = "all" | "active" | "inactive";
 type TableListViewMode = "grid" | "table";
 type QrMode = "static" | "token";
+type QrTemplateId = "template1" | "template2";
 
 type FormState = {
   number: number;
@@ -39,16 +40,26 @@ type QrState = {
   table: TableRecord | null;
   mode: QrMode;
   format: TableQrFormat;
+  templateId: QrTemplateId;
   baseUrl: string;
   expiresInHours: number;
   qr: string;
   qrPayload: string;
   token: string;
-  labelText: string;
-  bgColor: string;
-  borderColor: string;
-  labelColor: string;
   error: string;
+};
+
+type QrTemplate = {
+  id: QrTemplateId;
+  name: string;
+  description: string;
+  imagePath: string;
+  qrSlot: {
+    x: number;
+    y: number;
+    size: number;
+    padding: number;
+  };
 };
 
 const STATUS_OPTIONS: Array<{ value: TableStatus; label: string }> = [
@@ -58,11 +69,34 @@ const STATUS_OPTIONS: Array<{ value: TableStatus; label: string }> = [
   { value: "BILLING", label: "Billing" },
 ];
 
-const PRESETS = [
-  { bgColor: "#fff7e9", borderColor: "#f59e0b", labelColor: "#7c2d12" },
-  { bgColor: "#eef6ff", borderColor: "#2563eb", labelColor: "#1e3a8a" },
-  { bgColor: "#eefcf5", borderColor: "#10b981", labelColor: "#065f46" },
-  { bgColor: "#f9f0ff", borderColor: "#a855f7", labelColor: "#581c87" },
+const FRONTEND_PUBLIC_URL = "https://restro-khata-com.vercel.app";
+const FRONTEND_QR_BASE_URL = `${FRONTEND_PUBLIC_URL}/qr`;
+
+const QR_TEMPLATES: QrTemplate[] = [
+  {
+    id: "template1",
+    name: "Template 1",
+    description: "Classic table placard",
+    imagePath: "/QR/Template1.png",
+    qrSlot: {
+      x: 0.361,
+      y: 0.361,
+      size: 0.276,
+      padding: 0.05,
+    },
+  },
+  {
+    id: "template2",
+    name: "Template 2",
+    description: "Modern menu standee",
+    imagePath: "/QR/Template2.png",
+    qrSlot: {
+      x: 0.361,
+      y: 0.405,
+      size: 0.276,
+      padding: 0.05,
+    },
+  },
 ];
 
 const norm = (n: number, fallback: number) =>
@@ -106,81 +140,162 @@ function downloadHref(href: string, fileName: string) {
   a.click();
 }
 
-function rawDownload(qr: string, format: TableQrFormat, fileBase: string) {
-  if (!qr.trim()) return;
-  const safe = fileBase.replace(/[^a-zA-Z0-9-_]/g, "_");
-  if (format === "svg" && !qr.startsWith("data:")) {
-    const blob = new Blob([qr], { type: "image/svg+xml;charset=utf-8" });
-    const url = URL.createObjectURL(blob);
-    downloadHref(url, `${safe}.svg`);
-    URL.revokeObjectURL(url);
-    return;
-  }
-  downloadHref(
-    qr.startsWith("data:") ? qr : `data:image/png;base64,${qr}`,
-    `${safe}.${format === "svg" ? "svg" : "png"}`,
+function getTemplateById(id: QrTemplateId): QrTemplate {
+  return (
+    QR_TEMPLATES.find((template) => template.id === id) || QR_TEMPLATES[0]
   );
 }
 
-async function styledDownload(args: {
+function defaultQrBaseUrl(): string {
+  return FRONTEND_QR_BASE_URL;
+}
+
+function resolveQrBaseUrl(baseUrl: string): string {
+  const candidate = baseUrl.trim();
+  const fallback = defaultQrBaseUrl();
+  if (!candidate) return fallback;
+  if (candidate.startsWith(FRONTEND_PUBLIC_URL)) return candidate;
+  return fallback;
+}
+
+function normalizePayloadUrl(payload: string, baseUrl: string): string {
+  const raw = payload.trim();
+  if (!raw) return "";
+  if (/^https?:\/\//i.test(raw)) {
+    try {
+      const url = new URL(raw);
+      if (url.origin === FRONTEND_PUBLIC_URL) {
+        const hasQrParams =
+          url.searchParams.has("token") ||
+          url.searchParams.has("tenantSlug") ||
+          url.searchParams.has("tableId") ||
+          url.searchParams.has("tableNumber");
+        const isQrPublicPath =
+          url.pathname === "/qr" ||
+          (url.pathname !== "/" &&
+            url.pathname !== "/login" &&
+            url.pathname !== "/dashboard" &&
+            url.pathname !== "/register" &&
+            url.pathname !== "/plan");
+        if (hasQrParams && !isQrPublicPath) {
+          const query = url.searchParams.toString();
+          return query
+            ? `${FRONTEND_QR_BASE_URL}?${query}`
+            : FRONTEND_QR_BASE_URL;
+        }
+      }
+      return url.toString();
+    } catch {
+      return raw;
+    }
+  }
+  const resolvedBase = resolveQrBaseUrl(baseUrl);
+  if (raw.startsWith("?")) return `${resolvedBase}${raw}`;
+  if (raw.includes("=") && !raw.includes(" ")) {
+    return `${resolvedBase}?${raw.replace(/^\?/, "")}`;
+  }
+  try {
+    return new URL(raw, FRONTEND_PUBLIC_URL).toString();
+  } catch {
+    return raw;
+  }
+}
+
+async function loadImageBySrc(src: string, errorMessage: string) {
+  return new Promise<HTMLImageElement>((resolve, reject) => {
+    const image = new window.Image();
+    image.onload = () => resolve(image);
+    image.onerror = () => reject(new Error(errorMessage));
+    image.src = src;
+  });
+}
+
+async function loadQrImage(qr: string, format: TableQrFormat) {
+  const src = qrSrc(qr, format);
+  if (!src) throw new Error("QR not ready");
+  return loadImageBySrc(src, "Failed to load QR image");
+}
+
+async function loadTemplateImage(imagePath: string) {
+  return loadImageBySrc(imagePath, "Failed to load template image");
+}
+
+function getQrSlotRect(template: QrTemplate, width: number, height: number) {
+  const slotSize = Math.min(width, height) * template.qrSlot.size;
+  const x = width * template.qrSlot.x;
+  const y = height * template.qrSlot.y;
+  const padding = slotSize * template.qrSlot.padding;
+  return { x, y, slotSize, padding };
+}
+
+async function downloadTemplateCard(args: {
   qr: string;
   format: TableQrFormat;
   fileBase: string;
-  labelText: string;
-  bgColor: string;
-  borderColor: string;
-  labelColor: string;
+  template: QrTemplate;
 }) {
-  const src = qrSrc(args.qr, args.format);
-  console.log(src);
-  if (!src) throw new Error("QR not ready");
-  const img = await new Promise<HTMLImageElement>((resolve, reject) => {
-    const i = new window.Image();
-    i.onload = () => resolve(i);
-    i.onerror = () => reject(new Error("Failed to load QR image"));
-    i.src = src;
-  });
+  const [qrImage, templateImage] = await Promise.all([
+    loadQrImage(args.qr, args.format),
+    loadTemplateImage(args.template.imagePath),
+  ]);
   const canvas = document.createElement("canvas");
-  canvas.width = 980;
-  canvas.height = 1220;
+  const width = templateImage.naturalWidth || templateImage.width;
+  const height = templateImage.naturalHeight || templateImage.height;
+  canvas.width = width;
+  canvas.height = height;
   const ctx = canvas.getContext("2d");
   if (!ctx) throw new Error("Canvas not available");
-  ctx.fillStyle = args.bgColor;
-  ctx.fillRect(0, 0, canvas.width, canvas.height);
-  ctx.fillStyle = args.borderColor;
-  ctx.fillRect(130, 130, 720, 720);
-  ctx.fillStyle = "#fff";
-  ctx.fillRect(150, 150, 680, 680);
-  ctx.drawImage(img, 190, 190, 600, 600);
-  ctx.fillStyle = args.labelColor;
-  ctx.textAlign = "center";
-  ctx.font = "700 56px ui-sans-serif, system-ui, -apple-system";
-  ctx.fillText(args.labelText, 490, 955);
-  ctx.font = "500 28px ui-sans-serif, system-ui, -apple-system";
-  ctx.fillText("Scan to view menu", 490, 1005);
+  ctx.drawImage(templateImage, 0, 0, width, height);
+  const slot = getQrSlotRect(args.template, width, height);
+  const qrSize = slot.slotSize - slot.padding * 2;
+  ctx.drawImage(
+    qrImage,
+    slot.x + slot.padding,
+    slot.y + slot.padding,
+    qrSize,
+    qrSize,
+  );
+
   const safe = args.fileBase.replace(/[^a-zA-Z0-9-_]/g, "_");
-  downloadHref(canvas.toDataURL("image/png"), `${safe}_styled.png`);
+  downloadHref(canvas.toDataURL("image/png"), `${safe}_${args.template.id}.png`);
 }
-
-// function defaultQrBaseUrl(): string {
-//   if (typeof window === "undefined") return "";
-//   return `${window.location.origin}/qr`;
-// }
-function defaultQrBaseUrl(): string {
-  if (typeof window === "undefined") return "";
-
-  // 🔥 production force
-  if (window.location.hostname !== "localhost") {
-    return "https://restro-khata-com.vercel.app/qr";
-  }
-
-  // local
-  return "http://localhost:3000/qr";
-}
-
-function hasLegacyApiMenuPayload(payload?: string): boolean {
+function shouldRefreshQrPayload(payload?: string): boolean {
   if (!payload?.trim()) return false;
-  return /\/api\/public\/menu(?:\?|$)/i.test(payload.trim());
+  const raw = payload.trim();
+  if (/\/api\/public\/menu(?:\?|$)/i.test(raw)) return true;
+  if (/^https?:\/\//i.test(raw)) {
+    try {
+      const url = new URL(raw);
+      if (url.origin !== FRONTEND_PUBLIC_URL) return true;
+      const hasQrParams =
+        url.searchParams.has("token") ||
+        url.searchParams.has("tenantSlug") ||
+        url.searchParams.has("tableId") ||
+        url.searchParams.has("tableNumber");
+      const hasToken = url.searchParams.has("token");
+      const hasLegacyStaticParams =
+        url.searchParams.has("tenantSlug") ||
+        url.searchParams.has("tableId") ||
+        url.searchParams.has("tableNumber");
+      if (hasLegacyStaticParams && !hasToken) {
+        return true;
+      }
+      if (
+        hasQrParams &&
+        (url.pathname === "/" ||
+          url.pathname === "/login" ||
+          url.pathname === "/dashboard" ||
+          url.pathname === "/register" ||
+          url.pathname === "/plan")
+      ) {
+        return true;
+      }
+      return false;
+    } catch {
+      return true;
+    }
+  }
+  return false;
 }
 
 export function TablesWorkspace({ tenantName, tenantSlug }: Props) {
@@ -258,27 +373,28 @@ export function TablesWorkspace({ tenantName, tenantSlug }: Props) {
     status: "AVAILABLE",
     customerId: "",
   });
-  const [downloadingStyled, setDownloadingStyled] = useState(false);
+  const [downloadingTemplate, setDownloadingTemplate] = useState(false);
+  const [sharingQrLink, setSharingQrLink] = useState(false);
+  const defaultTemplate = QR_TEMPLATES[0];
 
   const [qr, setQr] = useState<QrState>({
     open: false,
     table: null,
-    mode: "static",
+    mode: "token",
     format: "dataUrl",
-    baseUrl: "",
+    templateId: defaultTemplate.id,
+    baseUrl: defaultQrBaseUrl(),
     expiresInHours: 720,
     qr: "",
     qrPayload: "",
     token: "",
-    labelText: tenantName || tenantSlug || "My Restaurant",
-    bgColor: "#fff7e9",
-    borderColor: "#f59e0b",
-    labelColor: "#7c2d12",
     error: "",
   });
 
   const preview = qrSrc(qr.qr, qr.format);
   const qrBusy = isQrFetching || isQrTokenLoading;
+  const selectedTemplate = getTemplateById(qr.templateId);
+  const qrPayloadUrl = normalizePayloadUrl(qr.qrPayload, qr.baseUrl);
 
   async function submitCreate(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -375,93 +491,58 @@ export function TablesWorkspace({ tenantName, tenantSlug }: Props) {
     }
   }
 
-  // async function openQr(table: TableRecord) {
-  //   const baseUrl = defaultQrBaseUrl();
-
-  //   const shouldRefresh = !table.qrCode || hasLegacyApiMenuPayload(table.qrPayload);
-
-  //   setQr({
-  //     open: true,
-  //     table,
-  //     mode: "static",
-  //     format: table.qrFormat || "dataUrl",
-  //     baseUrl,
-  //     expiresInHours: 720,
-  //     qr: table.qrCode || "",
-  //     qrPayload: table.qrPayload || "",
-  //     token: "",
-  //     labelText: tenantName || tenantSlug || "My Restaurant",
-  //     bgColor: "#fff7e9",
-  //     borderColor: "#f59e0b",
-  //     labelColor: "#7c2d12",
-  //     error: "",
-  //   });
-  //   if (!shouldRefresh) return;
-  //   try {
-  //     const r = await fetchQr({
-  //       tableId: table.id,
-  //       format: table.qrFormat || "dataUrl",
-  //       baseUrl: baseUrl || undefined,
-  //     }).unwrap();
-  //     setQr((prev) => ({ ...prev, qr: r.qr, qrPayload: r.qrPayload, format: r.format }));
-  //     if (hasLegacyApiMenuPayload(table.qrPayload)) {
-  //       showInfo(`Table ${table.number} QR updated to frontend menu URL`);
-  //     }
-  //   } catch (e) {
-  //     setQr((prev) => ({ ...prev, error: getErrorMessage(e) }));
-  //   }
-  // }
   async function openQr(table: TableRecord) {
     const baseUrl = defaultQrBaseUrl();
-
+    const template = QR_TEMPLATES[0];
     const shouldRefresh =
-      !table.qrCode || hasLegacyApiMenuPayload(table.qrPayload);
+      !table.qrCode || shouldRefreshQrPayload(table.qrPayload);
 
     setQr({
       open: true,
       table,
-      mode: "static",
+      mode: "token",
       format: table.qrFormat || "dataUrl",
+      templateId: template.id,
       baseUrl,
       expiresInHours: 720,
       qr: table.qrCode || "",
       qrPayload: table.qrPayload || "",
       token: "",
-      labelText: tenantName || tenantSlug || "My Restaurant",
-      bgColor: "#fff7e9",
-      borderColor: "#f59e0b",
-      labelColor: "#7c2d12",
       error: "",
     });
 
     if (!shouldRefresh) return;
 
     try {
-      const r = await fetchQr({
+      const r = await createQrToken({
         tableId: table.id,
         format: table.qrFormat || "dataUrl",
-        baseUrl: baseUrl, // ✅ always send correct URL
+        baseUrl,
+        expiresInHours: 720,
       }).unwrap();
 
       setQr((prev) => ({
         ...prev,
         qr: r.qr,
         qrPayload: r.qrPayload,
+        token: r.token,
         format: r.format,
       }));
     } catch (e) {
       setQr((prev) => ({ ...prev, error: getErrorMessage(e) }));
     }
   }
+
   async function generateQr() {
     if (!qr.table) return;
-    setQr((prev) => ({ ...prev, error: "" }));
+    const baseUrl = resolveQrBaseUrl(qr.baseUrl);
+    setQr((prev) => ({ ...prev, error: "", baseUrl }));
     try {
       if (qr.mode === "token") {
         const r = await createQrToken({
           tableId: qr.table.id,
           format: qr.format,
-          baseUrl: qr.baseUrl.trim() || defaultQrBaseUrl(),
+          baseUrl,
           expiresInHours: norm(qr.expiresInHours, 720),
         }).unwrap();
         return setQr((prev) => ({
@@ -470,12 +551,13 @@ export function TablesWorkspace({ tenantName, tenantSlug }: Props) {
           qrPayload: r.qrPayload,
           token: r.token,
           format: r.format,
+          baseUrl,
         }));
       }
       const r = await fetchQr({
         tableId: qr.table.id,
         format: qr.format,
-        baseUrl: qr.baseUrl.trim() || defaultQrBaseUrl(),
+        baseUrl,
       }).unwrap();
       setQr((prev) => ({
         ...prev,
@@ -483,32 +565,70 @@ export function TablesWorkspace({ tenantName, tenantSlug }: Props) {
         qrPayload: r.qrPayload,
         token: "",
         format: r.format,
+        baseUrl,
       }));
     } catch (e) {
       setQr((prev) => ({ ...prev, error: getErrorMessage(e) }));
     }
   }
 
-  async function downloadStyled() {
+  function applyTemplate(templateId: QrTemplateId) {
+    setQr((prev) => ({
+      ...prev,
+      templateId,
+    }));
+  }
+
+  async function downloadActiveTemplate() {
     if (!qr.table || !qr.qr) return;
-    setDownloadingStyled(true);
+    setDownloadingTemplate(true);
     try {
-      await styledDownload({
+      await downloadTemplateCard({
         qr: qr.qr,
         format: qr.format,
         fileBase: `table-${qr.table.number}-${qr.mode}`,
-        labelText: qr.labelText.trim() || tenantName || "My Restaurant",
-        bgColor: qr.bgColor,
-        borderColor: qr.borderColor,
-        labelColor: qr.labelColor,
+        template: selectedTemplate,
       });
     } catch (e) {
       setQr((prev) => ({ ...prev, error: getErrorMessage(e) }));
     } finally {
-      setDownloadingStyled(false);
+      setDownloadingTemplate(false);
     }
   }
 
+  function openQrLink() {
+    if (!qrPayloadUrl) {
+      showError("Generate QR first");
+      return;
+    }
+    window.open(qrPayloadUrl, "_blank", "noopener,noreferrer");
+  }
+
+  async function shareQrLink() {
+    if (!qrPayloadUrl) {
+      showError("Generate QR first");
+      return;
+    }
+    setSharingQrLink(true);
+    try {
+      const title = `${qr.table?.name || "Table"} Menu QR`;
+      const text = `Scan this QR to open menu for ${qr.table?.name || "table"}`;
+      if (navigator.share) {
+        await navigator.share({ title, text, url: qrPayloadUrl });
+        showSuccess("QR link shared");
+        return;
+      }
+      if (!navigator.clipboard) {
+        throw new Error("Share not supported on this browser");
+      }
+      await navigator.clipboard.writeText(qrPayloadUrl);
+      showSuccess("QR link copied");
+    } catch (e) {
+      setQr((prev) => ({ ...prev, error: getErrorMessage(e) }));
+    } finally {
+      setSharingQrLink(false);
+    }
+  }
   return (
     <>
       <section className="mt-1 grid gap-3 sm:mt-2 sm:gap-4">
@@ -1300,11 +1420,14 @@ export function TablesWorkspace({ tenantName, tenantSlug }: Props) {
             className="absolute inset-0 bg-slate-900/50"
             onClick={() => setQr((prev) => ({ ...prev, open: false }))}
           />
-          <section className="absolute left-1/2 top-1/2 max-h-[92vh] w-[95%] max-w-4xl -translate-x-1/2 -translate-y-1/2 overflow-y-auto rounded-2xl border border-[#e6dfd1] bg-[#fffdf9] shadow-2xl">
-            <header className="flex items-center justify-between border-b border-[#eee7d8] bg-[#fff6e7] px-4 py-3">
-              <h4 className="text-sm font-semibold">
-                {qr.table.name} QR Designer
-              </h4>
+          <section className="absolute left-1/2 top-1/2 max-h-[94vh] w-[96%] max-w-6xl -translate-x-1/2 -translate-y-1/2 overflow-y-auto rounded-2xl border border-[#e6dfd1] bg-[#fffdf9] shadow-2xl">
+            <header className="flex flex-wrap items-center justify-between gap-2 border-b border-[#eee7d8] bg-[#fff6e7] px-4 py-3">
+              <div>
+                <h4 className="text-sm font-semibold">{qr.table.name} QR Studio</h4>
+                <p className="text-xs text-slate-600">
+                  QR URL base fixed: {FRONTEND_QR_BASE_URL}
+                </p>
+              </div>
               <button
                 type="button"
                 onClick={() => setQr((prev) => ({ ...prev, open: false }))}
@@ -1313,97 +1436,117 @@ export function TablesWorkspace({ tenantName, tenantSlug }: Props) {
                 Close
               </button>
             </header>
-            <div className="grid gap-4 p-4 lg:grid-cols-[1.15fr_1fr]">
-              <div className="rounded-2xl border border-[#e8e0d0] bg-white p-4">
-                <div
-                  className="mx-auto w-full max-w-[340px] rounded-2xl border p-3"
-                  style={{
-                    backgroundColor: qr.bgColor,
-                    borderColor: qr.borderColor,
-                  }}
-                >
-                  <div className="flex aspect-square items-center justify-center rounded-xl bg-white p-3 shadow-sm">
-                    {preview ? (
-                      <Image
-                        src={preview}
-                        alt={`QR for ${qr.table.name}`}
-                        width={300}
-                        height={300}
-                        unoptimized
-                        className="h-full w-full object-contain"
-                      />
-                    ) : (
-                      <p className="text-xs text-slate-500">Generate QR</p>
-                    )}
+
+            <div className="grid gap-4 p-4 xl:grid-cols-[1.08fr_1fr]">
+              <div className="space-y-3 rounded-2xl border border-[#e8e0d0] bg-white p-4">
+                <div className="mx-auto w-full max-w-[360px] overflow-hidden rounded-2xl border border-[#ece4d6] bg-white shadow-sm">
+                  <div className="relative aspect-[1684/2528] w-full">
+                    <Image
+                      src={selectedTemplate.imagePath}
+                      alt={`${selectedTemplate.name} preview`}
+                      fill
+                      unoptimized
+                      className="object-cover"
+                    />
+                    <div
+                      className="absolute rounded-[6px] border border-slate-200/80 bg-white/85"
+                      style={{
+                        left: `${selectedTemplate.qrSlot.x * 100}%`,
+                        top: `${selectedTemplate.qrSlot.y * 100}%`,
+                        width: `${selectedTemplate.qrSlot.size * 100}%`,
+                        height: `${selectedTemplate.qrSlot.size * 100}%`,
+                      }}
+                    >
+                      {preview ? (
+                        <div
+                          className="absolute"
+                          style={{
+                            inset: `${selectedTemplate.qrSlot.padding * 100}%`,
+                          }}
+                        >
+                          <Image
+                            src={preview}
+                            alt={`QR for ${qr.table.name}`}
+                            fill
+                            unoptimized
+                            className="object-contain"
+                          />
+                        </div>
+                      ) : (
+                        <div className="flex h-full items-center justify-center px-1 text-center text-[10px] font-medium text-slate-500">
+                          Generate QR
+                        </div>
+                      )}
+                    </div>
                   </div>
-                  <p
-                    className="mt-3 text-center text-sm font-semibold"
-                    style={{ color: qr.labelColor }}
-                  >
-                    {qr.labelText || tenantName || "My Restaurant"}
-                  </p>
                 </div>
-                <div className="mt-3 grid grid-cols-2 gap-2">
+
+                <div className="grid grid-cols-2 gap-2">
                   <button
                     type="button"
                     onClick={generateQr}
                     disabled={qrBusy}
                     className="rounded-lg border border-[#e0d8c9] bg-white px-3 py-2 text-xs font-semibold text-slate-700 disabled:opacity-60"
                   >
-                    {qrBusy ? "Generating..." : "Generate"}
+                    {qrBusy ? "Generating..." : "Generate QR"}
                   </button>
                   <button
                     type="button"
-                    onClick={() =>
-                      rawDownload(
-                        qr.qr,
-                        qr.format,
-                        `table-${qr.table?.number}-${qr.mode}`,
-                      )
-                    }
-                    disabled={!qr.qr}
+                    onClick={downloadActiveTemplate}
+                    disabled={!qr.qr || downloadingTemplate}
                     className="rounded-lg bg-amber-500 px-3 py-2 text-xs font-semibold text-white disabled:opacity-50"
                   >
-                    Download Raw
+                    {downloadingTemplate
+                      ? "Preparing..."
+                      : `Download ${selectedTemplate.name}`}
                   </button>
                   <button
                     type="button"
-                    onClick={downloadStyled}
-                    disabled={!qr.qr || downloadingStyled}
-                    className="col-span-2 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs font-semibold text-blue-700 disabled:opacity-50"
+                    onClick={openQrLink}
+                    disabled={!qrPayloadUrl}
+                    className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-700 disabled:opacity-50"
                   >
-                    {downloadingStyled
-                      ? "Preparing..."
-                      : "Download Styled (Label + Colors)"}
+                    Open Link
+                  </button>
+                  <button
+                    type="button"
+                    onClick={shareQrLink}
+                    disabled={!qrPayloadUrl || sharingQrLink}
+                    className="rounded-lg border border-violet-200 bg-violet-50 px-3 py-2 text-xs font-semibold text-violet-700 disabled:opacity-50"
+                  >
+                    {sharingQrLink ? "Sharing..." : "Share Link"}
                   </button>
                 </div>
-                {qr.qrPayload ? (
-                  <p className="mt-3 rounded-lg border border-[#ece4d6] bg-[#fffaf3] px-2.5 py-2 text-[11px] text-slate-600">
-                    {qr.qrPayload}
+
+                {qrPayloadUrl ? (
+                  <p className="rounded-lg border border-[#ece4d6] bg-[#fffaf3] px-2.5 py-2 text-[11px] text-slate-600">
+                    {qrPayloadUrl}
                   </p>
                 ) : null}
+                <p className="text-[11px] text-slate-500">
+                  {tenantName || tenantSlug || "Restaurant"} | Template:{" "}
+                  {selectedTemplate.name}
+                </p>
               </div>
+
               <div className="space-y-3 rounded-2xl border border-[#e8e0d0] bg-[#fffcf6] p-4">
                 <div className="grid grid-cols-2 gap-2">
                   <button
                     type="button"
-                    onClick={() =>
-                      setQr((prev) => ({ ...prev, mode: "static" }))
-                    }
+                    onClick={() => setQr((prev) => ({ ...prev, mode: "static" }))}
                     className={`rounded-lg border px-3 py-2 text-xs font-semibold ${qr.mode === "static" ? "border-amber-200 bg-amber-50 text-amber-800" : "border-slate-200 bg-white text-slate-600"}`}
                   >
                     Static
                   </button>
                   <button
                     type="button"
-                    onClick={() =>
-                      setQr((prev) => ({ ...prev, mode: "token" }))
-                    }
+                    onClick={() => setQr((prev) => ({ ...prev, mode: "token" }))}
                     className={`rounded-lg border px-3 py-2 text-xs font-semibold ${qr.mode === "token" ? "border-blue-200 bg-blue-50 text-blue-800" : "border-slate-200 bg-white text-slate-600"}`}
                   >
                     Token
                   </button>
                 </div>
+
                 <select
                   value={qr.format}
                   onChange={(event) =>
@@ -1417,14 +1560,11 @@ export function TablesWorkspace({ tenantName, tenantSlug }: Props) {
                   <option value="dataUrl">PNG</option>
                   <option value="svg">SVG</option>
                 </select>
-                <input
-                  value={qr.baseUrl}
-                  onChange={(event) =>
-                    setQr((prev) => ({ ...prev, baseUrl: event.target.value }))
-                  }
-                  placeholder="Optional base URL"
-                  className="h-10 w-full rounded-lg border border-[#ddd4c1] bg-white px-3 text-sm"
-                />
+
+                <div className="rounded-lg border border-[#e5d7c0] bg-[#fff8ea] px-3 py-2 text-[11px] text-slate-600">
+                  QR link always starts with {FRONTEND_PUBLIC_URL}
+                </div>
+
                 {qr.mode === "token" ? (
                   <input
                     type="number"
@@ -1437,68 +1577,40 @@ export function TablesWorkspace({ tenantName, tenantSlug }: Props) {
                       }))
                     }
                     className="h-10 w-full rounded-lg border border-[#ddd4c1] bg-white px-3 text-sm"
+                    placeholder="Token expiry in hours"
                   />
                 ) : null}
-                <input
-                  value={qr.labelText}
-                  onChange={(event) =>
-                    setQr((prev) => ({
-                      ...prev,
-                      labelText: event.target.value,
-                    }))
-                  }
-                  placeholder="Brand/Tenant label"
-                  className="h-10 w-full rounded-lg border border-[#ddd4c1] bg-white px-3 text-sm"
-                />
-                <div className="grid grid-cols-3 gap-2">
-                  <input
-                    type="color"
-                    value={qr.bgColor}
-                    onChange={(event) =>
-                      setQr((prev) => ({
-                        ...prev,
-                        bgColor: event.target.value,
-                      }))
-                    }
-                    className="h-10 w-full rounded-lg border border-[#ddd4c1] bg-white px-1"
-                  />
-                  <input
-                    type="color"
-                    value={qr.borderColor}
-                    onChange={(event) =>
-                      setQr((prev) => ({
-                        ...prev,
-                        borderColor: event.target.value,
-                      }))
-                    }
-                    className="h-10 w-full rounded-lg border border-[#ddd4c1] bg-white px-1"
-                  />
-                  <input
-                    type="color"
-                    value={qr.labelColor}
-                    onChange={(event) =>
-                      setQr((prev) => ({
-                        ...prev,
-                        labelColor: event.target.value,
-                      }))
-                    }
-                    className="h-10 w-full rounded-lg border border-[#ddd4c1] bg-white px-1"
-                  />
+
+                <div className="space-y-2">
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">
+                    Templates
+                  </p>
+                  <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                    {QR_TEMPLATES.map((template) => (
+                      <button
+                        key={template.id}
+                        type="button"
+                        onClick={() => applyTemplate(template.id)}
+                        className={`rounded-xl border px-2.5 py-2 text-left ${qr.templateId === template.id ? "border-slate-700 bg-white" : "border-[#e4dccf] bg-[#fffaf2]"}`}
+                      >
+                        <div className="relative mb-2 aspect-[1684/2528] w-full overflow-hidden rounded-lg border border-[#e9e0d2] bg-white">
+                          <Image
+                            src={template.imagePath}
+                            alt={`${template.name} thumbnail`}
+                            fill
+                            unoptimized
+                            className="object-cover"
+                          />
+                        </div>
+                        <p className="text-xs font-semibold text-slate-800">
+                          {template.name}
+                        </p>
+                        <p className="text-[11px] text-slate-500">{template.description}</p>
+                      </button>
+                    ))}
+                  </div>
                 </div>
-                <div className="grid grid-cols-4 gap-2">
-                  {PRESETS.map((preset, index) => (
-                    <button
-                      key={index}
-                      type="button"
-                      onClick={() => setQr((prev) => ({ ...prev, ...preset }))}
-                      className="h-8 rounded-lg border border-slate-300"
-                      style={{
-                        background: `linear-gradient(135deg, ${preset.bgColor} 0%, ${preset.borderColor} 100%)`,
-                      }}
-                      aria-label={`Preset ${index + 1}`}
-                    />
-                  ))}
-                </div>
+
                 {qr.token ? (
                   <p className="rounded-lg border border-blue-200 bg-blue-50 px-2.5 py-2 text-[11px] text-blue-800">
                     Token: {qr.token}

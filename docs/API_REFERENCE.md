@@ -46,11 +46,15 @@ Single source of truth for all APIs and business logic.
 
 ### Invoices (`/api/invoices`)
 - Read (`GET`): `OWNER`, `MANAGER`, `WAITER`
-- Write (`POST`, `PUT`, `pay`, `DELETE`): `OWNER`, `MANAGER`
+- Create (`POST /api/invoices`): `OWNER`, `MANAGER`, `WAITER`
+- Other write (`PUT`, `pay`, `DELETE`): `OWNER`, `MANAGER`
 
 ### Tables (`/api/tables`)
 - Create/Update/Delete/QR: `OWNER`, `MANAGER`
 - List: `OWNER`, `MANAGER`, `WAITER`, `KITCHEN`
+
+### Customers (`/api/customers`)
+- List/Get: `OWNER`, `MANAGER`, `WAITER`
 
 ## 4) Status Enums
 
@@ -77,6 +81,12 @@ Single source of truth for all APIs and business logic.
 - `ISSUED`
 - `PAID`
 - `VOID`
+
+### Reservation Advance Payment Status
+- `not_required`
+- `pending`
+- `partial`
+- `paid`
 
 ## 5) API Endpoints and Examples
 
@@ -120,15 +130,54 @@ Response:
 }
 ```
 
+Reserved table create example:
+```json
+{
+  "number": 20,
+  "name": "Banquet 20",
+  "capacity": 8,
+  "status": "reserved",
+  "reservation": {
+    "customerName": "Ankit",
+    "customerPhone": "9876543210",
+    "partySize": 8,
+    "reservedFor": "2026-03-25T19:30:00+05:30",
+    "note": "Birthday party",
+    "advancePayment": {
+      "required": true,
+      "amount": 2000,
+      "paidAmount": 500,
+      "method": "UPI",
+      "reference": "ADV-9981"
+    }
+  }
+}
+```
+
 ### GET `/api/tables?isActive=true`
 
 ### PUT `/api/tables/:tableId`
 ```json
 {
   "name": "Window 12",
-  "status": "reserved"
+  "status": "reserved",
+  "reservation": {
+    "customerName": "Rahul",
+    "customerPhone": "9876543210",
+    "partySize": 6,
+    "reservedFor": "2026-03-22T20:00:00+05:30",
+    "note": "Corporate dinner",
+    "advancePayment": {
+      "required": false
+    }
+  }
 }
 ```
+Notes:
+- `status=reserved` par customer details mandatory hain (`customerName` + `customerPhone`).
+- Reservation payload dene par table status automatically `reserved` set hota hai.
+- `status=available` par reservation details clear ho jaati hain.
+- Manual reservation active ho to billing complete hone ke baad table wapas `reserved` reh sakta hai.
 
 ### DELETE `/api/tables/:tableId`
 - blocked if pending session exists.
@@ -163,6 +212,9 @@ Response:
   "note": "Less spicy"
 }
 ```
+Notes:
+- Public QR order me `customerName` aur `customerPhone` mandatory hain.
+- Customer number ke basis par tenant-level customer record upsert hota hai.
 
 Possible response messages:
 - `order created`
@@ -174,6 +226,8 @@ Possible response messages:
 ```json
 {
   "tableId": "65f1f2c9c8f7f6a2d1011111",
+  "customerName": "Walk-in Guest",
+  "customerPhone": "9876543210",
   "items": [
     {
       "itemId": "65f1f2c9c8f7f6a2d3000001",
@@ -185,11 +239,36 @@ Possible response messages:
   "note": "No onion"
 }
 ```
+Id based customer example:
+```json
+{
+  "tableId": "65f1f2c9c8f7f6a2d1011111",
+  "customerId": "67f0d98342b16f0ef1ab1234",
+  "items": [
+    {
+      "itemId": "65f1f2c9c8f7f6a2d3000001",
+      "variantId": "65f1f2c9c8f7f6a2d4000001",
+      "quantity": 1,
+      "optionIds": []
+    }
+  ]
+}
+```
+Notes:
+- Staff order me customer optional hai.
+- `customerId` se existing tenant customer directly attach ho sakta hai.
+- Agar `customerName`/`customerPhone` pair diya gaya ho to customer record upsert hota hai.
+- `customerId` aur `customerName`/`customerPhone` ek saath allowed nahi hain.
+- `customerName` aur `customerPhone` hamesha pair me dene honge (ek field akeli allowed nahi).
 
 ### GET `/api/orders?status=PLACED,IN_PROGRESS&tableId=<tableId>&page=1&limit=20`
+- For `KITCHEN` role, when `status` query is not provided, API defaults to active statuses only (`PLACED`, `IN_PROGRESS`, `READY`).
 
 ### GET `/api/orders/kitchen/items?status=PLACED,IN_PROGRESS&includeDone=false&tableId=<tableId>&limit=200`
 - Kitchen-focused queue (item-wise).
+- `orderStatus` is emitted from effective item statuses (not stale stored value).
+- `SERVED/CANCELLED` items default excluded. `includeDone=true` only works for `OWNER/MANAGER`.
+- Orders already marked `SERVED/CANCELLED` are also excluded by default (legacy-data safety).
 - Returns each item line with:
   - `lineId`
   - `kitchenStatus`
@@ -204,6 +283,10 @@ Status update example:
 ```json
 { "status": "IN_PROGRESS" }
 ```
+Notes:
+- Order-level `status` update now synchronizes all item `kitchenStatus` to the same value (with transition validation), so kitchen queue stays consistent.
+- Use only one of these per request: `status` or `itemStatusUpdates` or `items`.
+
 Item kitchen status update example:
 ```json
 {
@@ -238,9 +321,33 @@ Item replace example:
   "orderId": "65f1f2c9c8f7f6a2d2000001",
   "discountType": "PERCENTAGE",
   "discountValue": 10,
-  "note": "Festival discount"
+  "note": "Festival discount",
+  "customer": {
+    "name": "Rahul",
+    "phone": "9876543210"
+  }
 }
 ```
+Id based customer example:
+```json
+{
+  "orderId": "65f1f2c9c8f7f6a2d2000001",
+  "customerId": "67f0d98342b16f0ef1ab1234"
+}
+```
+- Invoice create allowed only when all order items are `SERVED` or `CANCELLED`.
+- Invoice customer optional hai.
+- Priority: invoice request me `customerId`/customer payload diya ho to woh use hota hai; warna order customer fallback hota hai.
+- `customerId` aur customer name/phone payload ek saath allowed nahi hain.
+- Invoice bina customer ke bhi create ho sakti hai.
+
+## Customers
+
+### GET `/api/customers?q=rahul&page=1&limit=20`
+- Tenant-scoped customer search (name/phone).
+
+### GET `/api/customers/:customerId`
+- Tenant-scoped single customer fetch.
 
 ### GET `/api/invoices?status=ISSUED,PAID&tableId=<tableId>&page=1&limit=20`
 

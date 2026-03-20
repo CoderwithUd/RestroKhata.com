@@ -44,6 +44,14 @@ function getRequestPath(args: string | FetchArgs): string {
   return args.url;
 }
 
+function isPublicMenuPath(pathname: string): boolean {
+  if (pathname === "/qr") return true;
+  const segments = pathname.split("/").filter(Boolean);
+  if (segments.length !== 1) return false;
+  const reserved = new Set(["dashboard", "login", "register", "plan", "qr"]);
+  return !reserved.has(segments[0]?.toLowerCase() || "");
+}
+
 export const baseQueryWithReauth: BaseQueryFn<string | FetchArgs, unknown, FetchBaseQueryError> = async (
   args,
   api,
@@ -87,8 +95,10 @@ export const baseQueryWithReauth: BaseQueryFn<string | FetchArgs, unknown, Fetch
     clearStoredSession();
 
     if (typeof window !== "undefined") {
-      const isAuthPage = window.location.pathname === "/login" || window.location.pathname === "/register";
-      if (!isAuthPage) {
+      const pathname = window.location.pathname || "/";
+      const isAuthPage = pathname === "/login" || pathname === "/register";
+      const publicMenuPage = isPublicMenuPath(pathname);
+      if (!isAuthPage && !publicMenuPage) {
         window.location.replace("/login");
       }
     }
