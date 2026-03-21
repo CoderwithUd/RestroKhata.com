@@ -157,6 +157,45 @@ function kitchenItemActionLabel(nextStatus?: OrderStatus): string {
   return "Done";
 }
 
+function nextServiceItemStatus(status?: string): OrderStatus | undefined {
+  return normalizeStatus(status) === "READY" ? "SERVED" : undefined;
+}
+
+function nextOrderItemStatus(status?: string, role?: RoleKey): OrderStatus | undefined {
+  if (role === "waiter") return nextServiceItemStatus(status);
+
+  const normalized = normalizeStatus(status);
+  if (normalized === "PLACED") return "IN_PROGRESS";
+  if (normalized === "IN_PROGRESS") return "READY";
+  if (normalized === "READY") return "SERVED";
+  return undefined;
+}
+
+function orderItemActionLabel(nextStatus?: OrderStatus): string {
+  if (nextStatus === "IN_PROGRESS") return "Start";
+  if (nextStatus === "READY") return "Ready";
+  if (nextStatus === "SERVED") return "Serve";
+  return "Update";
+}
+
+function orderItemActionKey(orderId: string, lineId?: string, nextStatus?: OrderStatus): string {
+  return `${orderId}:${lineId || "missing"}:${nextStatus || "none"}`;
+}
+
+function orderBatchActionKey(orderId: string, nextStatus: OrderStatus): string {
+  return `${orderId}:batch:${nextStatus}`;
+}
+
+function activeOrderItems(order: OrderRecord): OrderItem[] {
+  return (order.items || []).filter((item) => normalizeStatus(item.status) !== "CANCELLED");
+}
+
+function getServeableReadyItems(order: OrderRecord): OrderItem[] {
+  return activeOrderItems(order).filter(
+    (item) => Boolean(item.lineId) && normalizeStatus(item.status) === "READY",
+  );
+}
+
 function toTimestamp(value?: string): number | null {
   if (!value) return null;
   const timestamp = new Date(value).getTime();
@@ -355,11 +394,17 @@ function TableGrid({
 function MenuBrowser({
   table,
   existingOrder,
+  servingItemKey,
+  onServeExistingOrderItem,
+  onServeReadyItems,
   onBack,
   onConfirm,
 }: {
   table: TableRecord;
   existingOrder?: OrderRecord;
+  servingItemKey?: string | null;
+  onServeExistingOrderItem: (order: OrderRecord, item: OrderItem) => void;
+  onServeReadyItems: (order: OrderRecord) => void;
   onBack: () => void;
   onConfirm: (cart: CartEntry[], tableNote: string) => void;
 }) {
@@ -403,6 +448,10 @@ function MenuBrowser({
 
   const cartTotal = useMemo(() => cart.reduce((s, e) => s + e.unitPrice * e.quantity, 0), [cart]);
   const cartCount = useMemo(() => cart.reduce((s, e) => s + e.quantity, 0), [cart]);
+  const readyExistingItems = useMemo(
+    () => (existingOrder ? getServeableReadyItems(existingOrder) : []),
+    [existingOrder],
+  );
 
   function getQty(itemId: string, variantId?: string): number {
     return cart.find((e) => e.itemId === itemId && e.variantId === variantId)?.quantity ?? 0;
@@ -504,12 +553,32 @@ function MenuBrowser({
         <div className="flex min-w-0 flex-1 flex-col">
           {existingOrder && existingOrder.items.length > 0 ? (
             <div className="mb-2 rounded-xl border border-amber-200 bg-amber-50 p-2.5">
-              <p className="mb-2 text-[11px] font-semibold text-amber-800">
-                Existing order items (tap +1 to add quickly)
-              </p>
+              <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+                <p className="text-[11px] font-semibold text-amber-800">
+                  Existing order items (tap +1 to add quickly)
+                </p>
+                {existingOrder && readyExistingItems.length > 0 ? (
+                  <button
+                    type="button"
+                    onClick={() => onServeReadyItems(existingOrder)}
+                    disabled={servingItemKey === orderBatchActionKey(existingOrder.id, "SERVED")}
+                    className="rounded-full border border-emerald-300 bg-emerald-100 px-2.5 py-1 text-[10px] font-bold text-emerald-900 disabled:opacity-50"
+                  >
+                    {servingItemKey === orderBatchActionKey(existingOrder.id, "SERVED")
+                      ? "Serving..."
+                      : readyExistingItems.length === 1
+                        ? "Serve Ready Item"
+                        : `Serve Ready (${readyExistingItems.length})`}
+                  </button>
+                ) : null}
+              </div>
               <div className="space-y-1.5">
                 {existingOrder.items.map((orderItem, index) => {
                   const extra = extraQtyForExisting(orderItem);
+                  const itemNextStatus = nextServiceItemStatus(orderItem.status);
+                  const itemActionKey = orderItem.lineId
+                    ? orderItemActionKey(existingOrder.id, orderItem.lineId, itemNextStatus)
+                    : null;
                   return (
                     <div
                       key={`${orderItem.itemId}-${orderItem.variantId || "base"}-${index}`}
@@ -520,18 +589,35 @@ function MenuBrowser({
                           {orderItem.name}
                           {orderItem.variantName ? ` (${orderItem.variantName})` : ""}
                         </p>
-                        <p className="text-[10px] text-slate-500">
-                          Current: {orderItem.quantity}
-                          {extra > 0 ? `  |  Adding: +${extra}` : ""}
+                        <p className="flex flex-wrap items-center gap-1.5 text-[10px] text-slate-500">
+                          <span>
+                            Current: {orderItem.quantity}
+                            {extra > 0 ? `  |  Adding: +${extra}` : ""}
+                          </span>
+                          <span className={`rounded-full border px-1.5 py-0.5 font-semibold ${itemStatusClass(orderItem.status)}`}>
+                            {itemStatusLabel(orderItem.status)}
+                          </span>
                         </p>
                       </div>
-                      <button
-                        type="button"
-                        onClick={() => addFromExisting(orderItem)}
-                        className="rounded-md bg-amber-500 px-2 py-1 text-[10px] font-bold text-white"
-                      >
-                        +1
-                      </button>
+                      <div className="flex shrink-0 items-center gap-1.5">
+                        {existingOrder && orderItem.lineId && itemNextStatus ? (
+                          <button
+                            type="button"
+                            onClick={() => onServeExistingOrderItem(existingOrder, orderItem)}
+                            disabled={servingItemKey === itemActionKey}
+                            className="rounded-md border border-emerald-300 bg-emerald-50 px-2 py-1 text-[10px] font-bold text-emerald-800 disabled:opacity-50"
+                          >
+                            {servingItemKey === itemActionKey ? "..." : "Serve"}
+                          </button>
+                        ) : null}
+                        <button
+                          type="button"
+                          onClick={() => addFromExisting(orderItem)}
+                          className="rounded-md bg-amber-500 px-2 py-1 text-[10px] font-bold text-white"
+                        >
+                          +1
+                        </button>
+                      </div>
                     </div>
                   );
                 })}
@@ -754,16 +840,22 @@ function WaiterActionBoard({
   orders,
   appendSignals,
   servingOrderId,
+  servingItemKey,
   creatingInvoiceOrderId,
   onMarkServed,
+  onMarkItemServed,
+  onMarkReadyItemsServed,
   onCreateInvoice,
   className,
 }: {
   orders: OrderRecord[];
   appendSignals: Record<string, OrderAppendSignal>;
   servingOrderId?: string | null;
+  servingItemKey?: string | null;
   creatingInvoiceOrderId?: string | null;
   onMarkServed: (order: OrderRecord) => void;
+  onMarkItemServed: (order: OrderRecord, item: OrderItem) => void;
+  onMarkReadyItemsServed: (order: OrderRecord) => void;
   onCreateInvoice: (order: OrderRecord) => void;
   className?: string;
 }) {
@@ -809,9 +901,12 @@ function WaiterActionBoard({
           ) : (
             orders.map((order) => {
               const status = normalizeStatus(order.status);
+              const readyItems = getServeableReadyItems(order);
+              const openItemCount = activeOrderItems(order).length;
               const canServe = status === "READY";
               const canInvoice = canGenerateInvoiceForStatus(status);
               const appendSignal = appendSignals[order.id];
+              const batchServeKey = orderBatchActionKey(order.id, "SERVED");
 
               return (
                 <div key={order.id} className="rounded-2xl border border-slate-200 bg-slate-50 p-3">
@@ -838,7 +933,22 @@ function WaiterActionBoard({
                       ) : null}
                     </div>
                     <div className="grid gap-2 sm:min-w-[180px]">
-                      {canServe ? (
+                      {readyItems.length > 0 ? (
+                        <button
+                          type="button"
+                          disabled={servingItemKey === batchServeKey}
+                          onClick={() => onMarkReadyItemsServed(order)}
+                          className="rounded-xl bg-emerald-600 px-3 py-2 text-xs font-bold text-white disabled:opacity-50"
+                        >
+                          {servingItemKey === batchServeKey
+                            ? "Serving..."
+                            : readyItems.length === openItemCount && openItemCount > 1
+                              ? `Serve All (${readyItems.length})`
+                              : readyItems.length === 1
+                                ? "Serve Ready Item"
+                                : `Serve Ready (${readyItems.length})`}
+                        </button>
+                      ) : canServe ? (
                         <button
                           type="button"
                           disabled={servingOrderId === order.id}
@@ -867,6 +977,10 @@ function WaiterActionBoard({
                   <div className="mt-3 space-y-1.5 rounded-xl border border-slate-200 bg-white p-2.5">
                     {order.items.map((item, index) => {
                       const delta = appendSignal?.byItemKey[orderItemKey(item)]?.quantityAdded ?? 0;
+                      const itemNextStatus = nextServiceItemStatus(item.status);
+                      const itemActionKey = item.lineId
+                        ? orderItemActionKey(order.id, item.lineId, itemNextStatus)
+                        : null;
                       return (
                         <div
                           key={`${item.itemId}-${item.variantId || "base"}-${index}`}
@@ -888,6 +1002,16 @@ function WaiterActionBoard({
                             <span className={`rounded-full border px-2 py-0.5 text-[10px] font-semibold ${itemStatusClass(item.status)}`}>
                               {itemStatusLabel(item.status)}
                             </span>
+                            {item.lineId && itemNextStatus ? (
+                              <button
+                                type="button"
+                                onClick={() => onMarkItemServed(order, item)}
+                                disabled={servingItemKey === itemActionKey}
+                                className="rounded-full border border-emerald-300 bg-emerald-50 px-2 py-0.5 text-[10px] font-bold text-emerald-800 disabled:opacity-50"
+                              >
+                                {servingItemKey === itemActionKey ? "..." : "Serve"}
+                              </button>
+                            ) : null}
                           </div>
                         </div>
                       );
@@ -919,6 +1043,7 @@ function WaiterView({ onOrderPlaced, initialTableId }: WaiterViewProps) {
   const [socketConnected, setSocketConnected] = useState(false);
   const [creatingInvoiceOrderId, setCreatingInvoiceOrderId] = useState<string | null>(null);
   const [servingOrderId, setServingOrderId] = useState<string | null>(null);
+  const [servingItemKey, setServingItemKey] = useState<string | null>(null);
   const [step, setStep] = useState<WaiterStep>("tables");
   const [selectedTable, setSelectedTable] = useState<TableRecord | null>(null);
   const [existingOrder, setExistingOrder] = useState<OrderRecord | undefined>(undefined);
@@ -1044,6 +1169,58 @@ function WaiterView({ onOrderPlaced, initialTableId }: WaiterViewProps) {
     }
   }
 
+  async function handleMarkItemServed(order: OrderRecord, item: OrderItem) {
+    const nextStatus = nextServiceItemStatus(item.status);
+    if (!item.lineId || !nextStatus) return;
+
+    const actionKey = orderItemActionKey(order.id, item.lineId, nextStatus);
+
+    try {
+      setServingItemKey(actionKey);
+      await updateOrder({
+        orderId: order.id,
+        payload: {
+          itemStatusUpdates: [{ lineId: item.lineId, status: nextStatus }],
+        },
+      }).unwrap();
+      showSuccess(`${item.name} served`);
+      refetchOrders();
+      refetchTables();
+    } catch (error) {
+      showError(getErrorMessage(error));
+    } finally {
+      setServingItemKey(null);
+    }
+  }
+
+  async function handleMarkReadyItemsServed(order: OrderRecord) {
+    const readyItems = getServeableReadyItems(order);
+    if (readyItems.length === 0) return;
+
+    try {
+      setServingItemKey(orderBatchActionKey(order.id, "SERVED"));
+      await updateOrder({
+        orderId: order.id,
+        payload: {
+          itemStatusUpdates: readyItems
+            .filter((item): item is OrderItem & { lineId: string } => Boolean(item.lineId))
+            .map((item) => ({ lineId: item.lineId, status: "SERVED" as OrderStatus })),
+        },
+      }).unwrap();
+      showSuccess(
+        readyItems.length === 1
+          ? `${readyItems[0].name} served`
+          : `${readyItems.length} ready items served`,
+      );
+      refetchOrders();
+      refetchTables();
+    } catch (error) {
+      showError(getErrorMessage(error));
+    } finally {
+      setServingItemKey(null);
+    }
+  }
+
   const handleConfirm = useCallback(
     async (cart: CartEntry[], tableNote: string) => {
       if (!selectedTable) return;
@@ -1112,8 +1289,11 @@ function WaiterView({ onOrderPlaced, initialTableId }: WaiterViewProps) {
             orders={waiterActionOrders}
             appendSignals={appendSignals}
             servingOrderId={servingOrderId}
+            servingItemKey={servingItemKey}
             creatingInvoiceOrderId={creatingInvoiceOrderId}
             onMarkServed={handleMarkServed}
+            onMarkItemServed={handleMarkItemServed}
+            onMarkReadyItemsServed={handleMarkReadyItemsServed}
             onCreateInvoice={handleCreateInvoice}
             className="mt-0"
           />
@@ -1133,6 +1313,9 @@ function WaiterView({ onOrderPlaced, initialTableId }: WaiterViewProps) {
           <MenuBrowser
             table={selectedTable}
             existingOrder={existingOrder}
+            servingItemKey={servingItemKey}
+            onServeExistingOrderItem={handleMarkItemServed}
+            onServeReadyItems={handleMarkReadyItemsServed}
             onBack={() => { setStep("tables"); setSelectedTable(null); setExistingOrder(undefined); }}
             onConfirm={handleConfirm}
           />
@@ -1159,23 +1342,39 @@ const NEXT_STATUS: Record<string, OrderStatus> = {
   READY: "SERVED",
 };
 
+/* eslint-disable @typescript-eslint/no-unused-vars */
 function OrderCard({
   order,
   role,
   onStatusChange,
+  onItemStatusChange,
+  onBatchServeReady,
   onDelete,
+  updatingItemKey,
   compact,
 }: {
   order: OrderRecord;
   role: RoleKey;
   onStatusChange: (orderId: string, status: OrderStatus) => void;
+  onItemStatusChange: (order: OrderRecord, item: OrderItem, status: OrderStatus) => void;
+  onBatchServeReady: (order: OrderRecord) => void;
   onDelete: (orderId: string) => void;
+  updatingItemKey?: string | null;
   compact?: boolean;
 }) {
   const [expanded, setExpanded] = useState(false);
   const canEdit = role === "owner" || role === "manager" || role === "waiter";
   const canDelete = role === "owner" || role === "manager" || role === "waiter";
   const nextStatus = NEXT_STATUS[order.status];
+  const activeItemsList = activeOrderItems(order);
+  const itemStatuses = activeItemsList
+    .map((item) => normalizeStatus(item.status) || "PLACED")
+    .filter(Boolean);
+  const hasMixedItemStatuses = new Set(itemStatuses).size > 1;
+  const readyItems = getServeableReadyItems(order);
+  const batchServeKey = orderBatchActionKey(order.id, "SERVED");
+  const showExpanded = expanded || hasMixedItemStatuses;
+
 
   return (
     <div className={`rounded-2xl border bg-white transition ${compact ? "p-3" : "p-4"}`} style={{ borderColor: order.status === "PLACED" ? "#fcd34d" : order.status === "IN_PROGRESS" ? "#fca5a5" : order.status === "READY" ? "#6ee7b7" : "#e2e8f0" }}>
@@ -1190,20 +1389,25 @@ function OrderCard({
             <span className={`rounded-full border px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide ${statusBadgeClass(order.status)}`}>
               {STATUS_LABELS[order.status] || order.status}
             </span>
+            {hasMixedItemStatuses ? (
+              <span className="rounded-full border border-slate-200 bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-slate-600">
+                Mixed items
+              </span>
+            ) : null}
           </div>
           <p className="mt-0.5 text-xs text-slate-500">{order.items.length} item{order.items.length !== 1 ? "s" : ""} · {fmtCurrency(order.grandTotal ?? order.subTotal)} · {timeAgo(order.createdAt)}</p>
           {order.note && <p className="mt-0.5 text-xs italic text-slate-400">{`"${order.note}"`}</p>}
         </div>
         {/* Expand */}
         <button type="button" onClick={() => setExpanded((v) => !v)} className="shrink-0 text-slate-400 hover:text-slate-700">
-          <svg viewBox="0 0 24 24" className={`h-4 w-4 transition-transform ${expanded ? "rotate-180" : ""}`} fill="none" stroke="currentColor" strokeWidth="2">
+          <svg viewBox="0 0 24 24" className={`h-4 w-4 transition-transform ${showExpanded ? "rotate-180" : ""}`} fill="none" stroke="currentColor" strokeWidth="2">
             <path d="M6 9l6 6 6-6" />
           </svg>
         </button>
       </div>
 
       {/* Expanded items */}
-      {expanded && (
+      {showExpanded && (
         <div className="mt-3 space-y-1 border-t border-slate-100 pt-3">
           {order.items.map((item, i) => (
             <div key={i} className="flex justify-between text-xs">
@@ -1248,12 +1452,165 @@ function OrderCard({
 }
 
 // ─── Manager View ─────────────────────────────────────────────────────────────
+/* eslint-enable @typescript-eslint/no-unused-vars */
+function SmartOrderCard({
+  order,
+  role,
+  onStatusChange,
+  onItemStatusChange,
+  onBatchServeReady,
+  onDelete,
+  updatingItemKey,
+  compact,
+}: {
+  order: OrderRecord;
+  role: RoleKey;
+  onStatusChange: (orderId: string, status: OrderStatus) => void;
+  onItemStatusChange: (order: OrderRecord, item: OrderItem, status: OrderStatus) => void;
+  onBatchServeReady: (order: OrderRecord) => void;
+  onDelete: (orderId: string) => void;
+  updatingItemKey?: string | null;
+  compact?: boolean;
+}) {
+  const [expanded, setExpanded] = useState(false);
+  const canEdit = role === "owner" || role === "manager" || role === "waiter";
+  const canDelete = role === "owner" || role === "manager" || role === "waiter";
+  const nextStatus = NEXT_STATUS[order.status];
+  const itemStatuses = activeOrderItems(order)
+    .map((item) => normalizeStatus(item.status) || "PLACED")
+    .filter(Boolean);
+  const hasMixedItemStatuses = new Set(itemStatuses).size > 1;
+  const readyItems = getServeableReadyItems(order);
+  const batchServeKey = orderBatchActionKey(order.id, "SERVED");
+  const showExpanded = expanded || hasMixedItemStatuses;
+
+
+  return (
+    <div className={`rounded-2xl border bg-white transition ${compact ? "p-3" : "p-4"}`} style={{ borderColor: order.status === "PLACED" ? "#fcd34d" : order.status === "IN_PROGRESS" ? "#fca5a5" : order.status === "READY" ? "#6ee7b7" : "#e2e8f0" }}>
+      <div className="flex items-start gap-3">
+        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-slate-100 text-sm font-bold text-slate-700">
+          T{order.table?.number ?? "?"}
+        </div>
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center gap-1.5">
+            <p className="text-sm font-bold text-slate-900">{order.table?.name || `Table ${order.table?.number}`}</p>
+            <span className={`rounded-full border px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide ${statusBadgeClass(order.status)}`}>
+              {STATUS_LABELS[order.status] || order.status}
+            </span>
+            {hasMixedItemStatuses ? (
+              <span className="rounded-full border border-slate-200 bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-slate-600">
+                Mixed items
+              </span>
+            ) : null}
+          </div>
+          <p className="mt-0.5 text-xs text-slate-500">{order.items.length} item{order.items.length !== 1 ? "s" : ""} | {fmtCurrency(order.grandTotal ?? order.subTotal)} | {timeAgo(order.createdAt)}</p>
+          {order.note && <p className="mt-0.5 text-xs italic text-slate-400">{`\"${order.note}\"`}</p>}
+        </div>
+        <button type="button" onClick={() => setExpanded((value) => !value)} className="shrink-0 text-slate-400 hover:text-slate-700">
+          <svg viewBox="0 0 24 24" className={`h-4 w-4 transition-transform ${showExpanded ? "rotate-180" : ""}`} fill="none" stroke="currentColor" strokeWidth="2">
+            <path d="M6 9l6 6 6-6" />
+          </svg>
+        </button>
+      </div>
+
+      {showExpanded && (
+        <div className="mt-3 space-y-1 border-t border-slate-100 pt-3">
+          {order.items.map((item, index) => {
+            const itemNextStatus = canEdit ? nextOrderItemStatus(item.status, role) : undefined;
+            const itemActionKey = item.lineId
+              ? orderItemActionKey(order.id, item.lineId, itemNextStatus)
+              : null;
+
+            return (
+              <div key={`${item.itemId}-${item.variantId || "base"}-${index}`} className="flex flex-wrap items-start justify-between gap-2 text-xs">
+                <div className="min-w-0 flex-1">
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    <span className="text-slate-700">
+                      {item.quantity}x {item.name}
+                      {item.variantName ? ` (${item.variantName})` : ""}
+                    </span>
+                    <span className={`rounded-full border px-2 py-0.5 text-[10px] font-semibold ${itemStatusClass(item.status)}`}>
+                      {itemStatusLabel(item.status)}
+                    </span>
+                  </div>
+                  {item.note ? <p className="mt-0.5 italic text-amber-700">{item.note}</p> : null}
+                </div>
+                <div className="flex shrink-0 items-center gap-2">
+                  <span className="text-slate-500">{fmtCurrency(item.lineTotal ?? item.unitPrice * item.quantity)}</span>
+                  {canEdit && item.lineId && itemNextStatus ? (
+                    <button
+                      type="button"
+                      onClick={() => onItemStatusChange(order, item, itemNextStatus)}
+                      disabled={updatingItemKey === itemActionKey}
+                      className={`rounded-lg border px-2.5 py-1 text-[11px] font-semibold disabled:opacity-50 ${
+                        itemNextStatus === "SERVED"
+                          ? "border-emerald-300 bg-emerald-50 text-emerald-800"
+                          : "border-slate-300 bg-slate-100 text-slate-700"
+                      }`}
+                    >
+                      {updatingItemKey === itemActionKey ? "Updating..." : orderItemActionLabel(itemNextStatus)}
+                    </button>
+                  ) : null}
+                </div>
+              </div>
+            );
+          })}
+          {order.grandTotal != null && (
+            <div className="flex justify-between border-t border-slate-100 pt-1 text-xs font-bold">
+              <span>Total</span>
+              <span>{fmtCurrency(order.grandTotal)}</span>
+            </div>
+          )}
+        </div>
+      )}
+
+      {(canEdit || canDelete) && order.status !== "SERVED" && order.status !== "CANCELLED" && (
+        <div className="mt-3 flex gap-2">
+          {readyItems.length > 0 ? (
+            <button
+              type="button"
+              onClick={() => onBatchServeReady(order)}
+              disabled={updatingItemKey === batchServeKey}
+              className="flex-1 rounded-xl bg-emerald-600 py-2 text-xs font-bold text-white shadow-sm shadow-emerald-200 transition active:scale-95 disabled:opacity-50"
+            >
+              {updatingItemKey === batchServeKey
+                ? "Serving..."
+                : readyItems.length === 1
+                  ? "Serve Ready Item"
+                  : `Serve Ready (${readyItems.length})`}
+            </button>
+          ) : null}
+          {!hasMixedItemStatuses && nextStatus ? (
+            <button
+              type="button"
+              onClick={() => onStatusChange(order.id, nextStatus)}
+              className="flex-1 rounded-xl bg-amber-500 py-2 text-xs font-bold text-white shadow-sm shadow-amber-200 transition active:scale-95"
+            >
+              Mark {STATUS_LABELS[nextStatus] || nextStatus}
+            </button>
+          ) : null}
+          {canDelete ? (
+            <button
+              type="button"
+              onClick={() => onDelete(order.id)}
+              className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-bold text-rose-700 transition active:scale-95"
+            >
+              Delete
+            </button>
+          ) : null}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function ManagerView({ role }: { role: RoleKey }) {
   const router = useRouter();
   const confirm = useConfirm();
   const token = useAppSelector(selectAuthToken);
   const [statusFilter, setStatusFilter] = useState<string>("active");
   const [socketConnected, setSocketConnected] = useState(false);
+  const [updatingItemKey, setUpdatingItemKey] = useState<string | null>(null);
   const [updateOrder] = useUpdateOrderMutation();
   const [deleteOrder] = useDeleteOrderMutation();
 
@@ -1302,6 +1659,52 @@ function ManagerView({ role }: { role: RoleKey }) {
       showSuccess(`Order marked ${STATUS_LABELS[status] || status}`);
     } catch (e) {
       showError(getErrorMessage(e));
+    }
+  }
+
+  async function handleItemStatusChange(order: OrderRecord, item: OrderItem, status: OrderStatus) {
+    if (!item.lineId) return;
+    const actionKey = orderItemActionKey(order.id, item.lineId, status);
+
+    try {
+      setUpdatingItemKey(actionKey);
+      await updateOrder({
+        orderId: order.id,
+        payload: {
+          itemStatusUpdates: [{ lineId: item.lineId, status }],
+        },
+      }).unwrap();
+      showSuccess(`${item.name} marked ${STATUS_LABELS[status] || status}`);
+    } catch (e) {
+      showError(getErrorMessage(e));
+    } finally {
+      setUpdatingItemKey(null);
+    }
+  }
+
+  async function handleBatchServeReady(order: OrderRecord) {
+    const readyItems = getServeableReadyItems(order);
+    if (readyItems.length === 0) return;
+
+    try {
+      setUpdatingItemKey(orderBatchActionKey(order.id, "SERVED"));
+      await updateOrder({
+        orderId: order.id,
+        payload: {
+          itemStatusUpdates: readyItems
+            .filter((item): item is OrderItem & { lineId: string } => Boolean(item.lineId))
+            .map((item) => ({ lineId: item.lineId, status: "SERVED" as OrderStatus })),
+        },
+      }).unwrap();
+      showSuccess(
+        readyItems.length === 1
+          ? `${readyItems[0].name} marked served`
+          : `${readyItems.length} ready items served`,
+      );
+    } catch (e) {
+      showError(getErrorMessage(e));
+    } finally {
+      setUpdatingItemKey(null);
     }
   }
 
@@ -1377,12 +1780,15 @@ function ManagerView({ role }: { role: RoleKey }) {
       ) : (
         <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
           {orders.map((order) => (
-            <OrderCard
+            <SmartOrderCard
               key={order.id}
               order={order}
               role={role}
               onStatusChange={handleStatusChange}
+              onItemStatusChange={handleItemStatusChange}
+              onBatchServeReady={handleBatchServeReady}
               onDelete={handleDelete}
+              updatingItemKey={updatingItemKey}
             />
           ))}
         </div>
