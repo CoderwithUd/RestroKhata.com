@@ -48,6 +48,18 @@ type CartEntry = {
   note?: string;
 };
 
+type OrderCartSummaryEntry = {
+  key: string;
+  itemId: string;
+  variantId?: string;
+  name: string;
+  variantName?: string;
+  unitPrice: number;
+  existingQuantity: number;
+  addedQuantity: number;
+  note?: string;
+};
+
 // ─── Status helpers ───────────────────────────────────────────────────────────
 const STATUS_LABELS: Record<string, string> = {
   PLACED: "Placed",
@@ -447,10 +459,70 @@ function MenuBrowser({
   }, [allItems, activeCat, search, categories]);
 
   const cartTotal = useMemo(() => cart.reduce((s, e) => s + e.unitPrice * e.quantity, 0), [cart]);
-  const cartCount = useMemo(() => cart.reduce((s, e) => s + e.quantity, 0), [cart]);
   const readyExistingItems = useMemo(
     () => (existingOrder ? getServeableReadyItems(existingOrder) : []),
     [existingOrder],
+  );
+  const existingOrderTotal = useMemo(() => {
+    if (!existingOrder) return 0;
+    if (typeof existingOrder.grandTotal === "number") return existingOrder.grandTotal;
+    return activeOrderItems(existingOrder).reduce(
+      (sum, item) => sum + (item.lineTotal ?? item.unitPrice * item.quantity),
+      0,
+    );
+  }, [existingOrder]);
+  const summaryEntries = useMemo(() => {
+    const map = new Map<string, OrderCartSummaryEntry>();
+
+    for (const item of existingOrder?.items || []) {
+      if (normalizeStatus(item.status) === "CANCELLED") continue;
+      const key = `${item.itemId}::${item.variantId || "base"}`;
+      const existing = map.get(key);
+      if (existing) {
+        existing.existingQuantity += item.quantity;
+        if (!existing.note && item.note) existing.note = item.note;
+      } else {
+        map.set(key, {
+          key,
+          itemId: item.itemId,
+          variantId: item.variantId,
+          name: item.name,
+          variantName: item.variantName,
+          unitPrice: item.unitPrice,
+          existingQuantity: item.quantity,
+          addedQuantity: 0,
+          note: item.note,
+        });
+      }
+    }
+
+    for (const item of cart) {
+      const key = `${item.itemId}::${item.variantId || "base"}`;
+      const existing = map.get(key);
+      if (existing) {
+        existing.addedQuantity += item.quantity;
+        if (!existing.note && item.note) existing.note = item.note;
+      } else {
+        map.set(key, {
+          key,
+          itemId: item.itemId,
+          variantId: item.variantId,
+          name: item.name,
+          variantName: item.variantName,
+          unitPrice: item.unitPrice,
+          existingQuantity: 0,
+          addedQuantity: item.quantity,
+          note: item.note,
+        });
+      }
+    }
+
+    return Array.from(map.values());
+  }, [cart, existingOrder]);
+  const summaryTotal = existingOrderTotal + cartTotal;
+  const summaryCount = useMemo(
+    () => summaryEntries.reduce((sum, entry) => sum + entry.existingQuantity + entry.addedQuantity, 0),
+    [summaryEntries],
   );
 
   function getQty(itemId: string, variantId?: string): number {
@@ -543,8 +615,8 @@ function MenuBrowser({
           onClick={() => setCartOpen(true)}
           className="relative flex items-center gap-1.5 rounded-xl border border-amber-300 bg-amber-50 px-3 py-2 text-sm font-semibold text-amber-800 md:hidden"
         >
-          🛒 {cartCount > 0 && <span className="absolute -right-1.5 -top-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-amber-500 text-[10px] font-bold text-white">{cartCount}</span>}
-          {fmtCurrency(cartTotal)}
+          🛒 {summaryCount > 0 && <span className="absolute -right-1.5 -top-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-amber-500 text-[10px] font-bold text-white">{summaryCount}</span>}
+          {fmtCurrency(summaryTotal)}
         </button>
       </div>
 
@@ -733,6 +805,50 @@ function MenuBrowser({
             <p className="text-xs text-slate-500">Table {table.number}</p>
           </div>
           <div className="no-scrollbar flex-1 overflow-y-auto px-3 py-2">
+            {existingOrder && existingOrder.items.length > 0 ? (
+              <div className="mb-3 space-y-2 border-b border-slate-100 pb-3">
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Current order</p>
+                {summaryEntries
+                  .filter((entry) => entry.existingQuantity > 0)
+                  .map((entry) => (
+                    <div key={`existing-${entry.key}`} className="flex items-start justify-between gap-2">
+                      <div className="min-w-0 flex-1">
+                        <p className="line-clamp-1 text-xs font-medium text-slate-800">{entry.name}</p>
+                        {entry.variantName ? <p className="text-[10px] text-slate-400">{entry.variantName}</p> : null}
+                        <p className="text-[10px] text-slate-500">
+                          {fmtCurrency(entry.unitPrice)} x {entry.existingQuantity}
+                          {entry.addedQuantity > 0 ? ` | Adding +${entry.addedQuantity}` : ""}
+                        </p>
+                      </div>
+                      <span className="text-xs font-semibold text-slate-600">
+                        {fmtCurrency(entry.unitPrice * (entry.existingQuantity + entry.addedQuantity))}
+                      </span>
+                    </div>
+                  ))}
+              </div>
+            ) : null}
+            {existingOrder && existingOrder.items.length > 0 ? (
+              <div className="mb-4 max-h-48 space-y-3 overflow-y-auto rounded-2xl border border-slate-200 bg-slate-50 p-3">
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Current order</p>
+                {summaryEntries
+                  .filter((entry) => entry.existingQuantity > 0)
+                  .map((entry) => (
+                    <div key={`mobile-existing-${entry.key}`} className="flex items-start justify-between gap-3">
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-sm font-medium text-slate-800">{entry.name}</p>
+                        {entry.variantName ? <p className="text-[11px] text-slate-400">{entry.variantName}</p> : null}
+                        <p className="text-xs text-slate-500">
+                          {fmtCurrency(entry.unitPrice)} x {entry.existingQuantity}
+                          {entry.addedQuantity > 0 ? ` | Adding +${entry.addedQuantity}` : ""}
+                        </p>
+                      </div>
+                      <span className="text-sm font-semibold text-slate-700">
+                        {fmtCurrency(entry.unitPrice * (entry.existingQuantity + entry.addedQuantity))}
+                      </span>
+                    </div>
+                  ))}
+              </div>
+            ) : null}
             {cart.length === 0 ? (
               <p className="py-6 text-center text-xs text-slate-400">Tap items to add</p>
             ) : (
@@ -763,7 +879,7 @@ function MenuBrowser({
             />
             <div className="flex items-center justify-between text-sm font-bold">
               <span>Total</span>
-              <span className="text-amber-700">{fmtCurrency(cartTotal)}</span>
+              <span className="text-amber-700">{fmtCurrency(summaryTotal)}</span>
             </div>
             <button
               type="button"
@@ -816,7 +932,7 @@ function MenuBrowser({
             />
             <div className="mt-3 flex items-center justify-between font-bold">
               <span>Total</span>
-              <span className="text-amber-700">{fmtCurrency(cartTotal)}</span>
+              <span className="text-amber-700">{fmtCurrency(summaryTotal)}</span>
             </div>
             <button
               type="button"
@@ -1046,7 +1162,7 @@ function WaiterView({ onOrderPlaced, initialTableId }: WaiterViewProps) {
   const [servingItemKey, setServingItemKey] = useState<string | null>(null);
   const [step, setStep] = useState<WaiterStep>("tables");
   const [selectedTable, setSelectedTable] = useState<TableRecord | null>(null);
-  const [existingOrder, setExistingOrder] = useState<OrderRecord | undefined>(undefined);
+  const [, setExistingOrder] = useState<OrderRecord | undefined>(undefined);
   const autoSelectedTableRef = useRef<string | null>(null);
 
   // ── Socket: real-time updates ──────────────────────────────────────────────
@@ -1109,6 +1225,16 @@ function WaiterView({ onOrderPlaced, initialTableId }: WaiterViewProps) {
     () => buildAppendSignals(waiterActionOrders),
     [waiterActionOrders],
   );
+  const currentExistingOrder = useMemo(() => {
+    if (!selectedTable) return undefined;
+
+    return sortOrdersByLatest(orders).find((order) => {
+      const orderTableId = order.table?.id || order.tableId;
+      if (orderTableId !== selectedTable.id) return false;
+      if (invoicedOrderIds.has(order.id)) return false;
+      return ["PLACED", "IN_PROGRESS", "READY", "SERVED"].includes(normalizeStatus(order.status));
+    });
+  }, [invoicedOrderIds, orders, selectedTable]);
 
   useEffect(() => {
     const targetTableId = initialTableId?.trim();
@@ -1241,7 +1367,7 @@ function WaiterView({ onOrderPlaced, initialTableId }: WaiterViewProps) {
           ...(tableNote ? { note: tableNote } : {}),
           items,
         }).unwrap();
-        showSuccess(existingOrder ? "Items appended to active order!" : "Order placed successfully!");
+        showSuccess(currentExistingOrder ? "Items appended to active order!" : "Order placed successfully!");
         refetchOrders();
         refetchInvoices();
         refetchTables();
@@ -1254,7 +1380,7 @@ function WaiterView({ onOrderPlaced, initialTableId }: WaiterViewProps) {
         setStep("menu");
       }
     },
-    [createOrder, existingOrder, onOrderPlaced, refetchInvoices, refetchOrders, refetchTables, selectedTable],
+    [createOrder, currentExistingOrder, onOrderPlaced, refetchInvoices, refetchOrders, refetchTables, selectedTable],
   );
 
   return (
@@ -1311,8 +1437,9 @@ function WaiterView({ onOrderPlaced, initialTableId }: WaiterViewProps) {
             </div>
           )}
           <MenuBrowser
+            key={`${selectedTable.id}:${currentExistingOrder?.id || "fresh"}`}
             table={selectedTable}
-            existingOrder={existingOrder}
+            existingOrder={currentExistingOrder}
             servingItemKey={servingItemKey}
             onServeExistingOrderItem={handleMarkItemServed}
             onServeReadyItems={handleMarkReadyItemsServed}
