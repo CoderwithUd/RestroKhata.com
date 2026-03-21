@@ -194,11 +194,16 @@ Notes:
 ## Public Menu and Guest Orders
 
 ### GET `/api/public/menu?token=<TABLE_QR_TOKEN>`
+OR
+### GET `/api/public/menu?tenantSlug=<TENANT_SLUG>&tableId=<TABLE_ID>`
+OR
+### GET `/api/public/menu?tenantSlug=<TENANT_SLUG>&tableNumber=<TABLE_NUMBER>`
 
 ### POST `/api/public/orders`
 ```json
 {
-  "token": "TABLE_QR_TOKEN",
+  "tenantSlug": "my-cafe",
+  "tableId": "65f1f2c9c8f7f6a2d1011111",
   "customerName": "Rahul",
   "customerPhone": "9876543210",
   "items": [
@@ -214,6 +219,7 @@ Notes:
 ```
 Notes:
 - Public QR order me `customerName` aur `customerPhone` mandatory hain.
+- Public order identify karne ke liye either `token` ya static table context (`tenantSlug` + `tableId`/`tableNumber`) bhejna hota hai.
 - Customer number ke basis par tenant-level customer record upsert hota hai.
 
 Possible response messages:

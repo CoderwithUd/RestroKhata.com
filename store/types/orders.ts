@@ -56,6 +56,8 @@ export type OrderRecord = {
   table?: OrderTableRef;
   tableId?: string;
   tableName?: string;
+  customerName?: string;
+  customerPhone?: string;
   sourceLabel?: string;
   itemsSummary?: string;
   status: OrderStatus;
@@ -117,6 +119,8 @@ export type KitchenQueueItem = {
   table?: OrderTableRef;
   tableId?: string;
   tableName?: string;
+  customerName?: string;
+  customerPhone?: string;
   itemId: string;
   variantId?: string;
   name: string;

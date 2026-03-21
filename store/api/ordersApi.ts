@@ -114,11 +114,22 @@ function parseOrder(value: unknown): OrderRecord | null {
   const id = asString(r.id) || asString(r._id);
   if (!id) return null;
   const table = parseTableRef(r.table);
+  const customerRecord = asRecord(r.customer);
   const tableId = asString(r.tableId) || table?.id;
   const tableName =
     asString(r.tableName) ||
     table?.name ||
     (table?.number ? `Table ${table.number}` : undefined);
+  const customerName =
+    asString(r.customerName) ||
+    asString(r.customer_name) ||
+    asString(customerRecord?.name) ||
+    asString(customerRecord?.fullName);
+  const customerPhone =
+    asString(r.customerPhone) ||
+    asString(r.customer_phone) ||
+    asString(customerRecord?.phone) ||
+    asString(customerRecord?.mobile);
   const items = asArray(r.items)
     .map(parseOrderItem)
     .filter((i): i is NonNullable<typeof i> => Boolean(i));
@@ -131,7 +142,17 @@ function parseOrder(value: unknown): OrderRecord | null {
     table,
     tableId,
     tableName,
-    sourceLabel: tableName ? `${tableName} - Dine-in` : "Order",
+    customerName,
+    customerPhone,
+    sourceLabel:
+      asString(r.sourceLabel) ||
+      (tableName && customerName
+        ? `${tableName} - Customer ${customerName}`
+        : tableName
+          ? `${tableName} - Dine-in`
+          : customerName
+            ? `${customerName} - Customer order`
+            : "Order"),
     itemsSummary: parseOrderItemsSummary(r, items),
     status: status as OrderRecord["status"],
     note: asString(r.note),
@@ -195,6 +216,7 @@ function parseKitchenQueueItem(value: unknown): KitchenQueueItem | null {
 
   const nestedOrder = asRecord(record.order);
   const nestedTable = asRecord(record.table) || asRecord(nestedOrder?.table);
+  const customerRecord = asRecord(record.customer) || asRecord(nestedOrder?.customer);
   const nestedItem =
     asRecord(record.item) ||
     asRecord(record.menuItem) ||
@@ -259,6 +281,18 @@ function parseKitchenQueueItem(value: unknown): KitchenQueueItem | null {
       asString(record.tableName) ||
       table?.name ||
       (table?.number ? `Table ${table.number}` : undefined),
+    customerName:
+      asString(record.customerName) ||
+      asString(record.customer_name) ||
+      asString(nestedOrder?.customerName) ||
+      asString(customerRecord?.name) ||
+      asString(customerRecord?.fullName),
+    customerPhone:
+      asString(record.customerPhone) ||
+      asString(record.customer_phone) ||
+      asString(nestedOrder?.customerPhone) ||
+      asString(customerRecord?.phone) ||
+      asString(customerRecord?.mobile),
     itemId,
     variantId: asString(record.variantId),
     name:

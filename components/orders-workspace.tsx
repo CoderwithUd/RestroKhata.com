@@ -213,6 +213,18 @@ function availableMenuVariants(item: MenuItemRecord): MenuVariantRecord[] {
   return available.length ? available : item.variants || [];
 }
 
+function orderCustomerLabel(order: Pick<OrderRecord, "customerName" | "customerPhone">): string | null {
+  if (!order.customerName && !order.customerPhone) return null;
+  if (order.customerName && order.customerPhone) return `${order.customerName} | ${order.customerPhone}`;
+  return order.customerName || order.customerPhone || null;
+}
+
+function kitchenCustomerLabel(item: Pick<KitchenQueueItem, "customerName" | "customerPhone">): string | null {
+  if (!item.customerName && !item.customerPhone) return null;
+  if (item.customerName && item.customerPhone) return `${item.customerName} | ${item.customerPhone}`;
+  return item.customerName || item.customerPhone || null;
+}
+
 function toTimestamp(value?: string): number | null {
   if (!value) return null;
   const timestamp = new Date(value).getTime();
@@ -1093,6 +1105,7 @@ function WaiterActionBoard({
               const canInvoice = canGenerateInvoiceForStatus(status);
               const appendSignal = appendSignals[order.id];
               const batchServeKey = orderBatchActionKey(order.id, "SERVED");
+              const customerLabel = orderCustomerLabel(order);
 
               return (
                 <div key={order.id} className="rounded-2xl border border-slate-200 bg-slate-50 p-3">
@@ -1109,6 +1122,11 @@ function WaiterActionBoard({
                       <p className="mt-2 text-sm font-semibold text-slate-900">
                         {order.table?.name || `Table ${order.table?.number ?? "-"}`}
                       </p>
+                      {customerLabel ? (
+                        <p className="mt-1 inline-flex rounded-full border border-sky-200 bg-sky-50 px-2 py-0.5 text-[10px] font-semibold text-sky-800">
+                          Customer order: {customerLabel}
+                        </p>
+                      ) : null}
                       <p className="mt-1 text-xs text-slate-500">
                         {order.items.length} item(s) | {fmtCurrency(order.grandTotal ?? order.subTotal)} | {timeAgo(order.updatedAt || order.createdAt)}
                       </p>
@@ -1731,6 +1749,7 @@ function SmartOrderCard({
   const readyItems = getServeableReadyItems(order);
   const batchServeKey = orderBatchActionKey(order.id, "SERVED");
   const showExpanded = expanded || hasMixedItemStatuses;
+  const customerLabel = orderCustomerLabel(order);
 
 
   return (
@@ -1752,6 +1771,11 @@ function SmartOrderCard({
             ) : null}
           </div>
           <p className="mt-0.5 text-xs text-slate-500">{order.items.length} item{order.items.length !== 1 ? "s" : ""} | {fmtCurrency(order.grandTotal ?? order.subTotal)} | {timeAgo(order.createdAt)}</p>
+          {customerLabel ? (
+            <p className="mt-1 inline-flex rounded-full border border-sky-200 bg-sky-50 px-2 py-0.5 text-[10px] font-semibold text-sky-800">
+              Customer order: {customerLabel}
+            </p>
+          ) : null}
           {order.note && <p className="mt-0.5 text-xs italic text-slate-400">{`\"${order.note}\"`}</p>}
         </div>
         <button type="button" onClick={() => setExpanded((value) => !value)} className="shrink-0 text-slate-400 hover:text-slate-700">
@@ -2307,6 +2331,7 @@ function KitchenView() {
                         const status = normalizeStatus(item.kitchenStatus);
                         const nextStatus = nextKitchenItemStatus(status);
                         const actionKey = `${item.orderId}:${item.lineId}:${nextStatus || "none"}`;
+                        const customerLabel = kitchenCustomerLabel(item);
 
                         return (
                           <div key={`${item.orderId}-${item.lineId}`} className="rounded-xl border border-white/70 bg-white p-3">
@@ -2326,6 +2351,11 @@ function KitchenView() {
                               {item.quantity}x {item.name}
                               {item.variantName ? ` (${item.variantName})` : ""}
                             </p>
+                            {customerLabel ? (
+                              <p className="mt-1 inline-flex rounded-full border border-sky-200 bg-sky-50 px-2 py-0.5 text-[10px] font-semibold text-sky-800">
+                                Customer: {customerLabel}
+                              </p>
+                            ) : null}
                             {item.note ? <p className="mt-0.5 text-[11px] italic text-amber-700">{item.note}</p> : null}
 
                             <div className="mt-2 flex items-center justify-between text-[11px] text-slate-500">
@@ -2376,6 +2406,7 @@ function KitchenView() {
                       const status = normalizeStatus(item.kitchenStatus);
                       const nextStatus = nextKitchenItemStatus(status);
                       const actionKey = `${item.orderId}:${item.lineId}:${nextStatus || "none"}`;
+                      const customerLabel = kitchenCustomerLabel(item);
 
                       return (
                         <tr key={`${item.orderId}-${item.lineId}`} className="border-t border-slate-100 align-top">
@@ -2389,6 +2420,7 @@ function KitchenView() {
                               {item.name}
                               {item.variantName ? ` (${item.variantName})` : ""}
                             </p>
+                            {customerLabel ? <p className="text-[11px] font-medium text-sky-700">Customer: {customerLabel}</p> : null}
                             {item.note ? <p className="text-[11px] italic text-amber-700">{item.note}</p> : null}
                           </td>
                           <td className="px-3 py-2 font-semibold text-slate-700">{item.quantity}</td>

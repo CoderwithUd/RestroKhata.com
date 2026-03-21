@@ -8,7 +8,6 @@ import { getErrorMessage } from "@/lib/error";
 import { showError, showSuccess } from "@/lib/feedback";
 import {
   useCreateTableMutation,
-  useCreateTableQrTokenMutation,
   useDeleteTableMutation,
   useGetTablesQuery,
   useLazyGetTableQrQuery,
@@ -23,8 +22,12 @@ import type {
 type Props = { tenantName?: string; tenantSlug?: string };
 type Filter = "all" | "active" | "inactive";
 type TableListViewMode = "grid" | "table";
-type QrMode = "static" | "token";
-type QrTemplateId = "template1" | "template2";
+type QrTemplateId =
+  | "template1"
+  | "template2"
+  | "template3"
+  | "template4"
+  | "template5";
 
 type FormState = {
   number: number;
@@ -38,14 +41,11 @@ type FormState = {
 type QrState = {
   open: boolean;
   table: TableRecord | null;
-  mode: QrMode;
   format: TableQrFormat;
   templateId: QrTemplateId;
   baseUrl: string;
-  expiresInHours: number;
   qr: string;
   qrPayload: string;
-  token: string;
   error: string;
 };
 
@@ -77,24 +77,60 @@ const QR_TEMPLATES: QrTemplate[] = [
     id: "template1",
     name: "Template 1",
     description: "Classic table placard",
-    imagePath: "/QR/Template1.png",
+    imagePath: "/QR/QRSCANTEMPLATE1.jpg",
     qrSlot: {
-      x: 0.361,
-      y: 0.361,
-      size: 0.276,
-      padding: 0.05,
+      x: 0.18,
+      y: 0.46,
+      size: 0.64,
+      padding: 0.055,
     },
   },
   {
     id: "template2",
     name: "Template 2",
     description: "Modern menu standee",
-    imagePath: "/QR/Template2.png",
+    imagePath: "/QR/QRSCANTEMPLATE2.jpg",
     qrSlot: {
-      x: 0.361,
+      x: 0.18,
+      y: 0.395,
+      size: 0.64,
+      padding: 0.055,
+    },
+  },
+  {
+    id: "template3",
+    name: "Template 3",
+    description: "Warm dine card",
+    imagePath: "/QR/QRSCANTEMPLATE3.jpg",
+    qrSlot: {
+      x: 0.23,
       y: 0.405,
-      size: 0.276,
-      padding: 0.05,
+      size: 0.53,
+      padding: 0.03,
+    },
+  },
+  {
+    id: "template4",
+    name: "Template 4",
+    description: "Premium counter card",
+    imagePath: "/QR/QRSCANTEMPLATE4.jpg",
+    qrSlot: {
+      x: 0.245,
+      y: 0.405,
+      size: 0.49,
+      padding: 0.04,
+    },
+  },
+  {
+    id: "template5",
+    name: "Template 5",
+    description: "Signature table stand",
+    imagePath: "/QR/QRSCANTEMPLATE5.jpg",
+    qrSlot: {
+      x: 0.255,
+      y: 0.49,
+      size: 0.35,
+      padding: 0.02,
     },
   },
 ];
@@ -313,8 +349,6 @@ export function TablesWorkspace({ tenantName, tenantSlug }: Props) {
   const [updateTable, { isLoading: isUpdating }] = useUpdateTableMutation();
   const [deleteTable, { isLoading: isDeleting }] = useDeleteTableMutation();
   const [fetchQr, { isFetching: isQrFetching }] = useLazyGetTableQrQuery();
-  const [createQrToken, { isLoading: isQrTokenLoading }] =
-    useCreateTableQrTokenMutation();
 
   const tables = useMemo(
     () => [...(data?.items || [])].sort((a, b) => a.number - b.number),
@@ -380,19 +414,16 @@ export function TablesWorkspace({ tenantName, tenantSlug }: Props) {
   const [qr, setQr] = useState<QrState>({
     open: false,
     table: null,
-    mode: "token",
     format: "dataUrl",
     templateId: defaultTemplate.id,
     baseUrl: defaultQrBaseUrl(),
-    expiresInHours: 720,
     qr: "",
     qrPayload: "",
-    token: "",
     error: "",
   });
 
   const preview = qrSrc(qr.qr, qr.format);
-  const qrBusy = isQrFetching || isQrTokenLoading;
+  const qrBusy = isQrFetching;
   const selectedTemplate = getTemplateById(qr.templateId);
   const qrPayloadUrl = normalizePayloadUrl(qr.qrPayload, qr.baseUrl);
 
@@ -500,32 +531,27 @@ export function TablesWorkspace({ tenantName, tenantSlug }: Props) {
     setQr({
       open: true,
       table,
-      mode: "token",
       format: table.qrFormat || "dataUrl",
       templateId: template.id,
       baseUrl,
-      expiresInHours: 720,
       qr: table.qrCode || "",
       qrPayload: table.qrPayload || "",
-      token: "",
       error: "",
     });
 
     if (!shouldRefresh) return;
 
     try {
-      const r = await createQrToken({
+      const r = await fetchQr({
         tableId: table.id,
         format: table.qrFormat || "dataUrl",
         baseUrl,
-        expiresInHours: 720,
       }).unwrap();
 
       setQr((prev) => ({
         ...prev,
         qr: r.qr,
         qrPayload: r.qrPayload,
-        token: r.token,
         format: r.format,
       }));
     } catch (e) {
@@ -538,22 +564,6 @@ export function TablesWorkspace({ tenantName, tenantSlug }: Props) {
     const baseUrl = resolveQrBaseUrl(qr.baseUrl);
     setQr((prev) => ({ ...prev, error: "", baseUrl }));
     try {
-      if (qr.mode === "token") {
-        const r = await createQrToken({
-          tableId: qr.table.id,
-          format: qr.format,
-          baseUrl,
-          expiresInHours: norm(qr.expiresInHours, 720),
-        }).unwrap();
-        return setQr((prev) => ({
-          ...prev,
-          qr: r.qr,
-          qrPayload: r.qrPayload,
-          token: r.token,
-          format: r.format,
-          baseUrl,
-        }));
-      }
       const r = await fetchQr({
         tableId: qr.table.id,
         format: qr.format,
@@ -563,7 +573,6 @@ export function TablesWorkspace({ tenantName, tenantSlug }: Props) {
         ...prev,
         qr: r.qr,
         qrPayload: r.qrPayload,
-        token: "",
         format: r.format,
         baseUrl,
       }));
@@ -586,7 +595,7 @@ export function TablesWorkspace({ tenantName, tenantSlug }: Props) {
       await downloadTemplateCard({
         qr: qr.qr,
         format: qr.format,
-        fileBase: `table-${qr.table.number}-${qr.mode}`,
+        fileBase: `table-${qr.table.number}-static`,
         template: selectedTemplate,
       });
     } catch (e) {
@@ -1530,21 +1539,8 @@ export function TablesWorkspace({ tenantName, tenantSlug }: Props) {
               </div>
 
               <div className="space-y-3 rounded-2xl border border-[#e8e0d0] bg-[#fffcf6] p-4">
-                <div className="grid grid-cols-2 gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setQr((prev) => ({ ...prev, mode: "static" }))}
-                    className={`rounded-lg border px-3 py-2 text-xs font-semibold ${qr.mode === "static" ? "border-amber-200 bg-amber-50 text-amber-800" : "border-slate-200 bg-white text-slate-600"}`}
-                  >
-                    Static
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setQr((prev) => ({ ...prev, mode: "token" }))}
-                    className={`rounded-lg border px-3 py-2 text-xs font-semibold ${qr.mode === "token" ? "border-blue-200 bg-blue-50 text-blue-800" : "border-slate-200 bg-white text-slate-600"}`}
-                  >
-                    Token
-                  </button>
+                <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-800">
+                  Static QR mode active
                 </div>
 
                 <select
@@ -1565,35 +1561,24 @@ export function TablesWorkspace({ tenantName, tenantSlug }: Props) {
                   QR link always starts with {FRONTEND_PUBLIC_URL}
                 </div>
 
-                {qr.mode === "token" ? (
-                  <input
-                    type="number"
-                    min={1}
-                    value={qr.expiresInHours}
-                    onChange={(event) =>
-                      setQr((prev) => ({
-                        ...prev,
-                        expiresInHours: norm(Number(event.target.value), 720),
-                      }))
-                    }
-                    className="h-10 w-full rounded-lg border border-[#ddd4c1] bg-white px-3 text-sm"
-                    placeholder="Token expiry in hours"
-                  />
-                ) : null}
-
                 <div className="space-y-2">
-                  <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">
-                    Templates
-                  </p>
-                  <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">
+                      Templates
+                    </p>
+                    <span className="text-[10px] font-medium text-slate-400">
+                      Swipe to select
+                    </span>
+                  </div>
+                  <div className="no-scrollbar -mx-1 flex gap-2 overflow-x-auto px-1 pb-1 snap-x snap-mandatory">
                     {QR_TEMPLATES.map((template) => (
                       <button
                         key={template.id}
                         type="button"
                         onClick={() => applyTemplate(template.id)}
-                        className={`rounded-xl border px-2.5 py-2 text-left ${qr.templateId === template.id ? "border-slate-700 bg-white" : "border-[#e4dccf] bg-[#fffaf2]"}`}
+                        className={`w-[104px] shrink-0 snap-start rounded-2xl border p-2 text-left transition ${qr.templateId === template.id ? "border-slate-700 bg-white shadow-sm" : "border-[#e4dccf] bg-[#fffaf2]"}`}
                       >
-                        <div className="relative mb-2 aspect-[1684/2528] w-full overflow-hidden rounded-lg border border-[#e9e0d2] bg-white">
+                        <div className="relative mb-2 aspect-[1684/2528] w-full overflow-hidden rounded-xl border border-[#e9e0d2] bg-white">
                           <Image
                             src={template.imagePath}
                             alt={`${template.name} thumbnail`}
@@ -1601,21 +1586,22 @@ export function TablesWorkspace({ tenantName, tenantSlug }: Props) {
                             unoptimized
                             className="object-cover"
                           />
+                          {qr.templateId === template.id ? (
+                            <span className="absolute left-1.5 top-1.5 rounded-full bg-slate-900 px-1.5 py-0.5 text-[9px] font-semibold text-white">
+                              Active
+                            </span>
+                          ) : null}
                         </div>
-                        <p className="text-xs font-semibold text-slate-800">
+                        <p className="truncate text-[11px] font-semibold text-slate-800">
                           {template.name}
                         </p>
-                        <p className="text-[11px] text-slate-500">{template.description}</p>
+                        <p className="mt-0.5 line-clamp-2 text-[10px] leading-4 text-slate-500">
+                          {template.description}
+                        </p>
                       </button>
                     ))}
                   </div>
                 </div>
-
-                {qr.token ? (
-                  <p className="rounded-lg border border-blue-200 bg-blue-50 px-2.5 py-2 text-[11px] text-blue-800">
-                    Token: {qr.token}
-                  </p>
-                ) : null}
                 {qr.error ? (
                   <p className="rounded-lg border border-rose-200 bg-rose-50 px-2.5 py-2 text-[11px] text-rose-700">
                     {qr.error}
