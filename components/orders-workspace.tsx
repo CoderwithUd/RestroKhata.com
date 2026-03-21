@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useConfirm } from "@/components/confirm-provider";
 import { getErrorMessage } from "@/lib/error";
 import { showError, showInfo, showSuccess } from "@/lib/feedback";
@@ -20,7 +20,7 @@ import { useAppSelector } from "@/store/hooks";
 import { selectAuthToken } from "@/store/slices/authSlice";
 import type { KitchenQueueItem, OrderItem, OrderRecord, OrderStatus } from "@/store/types/orders";
 import type { TableRecord } from "@/store/types/tables";
-import type { MenuItemRecord } from "@/store/types/menu";
+import type { MenuItemRecord, MenuVariantRecord } from "@/store/types/menu";
 
 // ─── Role ────────────────────────────────────────────────────────────────────
 type RoleKey = "owner" | "manager" | "waiter" | "kitchen";
@@ -206,6 +206,11 @@ function getServeableReadyItems(order: OrderRecord): OrderItem[] {
   return activeOrderItems(order).filter(
     (item) => Boolean(item.lineId) && normalizeStatus(item.status) === "READY",
   );
+}
+
+function availableMenuVariants(item: MenuItemRecord): MenuVariantRecord[] {
+  const available = (item.variants || []).filter((variant) => variant.isAvailable);
+  return available.length ? available : item.variants || [];
 }
 
 function toTimestamp(value?: string): number | null {
@@ -426,6 +431,7 @@ function MenuBrowser({
   const [search, setSearch] = useState("");
   const [tableNote, setTableNote] = useState("");
   const [cartOpen, setCartOpen] = useState(false);
+  const [selectedVariants, setSelectedVariants] = useState<Record<string, string | undefined>>({});
   const searchRef = useRef<HTMLInputElement>(null);
 
   const categories = useMemo(() => menuData?.categories || [], [menuData]);
@@ -529,8 +535,22 @@ function MenuBrowser({
     return cart.find((e) => e.itemId === itemId && e.variantId === variantId)?.quantity ?? 0;
   }
 
-  function addItem(item: MenuItemRecord) {
-    const variant = item.variants?.[0];
+  function resolveSelectedVariant(item: MenuItemRecord): MenuVariantRecord | undefined {
+    const variants = availableMenuVariants(item);
+    if (!variants.length) return undefined;
+    return variants.find((variant) => variant.id === selectedVariants[item.id]) || variants[0];
+  }
+
+  function setItemVariant(itemId: string, variantId?: string) {
+    setSelectedVariants((prev) => ({ ...prev, [itemId]: variantId }));
+  }
+
+  function addItem(item: MenuItemRecord, forcedVariantId?: string) {
+    const variants = availableMenuVariants(item);
+    const variant =
+      variants.find((entry) => entry.id === forcedVariantId) ||
+      variants.find((entry) => entry.id === selectedVariants[item.id]) ||
+      variants[0];
     const variantId = variant?.id;
     const price = variant?.price ?? item.price ?? 0;
     setCart((prev) => {
@@ -550,6 +570,16 @@ function MenuBrowser({
         },
       ];
     });
+  }
+
+  function incrementCartEntry(itemId: string, variantId?: string) {
+    setCart((prev) =>
+      prev.map((entry) =>
+        entry.itemId === itemId && entry.variantId === variantId
+          ? { ...entry, quantity: entry.quantity + 1 }
+          : entry,
+      ),
+    );
   }
 
   function removeItem(itemId: string, variantId?: string) {
@@ -744,45 +774,85 @@ function MenuBrowser({
               {displayedItems.length === 0 ? (
                 <div className="py-12 text-center text-sm text-slate-500">No items found</div>
               ) : (
-                <div className="grid grid-cols-2 gap-2 px-1 sm:grid-cols-3 lg:grid-cols-3 xl:grid-cols-4">
+                <div className="grid grid-cols-1 gap-3 px-1 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
                   {displayedItems.map((item) => {
-                    const variant = item.variants?.[0];
-                    const variantId = variant?.id;
-                    const price = variant?.price ?? item.price ?? 0;
+                    const variants = availableMenuVariants(item);
+                    const selectedVariant = resolveSelectedVariant(item);
+                    const variantId = selectedVariant?.id;
+                    const price = selectedVariant?.price ?? item.price ?? 0;
                     const qty = getQty(item.id, variantId);
                     return (
                       <div
                         key={item.id}
-                        className={`rounded-xl border p-2.5 transition ${qty > 0 ? "border-amber-300 bg-amber-50" : "border-slate-200 bg-white"}`}
+                        className={`rounded-2xl border p-3 shadow-sm transition ${qty > 0 ? "border-amber-300 bg-amber-50/70 shadow-amber-100" : "border-slate-200 bg-white"}`}
                       >
-                        <p className="mb-0.5 text-xs font-semibold leading-snug text-slate-900 line-clamp-2">{item.name}</p>
-                        <p className="text-xs text-slate-500">{fmtCurrency(price)}</p>
-                        {variant?.name && (
-                          <p className="text-[10px] text-slate-400">{variant.name}</p>
-                        )}
-                        <div className="mt-2 flex items-center justify-between">
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="min-w-0">
+                            <p className="text-sm font-semibold leading-snug text-slate-900 line-clamp-2">{item.name}</p>
+                            <p className="mt-1 text-xs font-semibold text-amber-700">{fmtCurrency(price)}</p>
+                            <p className="mt-1 text-[11px] text-slate-500">{item.catName}</p>
+                          </div>
+                          {qty > 0 ? (
+                            <span className="rounded-full border border-amber-300 bg-amber-100 px-2 py-0.5 text-[10px] font-bold text-amber-900">
+                              {qty} in cart
+                            </span>
+                          ) : null}
+                        </div>
+                        {variants.length > 0 ? (
+                          <div className="mt-3 space-y-2">
+                            <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                              {variants.length > 1 ? "Choose variant" : "Variant"}
+                            </p>
+                            <div className="flex flex-wrap gap-1.5">
+                              {variants.map((variant) => {
+                                const active = variant.id === variantId;
+                                const variantQty = getQty(item.id, variant.id);
+                                return (
+                                  <button
+                                    key={variant.id}
+                                    type="button"
+                                    onClick={() => setItemVariant(item.id, variant.id)}
+                                    className={`rounded-full border px-2.5 py-1 text-[11px] font-semibold transition ${
+                                      active
+                                        ? "border-amber-400 bg-amber-100 text-amber-900"
+                                        : "border-slate-200 bg-white text-slate-600"
+                                    }`}
+                                  >
+                                    {variant.name} | {fmtCurrency(variant.price)}
+                                    {variantQty > 0 ? ` (${variantQty})` : ""}
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        ) : null}
+                        <div className="mt-3 flex items-center justify-between gap-2 border-t border-slate-100 pt-3">
+                          <div className="min-w-0">
+                            <p className="text-[11px] font-semibold text-slate-500">Selected</p>
+                            <p className="truncate text-xs text-slate-700">{selectedVariant?.name || "Regular"}</p>
+                          </div>
                           {qty === 0 ? (
                             <button
                               type="button"
-                              onClick={() => addItem(item)}
-                              className="w-full rounded-lg bg-amber-500 py-1.5 text-xs font-bold text-white active:scale-95"
+                              onClick={() => addItem(item, variantId)}
+                              className="min-w-[112px] rounded-xl bg-amber-500 px-4 py-2 text-xs font-bold text-white active:scale-95"
                             >
-                              + Add
+                              Add to Cart
                             </button>
                           ) : (
-                            <div className="flex w-full items-center justify-between gap-1">
+                            <div className="flex min-w-[112px] items-center justify-between gap-1 rounded-xl border border-amber-200 bg-white px-1 py-1">
                               <button
                                 type="button"
                                 onClick={() => removeItem(item.id, variantId)}
-                                className="flex h-7 w-7 items-center justify-center rounded-lg border border-slate-300 bg-white text-slate-700 font-bold"
+                                className="flex h-8 w-8 items-center justify-center rounded-lg border border-slate-300 bg-white text-slate-700 font-bold"
                               >
                                 −
                               </button>
                               <span className="text-sm font-bold text-amber-700">{qty}</span>
                               <button
                                 type="button"
-                                onClick={() => addItem(item)}
-                                className="flex h-7 w-7 items-center justify-center rounded-lg bg-amber-500 text-white font-bold"
+                                onClick={() => addItem(item, variantId)}
+                                className="flex h-8 w-8 items-center justify-center rounded-lg bg-amber-500 text-white font-bold"
                               >
                                 +
                               </button>
@@ -850,7 +920,7 @@ function MenuBrowser({
               </div>
             ) : null}
             {cart.length === 0 ? (
-              <p className="py-6 text-center text-xs text-slate-400">Tap items to add</p>
+              <p className="py-6 text-center text-xs text-slate-400">{existingOrder ? "No new items added yet" : "Tap items to add"}</p>
             ) : (
               <div className="space-y-2">
                 {cart.map((entry) => (
@@ -863,7 +933,7 @@ function MenuBrowser({
                     <div className="flex items-center gap-1">
                       <button onClick={() => removeItem(entry.itemId, entry.variantId)} className="flex h-6 w-6 items-center justify-center rounded-md border border-slate-200 text-xs text-slate-600">−</button>
                       <span className="text-xs font-bold w-4 text-center">{entry.quantity}</span>
-                      <button onClick={() => setCart(prev => prev.map(e => e.itemId === entry.itemId && e.variantId === entry.variantId ? { ...e, quantity: e.quantity + 1 } : e))} className="flex h-6 w-6 items-center justify-center rounded-md bg-amber-500 text-xs text-white">+</button>
+                      <button onClick={() => incrementCartEntry(entry.itemId, entry.variantId)} className="flex h-6 w-6 items-center justify-center rounded-md bg-amber-500 text-xs text-white">+</button>
                     </div>
                   </div>
                 ))}
@@ -906,7 +976,7 @@ function MenuBrowser({
               <button onClick={() => setCartOpen(false)} className="text-slate-400">✕</button>
             </div>
             {cart.length === 0 ? (
-              <p className="py-8 text-center text-sm text-slate-400">Nothing in cart yet</p>
+              <p className="py-8 text-center text-sm text-slate-400">{existingOrder ? "No new items added yet" : "Nothing in cart yet"}</p>
             ) : (
               <div className="max-h-64 space-y-3 overflow-y-auto">
                 {cart.map((entry) => (
@@ -918,7 +988,7 @@ function MenuBrowser({
                     <div className="flex items-center gap-2">
                       <button onClick={() => removeItem(entry.itemId, entry.variantId)} className="h-7 w-7 rounded-lg border border-slate-200 text-sm font-bold">−</button>
                       <span className="w-4 text-center text-sm font-bold">{entry.quantity}</span>
-                      <button onClick={() => setCart(prev => prev.map(e => e.itemId === entry.itemId && e.variantId === entry.variantId ? { ...e, quantity: e.quantity + 1 } : e))} className="h-7 w-7 rounded-lg bg-amber-500 text-sm font-bold text-white">+</button>
+                      <button onClick={() => incrementCartEntry(entry.itemId, entry.variantId)} className="h-7 w-7 rounded-lg bg-amber-500 text-sm font-bold text-white">+</button>
                     </div>
                   </div>
                 ))}
@@ -1146,9 +1216,11 @@ function WaiterActionBoard({
 type WaiterViewProps = {
   onOrderPlaced: () => void;
   initialTableId?: string;
+  mode?: "board" | "live-board" | "select-table" | "select-items";
 };
 
-function WaiterView({ onOrderPlaced, initialTableId }: WaiterViewProps) {
+function WaiterView({ onOrderPlaced, initialTableId, mode = "board" }: WaiterViewProps) {
+  const router = useRouter();
   const token = useAppSelector(selectAuthToken);
   const { data: tablesData, refetch: refetchTables } = useGetTablesQuery({ isActive: true });
   const { data: ordersData, refetch: refetchOrders } = useGetOrdersQuery({ status: ["PLACED", "IN_PROGRESS", "READY", "SERVED"] });
@@ -1164,6 +1236,9 @@ function WaiterView({ onOrderPlaced, initialTableId }: WaiterViewProps) {
   const [selectedTable, setSelectedTable] = useState<TableRecord | null>(null);
   const [, setExistingOrder] = useState<OrderRecord | undefined>(undefined);
   const autoSelectedTableRef = useRef<string | null>(null);
+  const routeDrivenMenu = mode === "select-items";
+  const routeDrivenTableSelection = mode === "select-table";
+  const waiterLiveOnly = mode === "live-board";
 
   // ── Socket: real-time updates ──────────────────────────────────────────────
   useOrderSocket({
@@ -1260,6 +1335,10 @@ function WaiterView({ onOrderPlaced, initialTableId }: WaiterViewProps) {
   }, [initialTableId, orders, tables]);
 
   function handleSelectTable(table: TableRecord, existing?: OrderRecord) {
+    if (routeDrivenTableSelection) {
+      router.push(`/dashboard/orders/items?tableId=${encodeURIComponent(table.id)}`);
+      return;
+    }
     setSelectedTable(table);
     setExistingOrder(existing);
     setStep("menu");
@@ -1387,7 +1466,7 @@ function WaiterView({ onOrderPlaced, initialTableId }: WaiterViewProps) {
     <div className="flex h-full flex-col">
       <WaiterLiveHeader connected={socketConnected} />
       {/* Step indicator */}
-      <div className="mb-4 flex items-center gap-2">
+      {mode === "board" ? <div className="mb-4 flex items-center gap-2">
         {(["tables", "menu"] as const).map((s, i) => (
           <div key={s} className="flex items-center gap-2">
             <div className={`flex h-7 w-7 items-center justify-center rounded-full text-xs font-bold ${step === s || (step === "placing" && s === "menu") ? "bg-amber-500 text-white" : step === "menu" && s === "tables" ? "bg-emerald-500 text-white" : "bg-slate-200 text-slate-500"}`}>
@@ -1397,32 +1476,53 @@ function WaiterView({ onOrderPlaced, initialTableId }: WaiterViewProps) {
             {i < 1 && <div className="h-px w-4 bg-slate-300" />}
           </div>
         ))}
-      </div>
+      </div> : null}
 
-      {step === "tables" && (
-        <div className="grid gap-4 xl:grid-cols-[minmax(0,1.15fr)_minmax(0,0.85fr)] xl:items-start">
-          <TableGrid
-            tables={tables}
-            orders={orders}
-            invoicedOrderIds={invoicedOrderIds}
-            issuedInvoiceTableIds={issuedInvoiceTableIds}
-            appendSignals={appendSignals}
-            onSelectTable={handleSelectTable}
-            onCreateInvoice={handleCreateInvoice}
-            creatingInvoiceOrderId={creatingInvoiceOrderId}
-          />
-          <WaiterActionBoard
-            orders={waiterActionOrders}
-            appendSignals={appendSignals}
-            servingOrderId={servingOrderId}
-            servingItemKey={servingItemKey}
-            creatingInvoiceOrderId={creatingInvoiceOrderId}
-            onMarkServed={handleMarkServed}
-            onMarkItemServed={handleMarkItemServed}
-            onMarkReadyItemsServed={handleMarkReadyItemsServed}
-            onCreateInvoice={handleCreateInvoice}
-            className="mt-0"
-          />
+      {step === "tables" && !routeDrivenMenu && (
+        <div className={`grid gap-4 ${mode === "board" ? "xl:grid-cols-[minmax(0,1.15fr)_minmax(0,0.85fr)] xl:items-start" : ""}`}>
+          {!waiterLiveOnly ? (
+            <TableGrid
+              tables={tables}
+              orders={orders}
+              invoicedOrderIds={invoicedOrderIds}
+              issuedInvoiceTableIds={issuedInvoiceTableIds}
+              appendSignals={appendSignals}
+              onSelectTable={handleSelectTable}
+              onCreateInvoice={handleCreateInvoice}
+              creatingInvoiceOrderId={creatingInvoiceOrderId}
+            />
+          ) : null}
+          {mode === "board" || waiterLiveOnly ? (
+            <div className={waiterLiveOnly ? "space-y-4" : undefined}>
+              {waiterLiveOnly ? (
+                <div className="flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-slate-200 bg-white p-4">
+                  <div>
+                    <p className="text-sm font-semibold text-slate-900">Waiter Live Orders</p>
+                    <p className="text-xs text-slate-500">Serve ready items yahin se karo. New order ke liye table selection alag page me hai.</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => router.push("/dashboard/orders/new")}
+                    className="rounded-xl bg-amber-500 px-4 py-2 text-sm font-bold text-white"
+                  >
+                    Take New Order
+                  </button>
+                </div>
+              ) : null}
+            <WaiterActionBoard
+              orders={waiterActionOrders}
+              appendSignals={appendSignals}
+              servingOrderId={servingOrderId}
+              servingItemKey={servingItemKey}
+              creatingInvoiceOrderId={creatingInvoiceOrderId}
+              onMarkServed={handleMarkServed}
+              onMarkItemServed={handleMarkItemServed}
+              onMarkReadyItemsServed={handleMarkReadyItemsServed}
+              onCreateInvoice={handleCreateInvoice}
+              className="mt-0"
+            />
+            </div>
+          ) : null}
         </div>
       )}
 
@@ -1443,11 +1543,32 @@ function WaiterView({ onOrderPlaced, initialTableId }: WaiterViewProps) {
             servingItemKey={servingItemKey}
             onServeExistingOrderItem={handleMarkItemServed}
             onServeReadyItems={handleMarkReadyItemsServed}
-            onBack={() => { setStep("tables"); setSelectedTable(null); setExistingOrder(undefined); }}
+            onBack={() => {
+              if (routeDrivenMenu) {
+                router.push("/dashboard/orders/new");
+                return;
+              }
+              setStep("tables");
+              setSelectedTable(null);
+              setExistingOrder(undefined);
+            }}
             onConfirm={handleConfirm}
           />
         </div>
       )}
+      {routeDrivenMenu && !selectedTable ? (
+        <div className="rounded-2xl border border-dashed border-slate-300 bg-white p-8 text-center">
+          <p className="text-sm font-semibold text-slate-900">Table not selected</p>
+          <p className="mt-1 text-xs text-slate-500">Pehle table choose karo, phir items add karo.</p>
+          <button
+            type="button"
+            onClick={() => router.push("/dashboard/orders/new")}
+            className="mt-4 rounded-xl bg-amber-500 px-4 py-2 text-sm font-bold text-white"
+          >
+            Go To Table Selection
+          </button>
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -1887,7 +2008,7 @@ function ManagerView({ role }: { role: RoleKey }) {
           </button>
           <button
             type="button"
-            onClick={() => router.push("/dashboard/orders?new=1")}
+            onClick={() => router.push("/dashboard/orders/new")}
             className="rounded-xl bg-amber-500 px-3 py-2 text-xs font-bold text-white shadow-sm shadow-amber-200"
           >
             + New Order
@@ -2312,24 +2433,33 @@ type Props = {
 };
 
 export function OrdersWorkspace({ rawRole }: Props) {
+  const pathname = usePathname();
   const router = useRouter();
   const searchParams = useSearchParams();
   const role = normalizeRole(rawRole);
   const routeTableId = searchParams.get("tableId")?.trim() || undefined;
   const routeNewOrder = searchParams.get("new") === "1";
-
+  const routeSelectTablePage = pathname === "/dashboard/orders/new";
+  const routeSelectItemsPage = pathname === "/dashboard/orders/items";
   const [toast, setToast] = useState<{ msg: string; type: "ok" | "err" } | null>(null);
   const isWaiter = role === "waiter";
   const isKitchen = role === "kitchen";
-  const forceOrderComposer = !isKitchen && (routeNewOrder || Boolean(routeTableId));
+  const splitComposerMode = routeSelectTablePage
+    ? "select-table"
+    : routeSelectItemsPage
+      ? "select-items"
+      : isWaiter
+        ? "live-board"
+        : "board";
+  const forceOrderComposer = !isKitchen && (routeNewOrder || Boolean(routeTableId) || routeSelectTablePage || routeSelectItemsPage);
   const showWaiterView = isWaiter || forceOrderComposer;
 
   const handleOrderPlaced = useCallback(() => {
     setToast({ msg: "Order placed!", type: "ok" });
-    if (routeNewOrder || routeTableId) {
+    if (routeNewOrder || routeTableId || routeSelectTablePage || routeSelectItemsPage) {
       router.push("/dashboard/orders");
     }
-  }, [routeNewOrder, routeTableId, router]);
+  }, [routeNewOrder, routeSelectItemsPage, routeSelectTablePage, routeTableId, router]);
 
   useEffect(() => {
     if (!toast) return;
@@ -2345,15 +2475,33 @@ export function OrdersWorkspace({ rawRole }: Props) {
         <>
           <div className="mb-4">
             <h2 className="text-lg font-bold text-slate-900">
-              {forceOrderComposer && !isWaiter ? "Create / Update Order" : "Take Order"}
+              {routeSelectTablePage
+                ? "Select Table"
+                : routeSelectItemsPage
+                  ? "Select Items"
+                  : isWaiter
+                    ? "Waiter Orders"
+                  : forceOrderComposer && !isWaiter
+                    ? "Create / Update Order"
+                    : "Take Order"}
             </h2>
             <p className="text-xs text-slate-500">
-              {routeTableId
-                ? "Selected table opened. Add items to append in the same active order."
-                : "Pick a table, add items, and place the order in 3 taps."}
+              {routeSelectTablePage
+                ? "Open table picker on its own page, then continue to menu selection."
+                : routeSelectItemsPage
+                  ? "Choose item variants, add them quickly, and place the order."
+                  : isWaiter
+                    ? "Ready, cooking, aur billing-wale waiter orders ko is page se handle karo."
+                  : routeTableId
+                    ? "Selected table opened. Add items to append in the same active order."
+                    : "Pick a table, add items, and place the order in 3 taps."}
             </p>
           </div>
-          <WaiterView onOrderPlaced={handleOrderPlaced} initialTableId={routeTableId} />
+          <WaiterView
+            onOrderPlaced={handleOrderPlaced}
+            initialTableId={routeTableId}
+            mode={splitComposerMode}
+          />
         </>
       ) : isKitchen ? (
         <>

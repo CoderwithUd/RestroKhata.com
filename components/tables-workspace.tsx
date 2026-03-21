@@ -353,7 +353,7 @@ export function TablesWorkspace({ tenantName, tenantSlug }: Props) {
   }
 
   function openTableOrder(table: TableRecord) {
-    router.push(`/dashboard/orders?tableId=${encodeURIComponent(table.id)}`);
+    router.push(`/dashboard/orders/items?tableId=${encodeURIComponent(table.id)}`);
   }
 
   const [createForm, setCreateForm] = useState<FormState>({

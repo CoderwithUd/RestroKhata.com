@@ -1230,7 +1230,7 @@ export function DashboardCard({ section }: DashboardCardProps) {
               ) : null}
               <button
                 type="button"
-                onClick={() => router.push("/dashboard/orders?new=1")}
+                onClick={() => router.push("/dashboard/orders/new")}
                 className="hidden rounded-xl border border-[#e6dfd1] bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-amber-50 md:inline-flex"
               >
                 + New Order
@@ -1316,7 +1316,7 @@ export function DashboardCard({ section }: DashboardCardProps) {
                           onClick={() => {
                             const status = (table.status || "").toUpperCase();
                             if (status === "OCCUPIED" || status === "BILLING") {
-                              router.push(`/dashboard/orders?tableId=${encodeURIComponent(table.id)}`);
+                              router.push(`/dashboard/orders/items?tableId=${encodeURIComponent(table.id)}`);
                               return;
                             }
                             router.push("/dashboard/tables");
