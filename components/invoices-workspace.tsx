@@ -12,7 +12,7 @@ import {
 } from "@/store/api/invoicesApi";
 import { useTentantProfileQuery } from "@/store/api/authApi";
 import { useGetOrdersQuery } from "@/store/api/ordersApi";
-import { useGetTablesQuery } from "@/store/api/tablesApi";
+import { useGetTablesQuery, useUpdateTableMutation } from "@/store/api/tablesApi";
 import { useAppSelector } from "@/store/hooks";
 import { selectAuthToken } from "@/store/slices/authSlice";
 import type { InvoiceRecord } from "@/store/types/invoices";
@@ -163,6 +163,15 @@ function timeAgo(iso?: string): string {
   return `${Math.floor(diff / 1440)}d ago`;
 }
 
+function timeValue(...values: Array<string | undefined>): number {
+  for (const value of values) {
+    if (!value) continue;
+    const parsed = new Date(value).getTime();
+    if (Number.isFinite(parsed)) return parsed;
+  }
+  return 0;
+}
+
 function itemTotal(order: OrderRecord): number {
   const direct = order.grandTotal ?? order.subTotal;
   if (typeof direct === "number" && Number.isFinite(direct) && direct > 0) return direct;
@@ -264,6 +273,7 @@ function InvoicePreview({
 
   const due = invoiceAmount(invoice);
   const isIssued = normalizeStatus(invoice.status) === "ISSUED";
+  const canCollectPayment = isIssued && due > 0;
 
   return (
     <article className="rounded-[28px] border border-[#dfd2bb] bg-[linear-gradient(170deg,#fffef9_0%,#fff6e8_100%)] p-4 shadow-[0_24px_50px_-36px_rgba(53,38,18,0.5)]">
@@ -340,22 +350,34 @@ function InvoicePreview({
         >
           WhatsApp Share
         </button>
-        <button
-          type="button"
-          disabled={!isIssued || isPaying || due <= 0}
-          onClick={() => onPay(invoice, "CASH")}
-          className="rounded-2xl bg-emerald-600 px-3 py-3 text-sm font-semibold text-white disabled:opacity-50"
-        >
-          {isPaying ? "Processing..." : "Cash Paid"}
-        </button>
-        <button
-          type="button"
-          disabled={!isIssued || isPaying || due <= 0}
-          onClick={() => onPay(invoice, "UPI")}
-          className="rounded-2xl border border-blue-200 bg-blue-50 px-3 py-3 text-sm font-semibold text-blue-700 disabled:opacity-50"
-        >
-          {isPaying ? "Processing..." : "UPI Paid"}
-        </button>
+        {canCollectPayment ? (
+          <>
+            <button
+              type="button"
+              disabled={isPaying}
+              onClick={() => onPay(invoice, "CASH")}
+              className="rounded-2xl bg-emerald-600 px-3 py-3 text-sm font-semibold text-white disabled:opacity-50"
+            >
+              {isPaying ? "Processing..." : "Cash Paid"}
+            </button>
+            <button
+              type="button"
+              disabled={isPaying}
+              onClick={() => onPay(invoice, "UPI")}
+              className="rounded-2xl border border-blue-200 bg-blue-50 px-3 py-3 text-sm font-semibold text-blue-700 disabled:opacity-50"
+            >
+              {isPaying ? "Processing..." : "UPI Paid"}
+            </button>
+          </>
+        ) : (
+          <div className="sm:col-span-2 xl:col-span-2 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
+            {normalizeStatus(invoice.status) === "PAID"
+              ? `Payment already collected${invoice.payment?.method ? ` via ${invoice.payment.method}` : ""}.`
+              : due <= 0
+                ? "No balance left to collect."
+                : "Only ISSUED invoices can be collected."}
+          </div>
+        )}
       </div>
     </article>
   );
@@ -394,6 +416,7 @@ export function InvoicesWorkspace({ rawRole }: Props) {
 
   const [createInvoice, { isLoading: isCreating }] = useCreateInvoiceMutation();
   const [payInvoice, { isLoading: isPaying }] = usePayInvoiceMutation();
+  const [updateTable] = useUpdateTableMutation();
 
   useOrderSocket({
     token,
@@ -483,6 +506,30 @@ export function InvoicesWorkspace({ rawRole }: Props) {
     return map;
   }, [invoices]);
 
+  const paidInvoiceByTableId = useMemo(() => {
+    const map = new Map<string, InvoiceRecord>();
+    invoices.forEach((invoice) => {
+      const tableId = invoice.table?.id;
+      if (!tableId) return;
+      if (normalizeStatus(invoice.status) !== "PAID") return;
+
+      const current = map.get(tableId);
+      const nextTime = timeValue(
+        invoice.payment?.paidAt,
+        invoice.updatedAt,
+        invoice.createdAt,
+      );
+      const currentTime = current
+        ? timeValue(current.payment?.paidAt, current.updatedAt, current.createdAt)
+        : 0;
+
+      if (!current || nextTime >= currentTime) {
+        map.set(tableId, invoice);
+      }
+    });
+    return map;
+  }, [invoices]);
+
   const latestOpenOrderByTable = useMemo(() => {
     const map = new Map<string, OrderRecord>();
     orders.forEach((order) => {
@@ -490,12 +537,18 @@ export function InvoicesWorkspace({ rawRole }: Props) {
       if (!tableId || invoiceByOrderId.has(order.id)) return;
       const status = normalizeStatus(order.status);
       if (!["PLACED", "IN_PROGRESS", "READY", "SERVED"].includes(status)) return;
+      const paidInvoice = paidInvoiceByTableId.get(tableId);
+      const paidAt = paidInvoice
+        ? timeValue(paidInvoice.payment?.paidAt, paidInvoice.updatedAt, paidInvoice.createdAt)
+        : 0;
+      const orderAt = timeValue(order.updatedAt, order.createdAt);
+      if (paidAt && orderAt && orderAt <= paidAt) return;
       if (!map.has(tableId)) {
         map.set(tableId, order);
       }
     });
     return map;
-  }, [invoiceByOrderId, orders]);
+  }, [invoiceByOrderId, orders, paidInvoiceByTableId]);
 
   const filterQuery = tableFilter.trim().toLowerCase();
 
@@ -523,8 +576,13 @@ export function InvoicesWorkspace({ rawRole }: Props) {
     [billingRows, invoiceByOrderId],
   );
   const occupiedTablesCount = useMemo(
-    () => tables.filter((table) => normalizeStatus(table.status) === "OCCUPIED").length,
-    [tables],
+    () =>
+      tables.filter((table) => {
+        if (normalizeStatus(table.status) !== "OCCUPIED") return false;
+        const tableId = table.id;
+        return latestOpenOrderByTable.has(tableId) || issuedInvoiceByTableId.has(tableId);
+      }).length,
+    [issuedInvoiceByTableId, latestOpenOrderByTable, tables],
   );
 
   const issuedInvoices = useMemo(
@@ -581,7 +639,9 @@ export function InvoicesWorkspace({ rawRole }: Props) {
   const activeInvoiceId =
     selectedInvoiceId && invoiceSelectionPool.some((invoice) => invoice.id === selectedInvoiceId)
       ? selectedInvoiceId
-      : (invoiceSelectionPool[0]?.id ?? null);
+      : (invoiceSelectionPool.find((invoice) => normalizeStatus(invoice.status) === "ISSUED")?.id ??
+        invoiceSelectionPool[0]?.id ??
+        null);
 
   const selectedInvoice = useMemo(
     () => invoices.find((invoice) => invoice.id === activeInvoiceId) || null,
@@ -626,6 +686,21 @@ export function InvoicesWorkspace({ rawRole }: Props) {
       }).unwrap();
 
       showSuccess(response.message || "Payment done");
+      const paidInvoice = response.invoice?.id ? response.invoice : invoice;
+      const paidTableId = paidInvoice.table?.id || invoice.table?.id;
+
+      if (paidTableId) {
+        try {
+          await updateTable({
+            tableId: paidTableId,
+            status: "AVAILABLE",
+            customerId: "",
+          }).unwrap();
+        } catch {
+          showInfo("Payment ho gaya, lekin table auto-release nahi hua. Manual refresh/check kar lo.");
+        }
+      }
+
       if (response.invoice?.id) {
         setInvoiceOverrides((prev) => ({ ...prev, [response.invoice.id]: response.invoice }));
         setSelectedInvoiceId(response.invoice.id);

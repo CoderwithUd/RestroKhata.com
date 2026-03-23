@@ -656,7 +656,7 @@ export function PublicQrMenu({ tenantSlug: tenantSlugFromPath }: PublicQrMenuPro
   }
 
   return (
-    <main className="min-h-screen bg-[radial-gradient(circle_at_top,#fff1d7_0%,#f9f3ea_34%,#f4efe8_100%)] px-3 py-4 text-slate-900 sm:px-4 md:px-6 md:py-8">
+    <main className="min-h-screen bg-[radial-gradient(circle_at_top,#fff1d7_0%,#f9f3ea_34%,#f4efe8_100%)] px-3 py-4 pb-[calc(env(safe-area-inset-bottom)+7.5rem)] text-slate-900 sm:px-4 md:px-6 md:py-8 xl:pb-8">
       <div className="mx-auto grid w-full max-w-7xl gap-4 xl:grid-cols-[minmax(0,1fr)_360px] xl:items-start">
         <section className="min-w-0 space-y-4">
           <header className="overflow-hidden rounded-[30px] border border-[#e5d8c5] bg-[linear-gradient(145deg,#fff8ec_0%,#fffdfa_48%,#eef5ee_100%)] shadow-[0_24px_60px_-36px_rgba(95,61,15,0.35)]">
@@ -954,9 +954,9 @@ export function PublicQrMenu({ tenantSlug: tenantSlugFromPath }: PublicQrMenuPro
       </div>
 
       {isCartOpen ? (
-        <div className="fixed inset-0 z-40 flex items-end bg-black/30 xl:hidden" onClick={() => setIsCartOpen(false)}>
+        <div className="fixed inset-0 z-50 flex items-end bg-black/30 xl:hidden" onClick={() => setIsCartOpen(false)}>
           <div
-            className="max-h-[88vh] w-full overflow-y-auto rounded-t-[32px] bg-[#f7f2ea] p-3"
+            className="max-h-[calc(100dvh-1rem)] w-full overflow-y-auto rounded-t-[32px] bg-[#f7f2ea] p-3 pb-[calc(env(safe-area-inset-bottom)+1.25rem)]"
             onClick={(event) => event.stopPropagation()}
           >
             <div className="mx-auto max-w-3xl">

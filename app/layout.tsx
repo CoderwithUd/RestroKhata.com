@@ -16,6 +16,23 @@ const fraunces = Fraunces({
 export const metadata: Metadata = {
   title: "Restro Khata Auth",
   description: "Production-ready auth flow for Restro Khata.",
+  applicationName: "Restro Khata",
+  manifest: "/manifest.webmanifest",
+  icons: {
+    icon: [
+      {
+        url: "/Logo/RestroKhataCircleLogo.png",
+        type: "image/png",
+      },
+    ],
+    apple: [
+      {
+        url: "/Logo/RestroKhataCircleLogo.png",
+        type: "image/png",
+      },
+    ],
+    shortcut: ["/Logo/RestroKhataCircleLogo.png"],
+  },
 };
 
 export default function RootLayout({

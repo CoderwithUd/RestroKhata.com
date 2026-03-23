@@ -295,45 +295,6 @@ async function downloadTemplateCard(args: {
   const safe = args.fileBase.replace(/[^a-zA-Z0-9-_]/g, "_");
   downloadHref(canvas.toDataURL("image/png"), `${safe}_${args.template.id}.png`);
 }
-function shouldRefreshQrPayload(payload?: string): boolean {
-  if (!payload?.trim()) return false;
-  const raw = payload.trim();
-  if (/\/api\/public\/menu(?:\?|$)/i.test(raw)) return true;
-  if (/^https?:\/\//i.test(raw)) {
-    try {
-      const url = new URL(raw);
-      if (url.origin !== FRONTEND_PUBLIC_URL) return true;
-      const hasQrParams =
-        url.searchParams.has("token") ||
-        url.searchParams.has("tenantSlug") ||
-        url.searchParams.has("tableId") ||
-        url.searchParams.has("tableNumber");
-      const hasToken = url.searchParams.has("token");
-      const hasLegacyStaticParams =
-        url.searchParams.has("tenantSlug") ||
-        url.searchParams.has("tableId") ||
-        url.searchParams.has("tableNumber");
-      if (hasLegacyStaticParams && !hasToken) {
-        return true;
-      }
-      if (
-        hasQrParams &&
-        (url.pathname === "/" ||
-          url.pathname === "/login" ||
-          url.pathname === "/dashboard" ||
-          url.pathname === "/register" ||
-          url.pathname === "/plan")
-      ) {
-        return true;
-      }
-      return false;
-    } catch {
-      return true;
-    }
-  }
-  return false;
-}
-
 export function TablesWorkspace({ tenantName, tenantSlug }: Props) {
   const router = useRouter();
   const confirm = useConfirm();
@@ -522,41 +483,8 @@ export function TablesWorkspace({ tenantName, tenantSlug }: Props) {
     }
   }
 
-  async function openQr(table: TableRecord) {
-    const baseUrl = defaultQrBaseUrl();
-    const template = QR_TEMPLATES[0];
-    const shouldRefresh =
-      !table.qrCode || shouldRefreshQrPayload(table.qrPayload);
-
-    setQr({
-      open: true,
-      table,
-      format: table.qrFormat || "dataUrl",
-      templateId: template.id,
-      baseUrl,
-      qr: table.qrCode || "",
-      qrPayload: table.qrPayload || "",
-      error: "",
-    });
-
-    if (!shouldRefresh) return;
-
-    try {
-      const r = await fetchQr({
-        tableId: table.id,
-        format: table.qrFormat || "dataUrl",
-        baseUrl,
-      }).unwrap();
-
-      setQr((prev) => ({
-        ...prev,
-        qr: r.qr,
-        qrPayload: r.qrPayload,
-        format: r.format,
-      }));
-    } catch (e) {
-      setQr((prev) => ({ ...prev, error: getErrorMessage(e) }));
-    }
+  function openQr(table: TableRecord) {
+    router.push(`/dashboard/tables/qr/${encodeURIComponent(table.id)}`);
   }
 
   async function generateQr() {
@@ -642,14 +570,14 @@ export function TablesWorkspace({ tenantName, tenantSlug }: Props) {
     <>
       <section className="mt-1 grid gap-3 sm:mt-2 sm:gap-4">
         {isCreateTableOpen ? (
-          <div className="fixed inset-0 z-30 flex items-center justify-center p-3 sm:p-6">
+          <div className="fixed inset-0 z-50 flex items-end justify-center overflow-y-auto p-3 pb-[calc(env(safe-area-inset-bottom)+6rem)] sm:items-center sm:p-6 sm:pb-6">
             <button
               type="button"
               aria-label="Close create table panel"
               className="absolute inset-0 bg-slate-900/35"
               onClick={() => setIsCreateTableOpen(false)}
             />
-            <article className="relative z-10 w-full max-w-2xl max-h-[90vh] overflow-y-auto rounded-3xl border border-[#e6dfd1] bg-[#fffdf9] p-3 shadow-2xl sm:p-5">
+            <article className="relative z-10 w-full max-w-2xl max-h-[calc(100dvh-6.5rem)] overflow-y-auto rounded-[2rem] border border-[#e6dfd1] bg-[#fffdf9] p-3 shadow-2xl sm:max-h-[90vh] sm:rounded-3xl sm:p-5">
               <div className="mb-3 flex items-center justify-between sm:mb-4">
                 <div>
                   <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">
@@ -939,8 +867,8 @@ export function TablesWorkspace({ tenantName, tenantSlug }: Props) {
                           <button
                             type="button"
                             onClick={() => openQr(table)}
-                            title="Open QR"
-                            aria-label="Open QR"
+                            title="Open QR Studio"
+                            aria-label="Open QR Studio"
                             className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-[#d8ccb6] bg-white text-slate-700 transition-colors hover:bg-[#faf3e7]"
                           >
                             <svg
@@ -1247,7 +1175,7 @@ export function TablesWorkspace({ tenantName, tenantSlug }: Props) {
                                   onClick={() => openQr(table)}
                                   className="shrink-0 rounded-lg border border-[#d8ccb6] bg-white px-2.5 py-1.5 text-[11px] font-semibold text-slate-700 hover:bg-[#faf3e7]"
                                 >
-                                  Open QR
+                                  QR Studio
                                 </button>
 
                                 <button
@@ -1303,13 +1231,13 @@ export function TablesWorkspace({ tenantName, tenantSlug }: Props) {
       </section>
 
       {editing ? (
-        <div className="fixed inset-0 z-40 flex items-center justify-center p-3 sm:p-6">
+        <div className="fixed inset-0 z-[60] flex items-end justify-center overflow-y-auto p-3 pb-[calc(env(safe-area-inset-bottom)+6rem)] sm:items-center sm:p-6 sm:pb-6">
           <button
             type="button"
             className="absolute inset-0 bg-slate-900/40"
             onClick={() => setEditing(null)}
           />
-          <aside className="relative z-10 w-full max-w-2xl max-h-[90vh] overflow-y-auto rounded-3xl border border-[#e6dfd1] bg-[#fffdf9] p-3 shadow-2xl sm:p-5">
+          <aside className="relative z-10 w-full max-w-2xl max-h-[calc(100dvh-6.5rem)] overflow-y-auto rounded-[2rem] border border-[#e6dfd1] bg-[#fffdf9] p-3 shadow-2xl sm:max-h-[90vh] sm:rounded-3xl sm:p-5">
             <div className="mb-3 flex items-center justify-between sm:mb-4">
               <div>
                 <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">
@@ -1423,14 +1351,14 @@ export function TablesWorkspace({ tenantName, tenantSlug }: Props) {
       ) : null}
 
       {qr.open && qr.table ? (
-        <div className="fixed inset-0 z-50">
+        <div className="fixed inset-0 z-[70] flex items-end justify-center overflow-y-auto p-2 pb-[calc(env(safe-area-inset-bottom)+6rem)] sm:p-4 sm:pb-4 lg:p-6">
           <button
             type="button"
             className="absolute inset-0 bg-slate-900/50"
             onClick={() => setQr((prev) => ({ ...prev, open: false }))}
           />
-          <section className="absolute left-1/2 top-1/2 max-h-[94vh] w-[96%] max-w-6xl -translate-x-1/2 -translate-y-1/2 overflow-y-auto rounded-2xl border border-[#e6dfd1] bg-[#fffdf9] shadow-2xl">
-            <header className="flex flex-wrap items-center justify-between gap-2 border-b border-[#eee7d8] bg-[#fff6e7] px-4 py-3">
+          <section className="relative z-10 flex w-full max-w-6xl flex-col overflow-hidden rounded-[28px] border border-[#e6dfd1] bg-[#fffdf9] shadow-2xl max-h-[calc(100dvh-5.5rem)] sm:max-h-[94vh]">
+            <header className="sticky top-0 z-10 flex flex-wrap items-center justify-between gap-2 border-b border-[#eee7d8] bg-[#fff6e7] px-4 py-3">
               <div>
                 <h4 className="text-sm font-semibold">{qr.table.name} QR Studio</h4>
                 <p className="text-xs text-slate-600">
@@ -1446,9 +1374,9 @@ export function TablesWorkspace({ tenantName, tenantSlug }: Props) {
               </button>
             </header>
 
-            <div className="grid gap-4 p-4 xl:grid-cols-[1.08fr_1fr]">
+            <div className="grid gap-3 overflow-y-auto p-3 sm:gap-4 sm:p-4 xl:grid-cols-[1.08fr_1fr]">
               <div className="space-y-3 rounded-2xl border border-[#e8e0d0] bg-white p-4">
-                <div className="mx-auto w-full max-w-[360px] overflow-hidden rounded-2xl border border-[#ece4d6] bg-white shadow-sm">
+                <div className="mx-auto w-full max-w-[280px] overflow-hidden rounded-2xl border border-[#ece4d6] bg-white shadow-sm sm:max-w-[360px]">
                   <div className="relative aspect-[1684/2528] w-full">
                     <Image
                       src={selectedTemplate.imagePath}
@@ -1490,7 +1418,7 @@ export function TablesWorkspace({ tenantName, tenantSlug }: Props) {
                   </div>
                 </div>
 
-                <div className="grid grid-cols-2 gap-2">
+                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                   <button
                     type="button"
                     onClick={generateQr}
@@ -1528,7 +1456,7 @@ export function TablesWorkspace({ tenantName, tenantSlug }: Props) {
                 </div>
 
                 {qrPayloadUrl ? (
-                  <p className="rounded-lg border border-[#ece4d6] bg-[#fffaf3] px-2.5 py-2 text-[11px] text-slate-600">
+                  <p className="break-all rounded-lg border border-[#ece4d6] bg-[#fffaf3] px-2.5 py-2 text-[11px] text-slate-600">
                     {qrPayloadUrl}
                   </p>
                 ) : null}
@@ -1576,7 +1504,7 @@ export function TablesWorkspace({ tenantName, tenantSlug }: Props) {
                         key={template.id}
                         type="button"
                         onClick={() => applyTemplate(template.id)}
-                        className={`w-[104px] shrink-0 snap-start rounded-2xl border p-2 text-left transition ${qr.templateId === template.id ? "border-slate-700 bg-white shadow-sm" : "border-[#e4dccf] bg-[#fffaf2]"}`}
+                        className={`w-[92px] shrink-0 snap-start rounded-2xl border p-2 text-left transition sm:w-[104px] ${qr.templateId === template.id ? "border-slate-700 bg-white shadow-sm" : "border-[#e4dccf] bg-[#fffaf2]"}`}
                       >
                         <div className="relative mb-2 aspect-[1684/2528] w-full overflow-hidden rounded-xl border border-[#e9e0d2] bg-white">
                           <Image
