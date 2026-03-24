@@ -271,7 +271,12 @@ function InvoicePreview({
     );
   }
 
-  const due = invoiceAmount(invoice);
+  // const due = invoiceAmount(invoice);
+  const due = Math.max(
+  (invoice.totalDue ?? 0) -
+  (invoice.payment?.paidAmount ?? 0),
+  0
+);
   const isIssued = normalizeStatus(invoice.status) === "ISSUED";
   const canCollectPayment = isIssued && due > 0;
 
@@ -676,7 +681,12 @@ export function InvoicesWorkspace({ rawRole }: Props) {
   }
 
   async function handlePayInvoice(invoice: InvoiceRecord, method: "CASH" | "UPI") {
-    const amount = invoiceAmount(invoice);
+    // const amount = invoiceAmount(invoice);
+    const amount = Math.max(
+  (invoice.totalDue ?? 0) -
+  (invoice.payment?.paidAmount ?? 0),
+  0
+);
     if (!(amount > 0)) return;
 
     try {

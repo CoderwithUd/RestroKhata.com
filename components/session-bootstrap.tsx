@@ -79,7 +79,10 @@ export function SessionBootstrap() {
 
           if (refreshed?.token) {
             dispatch(setToken(refreshed.token));
-            writeStoredSession({ token: refreshed.token });
+            writeStoredSession({
+              token: refreshed.token,
+              refreshToken: refreshed.refreshToken,
+            });
           }
 
           const refreshedProfile = await withTimeout(loadMe(undefined, true).unwrap(), 8000);

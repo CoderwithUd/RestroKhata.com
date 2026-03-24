@@ -160,6 +160,7 @@ export type SessionPayload = {
   user: AuthUser | null;
   tenant: AuthTenant | null;
   token?: string | null;
+  refreshToken?: string | null;
 };
 
 export type LoginPayload = {

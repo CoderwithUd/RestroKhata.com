@@ -2,6 +2,7 @@ import { createApi } from "@reduxjs/toolkit/query/react";
 import type { FetchArgs, FetchBaseQueryError } from "@reduxjs/toolkit/query";
 import { io } from "socket.io-client";
 import { parseAuthPayload } from "@/lib/auth-payload";
+import { readStoredSession } from "@/lib/auth-session";
 import { RAW_API_BASE_URL } from "@/lib/constants";
 import { slugify } from "@/lib/slugify";
 import { baseQueryWithReauth } from "@/store/api/baseQuery";
@@ -79,6 +80,7 @@ function parseSession(data: unknown): SessionPayload {
     user,
     tenant,
     token: parsed.token,
+    refreshToken: parsed.refreshToken,
   };
 }
 
@@ -395,6 +397,32 @@ async function requestWithFallback(
   return { error: lastError };
 }
 
+function buildRefreshRequest(endpoint: string): FetchArgs {
+  const stored = readStoredSession();
+  const refreshToken = stored?.refreshToken || null;
+
+  return {
+    url: endpoint,
+    method: "POST",
+    credentials: "include",
+    headers: refreshToken ? { "x-refresh-token": refreshToken } : undefined,
+    body: refreshToken ? { refreshToken } : undefined,
+  };
+}
+
+function buildLogoutRequest(endpoint: string): FetchArgs {
+  const stored = readStoredSession();
+  const refreshToken = stored?.refreshToken || null;
+
+  return {
+    url: endpoint,
+    method: "POST",
+    credentials: "include",
+    headers: refreshToken ? { "x-refresh-token": refreshToken } : undefined,
+    body: refreshToken ? { refreshToken } : undefined,
+  };
+}
+
 export const authApi = createApi({
   reducerPath: "authApi",
   tagTypes: ["Orders", "TenantProfile", "TenantStaff"],
@@ -708,7 +736,14 @@ export const authApi = createApi({
 
     refreshSession: builder.mutation<SessionPayload, void>({
       async queryFn(_arg, _api, _extraOptions, fetchWithBQ) {
-        const result = await postWithFallback(fetchWithBQ, ["/auth/refresh", "/auth/refresh-token"]);
+        let result: QueryResult = { error: undefined };
+
+        for (const endpoint of ["/auth/refresh", "/auth/refresh-token"]) {
+          result = (await fetchWithBQ(buildRefreshRequest(endpoint))) as QueryResult;
+          if (!result.error || !isNotFound(result.error)) {
+            break;
+          }
+        }
 
         if (result.error) {
           return { error: result.error };
@@ -720,11 +755,7 @@ export const authApi = createApi({
 
     logout: builder.mutation<{ ok: true }, void>({
       async queryFn(_arg, _api, _extraOptions, fetchWithBQ) {
-        const result = await fetchWithBQ({
-          url: "/auth/logout",
-          method: "POST",
-          credentials: "include",
-        });
+        const result = await fetchWithBQ(buildLogoutRequest("/auth/logout"));
 
         if (result.error) {
           return { error: result.error };

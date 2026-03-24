@@ -4,7 +4,7 @@
   type FetchArgs,
   type FetchBaseQueryError,
 } from "@reduxjs/toolkit/query/react";
-import { extractAuthToken } from "@/lib/auth-payload";
+import { parseAuthPayload } from "@/lib/auth-payload";
 import { clearStoredSession, readStoredSession, writeStoredSession } from "@/lib/auth-session";
 import { API_BASE_URL } from "@/lib/constants";
 import type { RootState } from "@/store/store";
@@ -44,6 +44,19 @@ function getRequestPath(args: string | FetchArgs): string {
   return args.url;
 }
 
+function buildRefreshRequest(path: string): FetchArgs {
+  const stored = readStoredSession();
+  const refreshToken = stored?.refreshToken || null;
+
+  return {
+    url: path,
+    method: "POST",
+    credentials: "include",
+    headers: refreshToken ? { "x-refresh-token": refreshToken } : undefined,
+    body: refreshToken ? { refreshToken } : undefined,
+  };
+}
+
 function isPublicMenuPath(pathname: string): boolean {
   if (pathname === "/qr") return true;
   const segments = pathname.split("/").filter(Boolean);
@@ -65,15 +78,20 @@ export const baseQueryWithReauth: BaseQueryFn<string | FetchArgs, unknown, Fetch
     let refreshed = false;
 
     for (const path of refreshCandidates) {
-      const refreshResult = await rawBaseQuery({ url: path, method: "POST", credentials: "include" }, api, extraOptions);
+      const refreshResult = await rawBaseQuery(buildRefreshRequest(path), api, extraOptions);
       const refreshStatus = getStatusCode(refreshResult.error);
 
       if (!refreshResult.error) {
-        const nextToken = extractAuthToken(refreshResult.data);
+        const parsed = parseAuthPayload(refreshResult.data);
+        const nextToken = parsed.token || null;
+        const nextRefreshToken = parsed.refreshToken || null;
 
         if (nextToken) {
           api.dispatch(setToken(nextToken));
-          writeStoredSession({ token: nextToken });
+          writeStoredSession({
+            token: nextToken,
+            refreshToken: nextRefreshToken ?? undefined,
+          });
         }
 
         refreshed = true;

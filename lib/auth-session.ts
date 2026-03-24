@@ -4,6 +4,7 @@ const STORAGE_KEY = "restro_khata_auth_session";
 
 type StoredSession = {
   token?: string | null;
+  refreshToken?: string | null;
   user?: SessionPayload["user"];
   tenant?: SessionPayload["tenant"];
 };
@@ -29,6 +30,7 @@ export function readStoredSession(): StoredSession | null {
 
     return {
       token: sanitizeToken(parsed?.token),
+      refreshToken: sanitizeToken(parsed?.refreshToken),
       user: isObject(parsed?.user) ? (parsed.user as SessionPayload["user"]) : null,
       tenant: isObject(parsed?.tenant) ? (parsed.tenant as SessionPayload["tenant"]) : null,
     };
@@ -43,11 +45,15 @@ export function writeStoredSession(next: StoredSession): void {
   const current = readStoredSession() || {};
   const merged: StoredSession = {
     token: next.token !== undefined ? sanitizeToken(next.token) : current.token,
+    refreshToken:
+      next.refreshToken !== undefined
+        ? sanitizeToken(next.refreshToken)
+        : current.refreshToken,
     user: next.user !== undefined ? next.user : current.user,
     tenant: next.tenant !== undefined ? next.tenant : current.tenant,
   };
 
-  const hasAny = Boolean(merged.token || merged.user || merged.tenant);
+  const hasAny = Boolean(merged.token || merged.refreshToken || merged.user || merged.tenant);
   if (!hasAny) {
     window.localStorage.removeItem(STORAGE_KEY);
     return;

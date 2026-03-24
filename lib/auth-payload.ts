@@ -2,6 +2,7 @@ type AnyRecord = Record<string, unknown>;
 
 const WRAPPER_KEYS = ["data", "result", "payload", "session", "response"] as const;
 const TOKEN_KEYS = ["accessToken", "token", "jwt", "authToken", "access_token"] as const;
+const REFRESH_TOKEN_KEYS = ["refreshToken", "refresh_token"] as const;
 
 function asRecord(value: unknown): AnyRecord | null {
   return value && typeof value === "object" && !Array.isArray(value) ? (value as AnyRecord) : null;
@@ -85,6 +86,7 @@ function looksLikeTenantRecord(record: AnyRecord): boolean {
 
 export type ParsedAuthPayload = {
   token?: string | null;
+  refreshToken?: string | null;
   user: {
     id?: string;
     name?: string;
@@ -154,8 +156,9 @@ export function parseAuthPayload(data: unknown): ParsedAuthPayload {
   const user = userHasAnyField ? parsedUser : userRecord ? {} : null;
   const tenant = tenantHasAnyField ? parsedTenant : tenantRecord ? {} : null;
   const token = pickFirstString(objects, TOKEN_KEYS) ?? undefined;
+  const refreshToken = pickFirstString(objects, REFRESH_TOKEN_KEYS) ?? undefined;
 
-  return { user, tenant, token };
+  return { user, tenant, token, refreshToken };
 }
 
 export function extractAuthToken(data: unknown): string | null {
