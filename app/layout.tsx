@@ -21,8 +21,12 @@ export const viewport: Viewport = {
 };
 
 export const metadata: Metadata = {
-  title: "Restro Khata Auth",
-  description: "Production-ready auth flow for Restro Khata.",
+title: {
+  default: "Restro Khata - Smart Restaurant Management",
+  template: "%s | Restro Khata",
+},
+description:
+  "A smart SaaS platform for restaurants and cafes with real-time order tracking, QR-based menus, multi-user table ordering, and seamless invoice management.",
   applicationName: "Restro Khata",
   manifest: "/manifest.webmanifest",
   metadataBase: new URL(PUBLIC_APP_URL),
