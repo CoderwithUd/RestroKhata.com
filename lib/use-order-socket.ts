@@ -95,7 +95,7 @@ function showNotification(title: string, body: string, tag: string) {
   const notice = new Notification(title, {
     body,
     tag,
-    icon: "/Logo/RestroKhataCircleLogo.png",
+    icon: "/RestroKhata-RK-Complete-Icons/notification-icon-192x192.png",
     requireInteraction: false,
   });
   setTimeout(() => notice.close(), 6000);
