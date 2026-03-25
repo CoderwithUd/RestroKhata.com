@@ -61,6 +61,8 @@ function pickFirstString(objects: AnyRecord[], keys: readonly string[]): string 
 function looksLikeUserRecord(record: AnyRecord): boolean {
   return Boolean(
     asString(record.email) ||
+      asString(record.whatsappNumber) ||
+      asString(record.contactNumber) ||
       asString(record.name) ||
       asString(record.fullName) ||
       asString(record.username) ||
@@ -91,6 +93,7 @@ export type ParsedAuthPayload = {
     id?: string;
     name?: string;
     email?: string;
+    whatsappNumber?: string;
     role?: string;
   } | null;
   tenant: {
@@ -125,6 +128,10 @@ export function parseAuthPayload(data: unknown): ParsedAuthPayload {
           asString(userRecord.username) ||
           asString(userRecord.ownerName),
         email: asString(userRecord.email) || asString(userRecord.mail),
+        whatsappNumber:
+          asString(userRecord.whatsappNumber) ||
+          asString(userRecord.contactNumber) ||
+          asString(userRecord.phone),
         role:
           asString(userRecord.role) ||
           asString(userRecord.userRole) ||
@@ -150,7 +157,9 @@ export function parseAuthPayload(data: unknown): ParsedAuthPayload {
       }
     : null;
 
-  const userHasAnyField = Boolean(parsedUser && (parsedUser.id || parsedUser.name || parsedUser.email || parsedUser.role));
+  const userHasAnyField = Boolean(
+    parsedUser && (parsedUser.id || parsedUser.name || parsedUser.email || parsedUser.whatsappNumber || parsedUser.role),
+  );
   const tenantHasAnyField = Boolean(parsedTenant && (parsedTenant.id || parsedTenant.name || parsedTenant.slug));
 
   const user = userHasAnyField ? parsedUser : userRecord ? {} : null;

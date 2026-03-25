@@ -1,7 +1,8 @@
-﻿export type AuthUser = {
+export type AuthUser = {
   id?: string;
   name?: string;
   email?: string;
+  whatsappNumber?: string;
   role?: string;
 };
 
@@ -23,6 +24,9 @@ export type TenantAddress = {
 export type TenantProfileTenant = AuthTenant & {
   status?: string;
   contactNumber?: string | null;
+  email?: string | null;
+  secondaryNumber?: string | null;
+  ownerName?: string | null;
   gstNumber?: string | null;
   address?: TenantAddress | null;
 };
@@ -104,6 +108,7 @@ export type TenantStaffUser = {
   id?: string;
   name?: string;
   email?: string;
+  whatsappNumber?: string;
   isActive?: boolean;
 };
 
@@ -121,7 +126,8 @@ export type TenantStaffListPayload = {
 
 export type CreateTenantStaffPayload = {
   name: string;
-  email: string;
+  whatsappNumber: string;
+  email?: string;
   password: string;
   role: string;
 };
@@ -131,6 +137,8 @@ export type UpdateTenantStaffPayload = {
   isActive?: boolean;
   name?: string;
   email?: string;
+  whatsappNumber?: string;
+  password?: string;
 };
 
 export type UpdateTenantStaffArgs = {
@@ -152,6 +160,10 @@ export type TenantStaffMutationPayload = {
 export type UpdateTenantProfilePayload = {
   name?: string;
   contactNumber?: string | null;
+  whatsappNumber?: string | null;
+  secondaryNumber?: string | null;
+  ownerName?: string | null;
+  email?: string | null;
   gstNumber?: string | null;
   address?: TenantAddress | null;
 };
@@ -164,13 +176,27 @@ export type SessionPayload = {
 };
 
 export type LoginPayload = {
-  email: string;
+  whatsappNumber?: string;
+  email?: string;
   password: string;
+  tenantSlug?: string;
 };
 
 export type RegisterPayload = {
-  name: string;
+  ownerName?: string;
+  whatsappNumber: string;
   email: string;
   password: string;
-  restaurantName: string;
+  tenantName: string;
+  tenantSlug?: string;
+  gstNumber?: string;
+  secondaryNumber?: string;
+  address: {
+    line1: string;
+    city: string;
+    state: string;
+    country: string;
+    postalCode: string;
+    line2?: string;
+  };
 };

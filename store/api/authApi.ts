@@ -95,11 +95,12 @@ function parseTenantProfile(data: unknown): TenantProfilePayload {
   const user: AuthUser | null = parsed.user
     ? {
         ...parsed.user,
-        id: parsed.user.id || asString(userRecord?.id) || asString(userRecord?._id),
-        name: parsed.user.name || asString(userRecord?.name),
-        email: parsed.user.email || asString(userRecord?.email),
-        role: parsed.user.role || asString(root?.role),
-      }
+      id: parsed.user.id || asString(userRecord?.id) || asString(userRecord?._id),
+      name: parsed.user.name || asString(userRecord?.name),
+      email: parsed.user.email || asString(userRecord?.email),
+      whatsappNumber: parsed.user.whatsappNumber || asString(userRecord?.whatsappNumber),
+      role: parsed.user.role || asString(root?.role),
+    }
     : null;
 
   const tenant: TenantProfilePayload["tenant"] = parsed.tenant
@@ -107,6 +108,9 @@ function parseTenantProfile(data: unknown): TenantProfilePayload {
         ...parsed.tenant,
         status: asString(tenantRecord?.status),
         contactNumber: asString(tenantRecord?.contactNumber) ?? null,
+        email: asString(tenantRecord?.email) ?? asString(root?.email) ?? null,
+        secondaryNumber: asString(tenantRecord?.secondaryNumber) ?? null,
+        ownerName: asString(tenantRecord?.ownerName) ?? asString(root?.ownerName) ?? user?.name ?? null,
         gstNumber: asString(tenantRecord?.gstNumber) ?? null,
         address: addressRecord
           ? {
@@ -152,6 +156,7 @@ function parseStaffMember(value: unknown): TenantStaffMember | null {
       id: asString(userRecord?.id) || asString(userRecord?._id),
       name: asString(userRecord?.name),
       email: asString(userRecord?.email),
+      whatsappNumber: asString(userRecord?.whatsappNumber),
       isActive: asBoolean(userRecord?.isActive),
     },
     raw: record,
@@ -448,12 +453,22 @@ export const authApi = createApi({
     register: builder.mutation<SessionPayload, RegisterPayload>({
       async queryFn(payload, _api, _extraOptions, fetchWithBQ) {
         const registerBody = {
-          name: payload.name,
+          ownerName: payload.ownerName?.trim() || undefined,
+          whatsappNumber: payload.whatsappNumber.trim(),
           email: payload.email,
           password: payload.password,
-          restaurantName: payload.restaurantName,
-          restaurantSlug: slugify(payload.restaurantName),
-          contactNumber: "9999999999",
+          tenantName: payload.tenantName.trim(),
+          tenantSlug: payload.tenantSlug?.trim() || slugify(payload.tenantName),
+          gstNumber: payload.gstNumber?.trim() || undefined,
+          secondaryNumber: payload.secondaryNumber?.trim() || undefined,
+          address: {
+            line1: payload.address.line1.trim(),
+            line2: payload.address.line2?.trim() || undefined,
+            city: payload.address.city.trim(),
+            state: payload.address.state.trim(),
+            country: payload.address.country.trim(),
+            postalCode: payload.address.postalCode.trim(),
+          },
         };
 
         const result = await postWithFallback(fetchWithBQ, ["/auth/register", "/auth/register-owner"], registerBody);
@@ -504,6 +519,11 @@ export const authApi = createApi({
         const body = {
           name: payload.name?.trim() || undefined,
           contactNumber: payload.contactNumber?.trim() || undefined,
+          whatsappNumber: payload.whatsappNumber?.trim() || undefined,
+          secondaryNumber: payload.secondaryNumber?.trim() || undefined,
+          ownerName: payload.ownerName?.trim() || undefined,
+          email:
+            payload.email === undefined ? undefined : payload.email === null ? null : payload.email.trim() || "",
           gstNumber: payload.gstNumber?.trim() || undefined,
           address: payload.address
             ? {
@@ -571,7 +591,8 @@ export const authApi = createApi({
       async queryFn(payload, _api, _extraOptions, fetchWithBQ) {
         const createBody = {
           name: payload.name.trim(),
-          email: payload.email.trim(),
+          whatsappNumber: payload.whatsappNumber.trim(),
+          email: payload.email?.trim() || undefined,
           password: payload.password,
           role: payload.role.trim().toUpperCase(),
         };
@@ -592,7 +613,10 @@ export const authApi = createApi({
           role: payload.role?.trim().toUpperCase(),
           isActive: typeof payload.isActive === "boolean" ? payload.isActive : undefined,
           name: payload.name?.trim() || undefined,
-          email: payload.email?.trim() || undefined,
+          email:
+            payload.email === undefined ? undefined : payload.email === null ? null : payload.email.trim() || "",
+          whatsappNumber: payload.whatsappNumber?.trim() || undefined,
+          password: payload.password?.trim() || undefined,
         };
 
         const endpointCandidates = [

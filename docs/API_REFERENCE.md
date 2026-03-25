@@ -25,6 +25,9 @@ Single source of truth for all APIs and business logic.
 
 ### Auth
 - Protected routes require access token (cookie or `Authorization: Bearer`).
+- Owner and staff login now use `whatsappNumber + password`.
+- `email` is optional for staff but required for owner registration.
+- Legacy old users ke liye temporary email login fallback supported hai jab tak woh apna WhatsApp number bind na kar dein.
 
 ### Tenant
 - Staff APIs: tenant from JWT membership.
@@ -103,13 +106,37 @@ Response:
 ### POST `/api/auth/register`
 ```json
 {
-  "name": "Owner",
+  "whatsappNumber": "9876543210",
+  "tenantName": "My Cafe",
   "email": "owner@example.com",
-  "password": "StrongPass123"
+  "address": {
+    "line1": "MG Road",
+    "city": "Raipur",
+    "state": "Chhattisgarh",
+    "country": "India",
+    "postalCode": "492001"
+  },
+  "password": "StrongPass123",
+  "ownerName": "Owner Name",
+  "gstNumber": "22AAAAA0000A1Z5",
+  "secondaryNumber": "9898989898",
+  "tenantSlug": "my-cafe"
 }
 ```
+Notes:
+- Required fields: `whatsappNumber`, `tenantName`, `email`, `address`, `password`.
+- Optional fields accepted and stored: `ownerName`, `gstNumber`, `secondaryNumber`, `tenantSlug`.
+- Backend address ko geocode karke tenant `location.latitude` and `location.longitude` store karta hai.
 
 ### POST `/api/auth/login`
+```json
+{
+  "whatsappNumber": "9876543210",
+  "password": "StrongPass123",
+  "tenantSlug": "my-cafe"
+}
+```
+Legacy fallback example for old email-only users:
 ```json
 {
   "email": "owner@example.com",
@@ -117,6 +144,120 @@ Response:
   "tenantSlug": "my-cafe"
 }
 ```
+
+### GET `/api/auth/me`
+Response user object now includes:
+```json
+{
+  "user": {
+    "id": "65f1f2c9c8f7f6a2d3000011",
+    "name": "Owner Name",
+    "email": "owner@example.com",
+    "whatsappNumber": "9876543210"
+  }
+}
+```
+
+### PUT `/api/auth/me`
+```json
+{
+  "name": "Updated Owner",
+  "whatsappNumber": "9898989898",
+  "email": "updated.owner@example.com",
+  "password": "NewStrongPass123"
+}
+```
+Notes:
+- Old email-only user login karke isi endpoint se apna `whatsappNumber` add kar sakta hai.
+- `email` optional hai; empty string bhejne par clear kiya ja sakta hai.
+- `whatsappNumber` unique rehna chahiye.
+
+## Tenant and Staff
+
+### GET `/api/tenant/profile`
+Tenant response includes:
+```json
+{
+  "tenant": {
+    "name": "My Cafe",
+    "contactNumber": "9876543210",
+    "email": "owner@example.com",
+    "secondaryNumber": "9898989898",
+    "ownerName": "Owner Name",
+    "gstNumber": "22AAAAA0000A1Z5",
+    "address": {
+      "fullAddress": "MG Road, Raipur, Chhattisgarh, India, 492001",
+      "line1": "MG Road",
+      "city": "Raipur",
+      "state": "Chhattisgarh",
+      "country": "India",
+      "postalCode": "492001"
+    },
+    "location": {
+      "latitude": 21.2514,
+      "longitude": 81.6296,
+      "formattedAddress": "MG Road, Raipur, Chhattisgarh, India, 492001",
+      "provider": "nominatim"
+    }
+  }
+}
+```
+
+### PUT `/api/tenant/profile`
+```json
+{
+  "tenantName": "My Updated Cafe",
+  "whatsappNumber": "9876543210",
+  "email": "contact@mycafe.com",
+  "secondaryNumber": "9898989898",
+  "ownerName": "Owner Name",
+  "gstNumber": "22AAAAA0000A1Z5",
+  "address": {
+    "line1": "Civil Lines",
+    "city": "Raipur",
+    "state": "Chhattisgarh",
+    "country": "India",
+    "postalCode": "492001"
+  }
+}
+```
+Notes:
+- Access: `OWNER`, `MANAGER`
+- Address update par backend coordinates dobara geocode karke `tenant.location` refresh karta hai.
+- Agar geocoder address resolve na kare to bhi profile update fail nahi hota; address save ho jata hai aur previous location preserve rehti hai.
+- `location` payload (`latitude`, `longitude`) manually bhejkar direct coordinates bhi save kiye ja sakte hain.
+- `secondaryNumber`, `ownerName`, `gstNumber`, `email` clear bhi kiye ja sakte hain.
+
+### POST `/api/tenant/staff`
+```json
+{
+  "name": "Ravi",
+  "whatsappNumber": "9898989898",
+  "email": "ravi.waiter@example.com",
+  "password": "StrongPass123",
+  "role": "WAITER"
+}
+```
+Notes:
+- Required fields: `name`, `whatsappNumber`, `password`, `role`.
+- `email` optional hai.
+- Staff user response mein `whatsappNumber` bhi aata hai.
+
+### PUT `/api/tenant/staff/:membershipId`
+```json
+{
+  "name": "Ravi Kumar",
+  "whatsappNumber": "9898989899",
+  "email": "ravi.kumar@example.com",
+  "password": "NewStrongPass123",
+  "role": "MANAGER",
+  "isActive": true
+}
+```
+Notes:
+- Staff update me `password` change allowed hai.
+- `email` ko empty string/null bhejkar clear kiya ja sakta hai.
+- `whatsappNumber` unique rehna chahiye.
 
 ## Tables
 
@@ -194,16 +335,11 @@ Notes:
 ## Public Menu and Guest Orders
 
 ### GET `/api/public/menu?token=<TABLE_QR_TOKEN>`
-OR
-### GET `/api/public/menu?tenantSlug=<TENANT_SLUG>&tableId=<TABLE_ID>`
-OR
-### GET `/api/public/menu?tenantSlug=<TENANT_SLUG>&tableNumber=<TABLE_NUMBER>`
 
 ### POST `/api/public/orders`
 ```json
 {
-  "tenantSlug": "my-cafe",
-  "tableId": "65f1f2c9c8f7f6a2d1011111",
+  "token": "TABLE_QR_TOKEN",
   "customerName": "Rahul",
   "customerPhone": "9876543210",
   "items": [
@@ -219,7 +355,6 @@ OR
 ```
 Notes:
 - Public QR order me `customerName` aur `customerPhone` mandatory hain.
-- Public order identify karne ke liye either `token` ya static table context (`tenantSlug` + `tableId`/`tableNumber`) bhejna hota hai.
 - Customer number ke basis par tenant-level customer record upsert hota hai.
 
 Possible response messages:
@@ -424,6 +559,8 @@ Common responses:
 - Order and invoice writes are transaction-backed when deployment supports MongoDB transactions.
 - For non-transaction deployments, atomic guards are still applied, but replica set is strongly recommended.
 - Keep `tenantId`-scoped indexes intact for performance and isolation.
+- User identity unique index now runs on `whatsappNumberNormalized`.
+- `email` index is sparse because staff email optional hai.
 - `invoice (tenantId, orderId)` uniqueness is enforced at DB level.
 - Kitchen realtime refresh event:
   - Socket event: `kitchen.queue.changed`

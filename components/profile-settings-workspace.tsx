@@ -16,8 +16,11 @@ type Props = {
 };
 
 type ProfileForm = {
-  name: string;
-  contactNumber: string;
+  tenantName: string;
+  ownerName: string;
+  ownerEmail: string;
+  whatsappNumber: string;
+  secondaryNumber: string;
   gstNumber: string;
   line1: string;
   line2: string;
@@ -27,10 +30,26 @@ type ProfileForm = {
   postalCode: string;
 };
 
+function normalizePhone(value: string): string {
+  return value.replace(/[^\d+]/g, "");
+}
+
+function isValidPhone(value: string): boolean {
+  return !value.trim() || value.replace(/\D/g, "").length >= 10;
+}
+
+function isValidEmail(value: string): boolean {
+  return !value.trim() || /^\S+@\S+\.\S+$/.test(value.trim());
+}
+
 function toPayload(form: ProfileForm): UpdateTenantProfilePayload {
   return {
-    name: form.name.trim() || undefined,
-    contactNumber: form.contactNumber.trim() || undefined,
+    name: form.tenantName.trim() || undefined,
+    ownerName: form.ownerName.trim() || undefined,
+    email: form.ownerEmail.trim() || "",
+    contactNumber: form.whatsappNumber.trim() || undefined,
+    whatsappNumber: form.whatsappNumber.trim() || undefined,
+    secondaryNumber: form.secondaryNumber.trim() || undefined,
     gstNumber: form.gstNumber.trim() || undefined,
     address: {
       line1: form.line1.trim() || undefined,
@@ -45,9 +64,13 @@ function toPayload(form: ProfileForm): UpdateTenantProfilePayload {
 
 function formFromProfile(data: TenantProfilePayload | undefined): ProfileForm {
   const tenant = data?.tenant;
+  const user = data?.user;
   return {
-    name: tenant?.name || "",
-    contactNumber: tenant?.contactNumber || "",
+    tenantName: tenant?.name || "",
+    ownerName: tenant?.ownerName || user?.name || "",
+    ownerEmail: tenant?.email || user?.email || "",
+    whatsappNumber: tenant?.contactNumber || user?.whatsappNumber || "",
+    secondaryNumber: tenant?.secondaryNumber || "",
     gstNumber: tenant?.gstNumber || "",
     line1: tenant?.address?.line1 || "",
     line2: tenant?.address?.line2 || "",
@@ -73,19 +96,37 @@ export function ProfileSettingsWorkspace({ title = "Profile & Settings" }: Props
   function updateField(field: keyof ProfileForm, value: string) {
     setDraft((prev) => ({
       ...(prev || baseline),
-      [field]: value,
+      [field]:
+        field === "whatsappNumber" || field === "secondaryNumber" ? normalizePhone(value) : value,
     }));
   }
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!(draft || baseline).name.trim()) {
-      showError("Restaurant name is required");
+
+    if (!form.tenantName.trim()) {
+      showError("Tenant name is required");
+      return;
+    }
+    if (!form.ownerName.trim()) {
+      showError("Owner name is required");
+      return;
+    }
+    if (!isValidEmail(form.ownerEmail)) {
+      showError("Enter a valid email address");
+      return;
+    }
+    if (!isValidPhone(form.whatsappNumber)) {
+      showError("Enter a valid WhatsApp number");
+      return;
+    }
+    if (!isValidPhone(form.secondaryNumber)) {
+      showError("Enter a valid secondary number");
       return;
     }
 
     try {
-      await updateProfile(toPayload(draft || baseline)).unwrap();
+      await updateProfile(toPayload(form)).unwrap();
       showSuccess("Profile updated");
       setDraft(null);
       refetch();
@@ -116,13 +157,14 @@ export function ProfileSettingsWorkspace({ title = "Profile & Settings" }: Props
         <div className="rounded-t-2xl bg-[linear-gradient(130deg,#e2f5eb_0%,#f7e4b7_45%,#ebb18d_100%)] px-4 py-4">
           <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-700">Account</p>
           <h3 className="mt-1 text-xl font-semibold text-slate-900">{title}</h3>
-          <p className="mt-1 text-xs text-slate-700">Single form se business details update karo. Save once.</p>
+          <p className="mt-1 text-xs text-slate-700">Owner aur business details dono yahin se update karo.</p>
         </div>
         <div className="space-y-2 p-4 text-xs">
           <div className="rounded-lg border border-[#ebdfc8] bg-white p-2.5">
             <p className="text-slate-500">Logged-in User</p>
-            <p className="mt-1 text-sm font-semibold text-slate-900">{data?.user?.name || "-"}</p>
-            <p className="text-[11px] text-slate-500">{data?.user?.email || "-"}</p>
+            <p className="mt-1 text-sm font-semibold text-slate-900">{data?.user?.name || data?.tenant?.ownerName || "-"}</p>
+            <p className="text-[11px] text-slate-500">{data?.user?.whatsappNumber || data?.tenant?.contactNumber || "-"}</p>
+            <p className="text-[11px] text-slate-400">{data?.user?.email || data?.tenant?.email || "-"}</p>
           </div>
           <div className="rounded-lg border border-[#ebdfc8] bg-white p-2.5">
             <p className="text-slate-500">Role</p>
@@ -154,7 +196,9 @@ export function ProfileSettingsWorkspace({ title = "Profile & Settings" }: Props
         <div className="flex items-center justify-between border-b border-[#eee7d8] px-4 py-3">
           <div>
             <h3 className="text-sm font-semibold text-slate-900">Business Details</h3>
-            <p className="text-xs text-slate-500">{isLoading ? "Loading..." : "Update tenant profile and address"}</p>
+            <p className="text-xs text-slate-500">
+              {isLoading ? "Loading..." : "Update owner info, WhatsApp number, GST, and address"}
+            </p>
           </div>
           <button
             type="button"
@@ -168,24 +212,52 @@ export function ProfileSettingsWorkspace({ title = "Profile & Settings" }: Props
         <form onSubmit={submit} className="grid gap-3 p-4">
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <input
-              value={form.name}
-              onChange={(event) => updateField("name", event.target.value)}
+              value={form.tenantName}
+              onChange={(event) => updateField("tenantName", event.target.value)}
               className="h-10 rounded-lg border border-[#ddd4c1] bg-white px-3 text-sm outline-none ring-amber-200 focus:ring-2"
-              placeholder="Restaurant name"
+              placeholder="Tenant name"
             />
             <input
-              value={form.contactNumber}
-              onChange={(event) => updateField("contactNumber", event.target.value)}
+              value={form.ownerName}
+              onChange={(event) => updateField("ownerName", event.target.value)}
               className="h-10 rounded-lg border border-[#ddd4c1] bg-white px-3 text-sm outline-none ring-amber-200 focus:ring-2"
-              placeholder="Contact number"
+              placeholder="Owner name"
             />
           </div>
-          <input
-            value={form.gstNumber}
-            onChange={(event) => updateField("gstNumber", event.target.value)}
-            className="h-10 rounded-lg border border-[#ddd4c1] bg-white px-3 text-sm outline-none ring-amber-200 focus:ring-2"
-            placeholder="GST number"
-          />
+
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <input
+              type="email"
+              value={form.ownerEmail}
+              onChange={(event) => updateField("ownerEmail", event.target.value)}
+              className="h-10 rounded-lg border border-[#ddd4c1] bg-white px-3 text-sm outline-none ring-amber-200 focus:ring-2"
+              placeholder="Owner email"
+            />
+            <input
+              value={form.whatsappNumber}
+              onChange={(event) => updateField("whatsappNumber", event.target.value)}
+              className="h-10 rounded-lg border border-[#ddd4c1] bg-white px-3 text-sm outline-none ring-amber-200 focus:ring-2"
+              placeholder="WhatsApp number"
+              inputMode="tel"
+            />
+          </div>
+
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <input
+              value={form.secondaryNumber}
+              onChange={(event) => updateField("secondaryNumber", event.target.value)}
+              className="h-10 rounded-lg border border-[#ddd4c1] bg-white px-3 text-sm outline-none ring-amber-200 focus:ring-2"
+              placeholder="Secondary number (optional)"
+              inputMode="tel"
+            />
+            <input
+              value={form.gstNumber}
+              onChange={(event) => updateField("gstNumber", event.target.value.toUpperCase())}
+              className="h-10 rounded-lg border border-[#ddd4c1] bg-white px-3 text-sm outline-none ring-amber-200 focus:ring-2"
+              placeholder="GST number"
+            />
+          </div>
+
           <input
             value={form.line1}
             onChange={(event) => updateField("line1", event.target.value)}
