@@ -13,6 +13,8 @@ import {
   useLazyGetTableQrQuery,
   useUpdateTableMutation,
 } from "@/store/api/tablesApi";
+import { useGetOrdersQuery } from "@/store/api/ordersApi";
+import { useGetInvoicesQuery } from "@/store/api/invoicesApi";
 import type {
   TableQrFormat,
   TableRecord,
@@ -306,6 +308,14 @@ export function TablesWorkspace({ tenantName, tenantSlug }: Props) {
   const queryArg =
     filter === "all" ? undefined : { isActive: filter === "active" };
   const { data, isLoading, isFetching, refetch } = useGetTablesQuery(queryArg);
+  const { data: ordersData } = useGetOrdersQuery({
+    status: ["PLACED", "IN_PROGRESS", "READY", "SERVED"],
+    limit: 200,
+  });
+  const { data: invoicesData } = useGetInvoicesQuery({
+    status: "ISSUED",
+    limit: 200,
+  });
   const [createTable, { isLoading: isCreating }] = useCreateTableMutation();
   const [updateTable, { isLoading: isUpdating }] = useUpdateTableMutation();
   const [deleteTable, { isLoading: isDeleting }] = useDeleteTableMutation();
@@ -341,6 +351,38 @@ export function TablesWorkspace({ tenantName, tenantSlug }: Props) {
       return content.includes(q);
     });
   }, [searchText, tables]);
+
+  const invoiceCoveredOrderIds = useMemo(() => {
+    const ids = new Set<string>();
+    (invoicesData?.items || []).forEach((invoice) => {
+      if (invoice.orderId) ids.add(invoice.orderId);
+      (invoice.orderIds || []).forEach((orderId) => ids.add(orderId));
+    });
+    return ids;
+  }, [invoicesData?.items]);
+
+  const activeOrderCountByTable = useMemo(() => {
+    const counts = new Map<string, number>();
+    (ordersData?.items || []).forEach((order) => {
+      const tableId = order.table?.id || order.tableId;
+      if (!tableId) return;
+      if (invoiceCoveredOrderIds.has(order.id)) return;
+      const status = nStatus(order.status);
+      if (!["PLACED", "IN_PROGRESS", "READY", "SERVED"].includes(status)) return;
+      counts.set(tableId, (counts.get(tableId) || 0) + 1);
+    });
+    return counts;
+  }, [invoiceCoveredOrderIds, ordersData?.items]);
+
+  const issuedInvoiceCountByTable = useMemo(() => {
+    const counts = new Map<string, number>();
+    (invoicesData?.items || []).forEach((invoice) => {
+      const tableId = invoice.table?.id;
+      if (!tableId) return;
+      counts.set(tableId, (counts.get(tableId) || 0) + 1);
+    });
+    return counts;
+  }, [invoicesData?.items]);
 
   function canOpenOrder(table: TableRecord): boolean {
     const status = nStatus(table.status);
@@ -809,6 +851,8 @@ export function TablesWorkspace({ tenantName, tenantSlug }: Props) {
                 <div className="grid gap-2.5 sm:grid-cols-2 sm:gap-3">
                   {filteredTables.map((table) => {
                     const reserved = nStatus(table.status) === "RESERVED";
+                    const activeOrderCount = activeOrderCountByTable.get(table.id) || 0;
+                    const issuedInvoiceCount = issuedInvoiceCountByTable.get(table.id) || 0;
                     return (
                       <article
                         key={table.id}
@@ -842,6 +886,16 @@ export function TablesWorkspace({ tenantName, tenantSlug }: Props) {
                             >
                               {sLabel(table.status)}
                             </span>
+                            {activeOrderCount > 0 ? (
+                              <p className="text-[10px] font-semibold text-amber-700">
+                                {activeOrderCount} active order{activeOrderCount === 1 ? "" : "s"}
+                              </p>
+                            ) : null}
+                            {issuedInvoiceCount > 0 ? (
+                              <p className="text-[10px] font-semibold text-blue-700">
+                                {issuedInvoiceCount} pending invoice{issuedInvoiceCount === 1 ? "" : "s"}
+                              </p>
+                            ) : null}
                             <p className="text-[10px] text-slate-500">
                               {table.isActive
                                 ? "Active Table"
@@ -1150,11 +1204,23 @@ export function TablesWorkspace({ tenantName, tenantSlug }: Props) {
                             </td>
 
                             <td className="px-2.5 py-2 sm:px-3">
-                              <span
-                                className={`inline-flex rounded-full border px-2 py-0.5 text-[10px] font-semibold ${sClass(table.status)}`}
-                              >
-                                {sLabel(table.status)}
-                              </span>
+                              <div className="flex flex-wrap gap-1.5">
+                                <span
+                                  className={`inline-flex rounded-full border px-2 py-0.5 text-[10px] font-semibold ${sClass(table.status)}`}
+                                >
+                                  {sLabel(table.status)}
+                                </span>
+                                {(activeOrderCountByTable.get(table.id) || 0) > 0 ? (
+                                  <span className="inline-flex rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[10px] font-semibold text-amber-800">
+                                    {activeOrderCountByTable.get(table.id)} active
+                                  </span>
+                                ) : null}
+                                {(issuedInvoiceCountByTable.get(table.id) || 0) > 0 ? (
+                                  <span className="inline-flex rounded-full border border-blue-200 bg-blue-50 px-2 py-0.5 text-[10px] font-semibold text-blue-800">
+                                    {issuedInvoiceCountByTable.get(table.id)} invoice
+                                  </span>
+                                ) : null}
+                              </div>
                             </td>
 
                             {/* 👇 important fix */}

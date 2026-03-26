@@ -57,6 +57,7 @@ type PublicQrMenuProps = {
 };
 
 const CONTACT_STORAGE_KEY = "restro-public-order-contact";
+const QR_SESSION_STORAGE_PREFIX = "restro-public-order-session";
 
 function asRecord(value: unknown): Record<string, unknown> | null {
   return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : null;
@@ -216,6 +217,21 @@ function entryKey(itemId: string, variantId?: string): string {
 
 function normalizePhone(value: string): string {
   return value.replace(/[^\d+]/g, "");
+}
+
+function sessionStorageKey(args: {
+  token?: string;
+  tenantSlug?: string;
+  tableId?: string;
+  tableNumber?: string;
+}): string {
+  return [
+    QR_SESSION_STORAGE_PREFIX,
+    args.token || "no-token",
+    args.tenantSlug || "no-tenant",
+    args.tableId || "no-table",
+    args.tableNumber || "no-number",
+  ].join(":");
 }
 
 function availableVariants(item: PublicItem): PublicVariant[] {
@@ -392,6 +408,7 @@ export function PublicQrMenu({ tenantSlug: tenantSlugFromPath }: PublicQrMenuPro
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState("");
   const [submitSuccess, setSubmitSuccess] = useState("");
+  const [sessionToken, setSessionToken] = useState("");
 
   const token = searchParams.get("token")?.trim() || "";
   const tenantSlug = searchParams.get("tenantSlug")?.trim() || tenantSlugFromPath?.trim() || "";
@@ -423,6 +440,14 @@ export function PublicQrMenu({ tenantSlug: tenantSlugFromPath }: PublicQrMenuPro
       }),
     );
   }, [customerName, customerPhone]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const key = sessionStorageKey({ token, tenantSlug, tableId, tableNumber });
+    const stored = window.localStorage.getItem(key);
+    if (stored) setSessionToken(stored);
+    else setSessionToken("");
+  }, [tableId, tableNumber, tenantSlug, token]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -604,6 +629,7 @@ export function PublicQrMenu({ tenantSlug: tenantSlugFromPath }: PublicQrMenuPro
         credentials: "omit",
         body: JSON.stringify({
           ...(token ? { token } : {}),
+          ...(sessionToken ? { sessionToken } : {}),
           ...(!token && tenantSlug ? { tenantSlug } : {}),
           ...(!token && resolvedTableId ? { tableId: resolvedTableId } : {}),
           ...(!token && !resolvedTableId && resolvedTableNumber ? { tableNumber: Number(resolvedTableNumber) } : {}),
@@ -623,6 +649,16 @@ export function PublicQrMenu({ tenantSlug: tenantSlugFromPath }: PublicQrMenuPro
       if (!response.ok) {
         const message = asString((body as Record<string, unknown>)?.message) || "Order place nahi ho saka.";
         throw new Error(message);
+      }
+
+      const orderRecord = asRecord((body as Record<string, unknown>)?.order);
+      const nextSessionToken = asString(orderRecord?.sessionToken);
+      if (typeof window !== "undefined") {
+        const key = sessionStorageKey({ token, tenantSlug, tableId, tableNumber });
+        if (nextSessionToken) {
+          window.localStorage.setItem(key, nextSessionToken);
+          setSessionToken(nextSessionToken);
+        }
       }
 
       const message = asString((body as Record<string, unknown>)?.message) || "Order placed successfully.";
@@ -927,7 +963,7 @@ export function PublicQrMenu({ tenantSlug: tenantSlugFromPath }: PublicQrMenuPro
             submitting={isSubmitting}
             canSubmit={Boolean(cart.length && customerName.trim() && customerPhone.trim() && orderEnabled)}
             orderEnabled={orderEnabled}
-            helperText={orderEnabled ? "Customer name aur number ke saath order kitchen me direct chala jayega." : "Ye link sirf preview mode me hai."}
+            helperText={orderEnabled ? `Customer name aur number ke saath order kitchen me direct chala jayega.${sessionToken ? " Repeat items isi guest order me add honge." : ""}` : "Ye link sirf preview mode me hai."}
           />
         </aside>
       </div>
@@ -995,7 +1031,7 @@ export function PublicQrMenu({ tenantSlug: tenantSlugFromPath }: PublicQrMenuPro
                 submitting={isSubmitting}
                 canSubmit={Boolean(cart.length && customerName.trim() && customerPhone.trim() && orderEnabled)}
                 orderEnabled={orderEnabled}
-                helperText={orderEnabled ? "Order place hote hi kitchen/waiter side par customer details ke saath flow me aayega." : "Is public menu link se sirf menu browse kiya ja sakta hai."}
+                helperText={orderEnabled ? `Order place hote hi kitchen/waiter side par customer details ke saath flow me aayega.${sessionToken ? " Aapke repeat items isi order session me add honge." : ""}` : "Is public menu link se sirf menu browse kiya ja sakta hai."}
                 compact
               />
             </div>

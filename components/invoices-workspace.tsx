@@ -7,12 +7,13 @@ import { showError, showInfo, showSuccess } from "@/lib/feedback";
 import { useOrderSocket, type SocketOrderRole } from "@/lib/use-order-socket";
 import {
   useCreateInvoiceMutation,
+  useCreateGroupInvoiceMutation,
   useGetInvoicesQuery,
   usePayInvoiceMutation,
 } from "@/store/api/invoicesApi";
 import { useTentantProfileQuery } from "@/store/api/authApi";
 import { useGetOrdersQuery } from "@/store/api/ordersApi";
-import { useGetTablesQuery, useUpdateTableMutation } from "@/store/api/tablesApi";
+import { useGetTablesQuery } from "@/store/api/tablesApi";
 import { useAppSelector } from "@/store/hooks";
 import { selectAuthToken } from "@/store/slices/authSlice";
 import type { InvoiceRecord } from "@/store/types/invoices";
@@ -163,15 +164,6 @@ function timeAgo(iso?: string): string {
   return `${Math.floor(diff / 1440)}d ago`;
 }
 
-function timeValue(...values: Array<string | undefined>): number {
-  for (const value of values) {
-    if (!value) continue;
-    const parsed = new Date(value).getTime();
-    if (Number.isFinite(parsed)) return parsed;
-  }
-  return 0;
-}
-
 function itemTotal(order: OrderRecord): number {
   const direct = order.grandTotal ?? order.subTotal;
   if (typeof direct === "number" && Number.isFinite(direct) && direct > 0) return direct;
@@ -202,7 +194,11 @@ function sortByLatest<T extends { updatedAt?: string; createdAt?: string }>(item
 
 function canGenerateInvoice(order?: OrderRecord): boolean {
   const status = normalizeStatus(order?.status);
-  return status === "READY" || status === "SERVED";
+  return status === "SERVED";
+}
+
+function isOpenOrderStatus(status?: string): boolean {
+  return ["PLACED", "IN_PROGRESS", "READY", "SERVED"].includes(normalizeStatus(status));
 }
 
 function tableSearch(table?: TableRecord | InvoiceRecord["table"] | OrderRecord["table"]): string {
@@ -394,6 +390,7 @@ export function InvoicesWorkspace({ rawRole }: Props) {
   const [tableFilter, setTableFilter] = useState("");
   const [historyRange, setHistoryRange] = useState<HistoryRange>("today");
   const [customerFilter, setCustomerFilter] = useState("");
+  const [selectedBillingOrderIds, setSelectedBillingOrderIds] = useState<Record<string, string[]>>({});
   const [socketConnected, setSocketConnected] = useState(false);
   const [selectedInvoiceId, setSelectedInvoiceId] = useState<string | null>(null);
   const [isInvoiceViewOpen, setIsInvoiceViewOpen] = useState(false);
@@ -420,8 +417,8 @@ export function InvoicesWorkspace({ rawRole }: Props) {
   } = useGetInvoicesQuery(undefined, { pollingInterval: 30000 });
 
   const [createInvoice, { isLoading: isCreating }] = useCreateInvoiceMutation();
+  const [createGroupInvoice, { isLoading: isCreatingGroup }] = useCreateGroupInvoiceMutation();
   const [payInvoice, { isLoading: isPaying }] = usePayInvoiceMutation();
-  const [updateTable] = useUpdateTableMutation();
 
   useOrderSocket({
     token,
@@ -493,67 +490,42 @@ export function InvoicesWorkspace({ rawRole }: Props) {
   const invoiceByOrderId = useMemo(() => {
     const map = new Map<string, InvoiceRecord>();
     invoices.forEach((invoice) => {
-      if (invoice.orderId && !map.has(invoice.orderId)) {
-        map.set(invoice.orderId, invoice);
-      }
+      const coveredIds = [...(invoice.orderIds || []), invoice.orderId].filter(Boolean);
+      coveredIds.forEach((orderId) => {
+        if (!map.has(orderId)) map.set(orderId, invoice);
+      });
     });
     return map;
   }, [invoices]);
 
-  const issuedInvoiceByTableId = useMemo(() => {
-    const map = new Map<string, InvoiceRecord>();
+  const issuedInvoicesByTableId = useMemo(() => {
+    const map = new Map<string, InvoiceRecord[]>();
     invoices.forEach((invoice) => {
       const tableId = invoice.table?.id;
       if (!tableId) return;
       if (normalizeStatus(invoice.status) !== "ISSUED") return;
-      if (!map.has(tableId)) map.set(tableId, invoice);
+      const existing = map.get(tableId) || [];
+      existing.push(invoice);
+      map.set(tableId, existing);
     });
     return map;
   }, [invoices]);
 
-  const paidInvoiceByTableId = useMemo(() => {
-    const map = new Map<string, InvoiceRecord>();
-    invoices.forEach((invoice) => {
-      const tableId = invoice.table?.id;
-      if (!tableId) return;
-      if (normalizeStatus(invoice.status) !== "PAID") return;
-
-      const current = map.get(tableId);
-      const nextTime = timeValue(
-        invoice.payment?.paidAt,
-        invoice.updatedAt,
-        invoice.createdAt,
-      );
-      const currentTime = current
-        ? timeValue(current.payment?.paidAt, current.updatedAt, current.createdAt)
-        : 0;
-
-      if (!current || nextTime >= currentTime) {
-        map.set(tableId, invoice);
-      }
-    });
-    return map;
-  }, [invoices]);
-
-  const latestOpenOrderByTable = useMemo(() => {
-    const map = new Map<string, OrderRecord>();
+  const openOrdersByTable = useMemo(() => {
+    const map = new Map<string, OrderRecord[]>();
     orders.forEach((order) => {
       const tableId = order.table?.id || order.tableId;
       if (!tableId || invoiceByOrderId.has(order.id)) return;
-      const status = normalizeStatus(order.status);
-      if (!["PLACED", "IN_PROGRESS", "READY", "SERVED"].includes(status)) return;
-      const paidInvoice = paidInvoiceByTableId.get(tableId);
-      const paidAt = paidInvoice
-        ? timeValue(paidInvoice.payment?.paidAt, paidInvoice.updatedAt, paidInvoice.createdAt)
-        : 0;
-      const orderAt = timeValue(order.updatedAt, order.createdAt);
-      if (paidAt && orderAt && orderAt <= paidAt) return;
-      if (!map.has(tableId)) {
-        map.set(tableId, order);
-      }
+      if (!isOpenOrderStatus(order.status)) return;
+      const existing = map.get(tableId) || [];
+      existing.push(order);
+      map.set(tableId, existing);
+    });
+    map.forEach((items, key) => {
+      map.set(key, sortByLatest(items));
     });
     return map;
-  }, [invoiceByOrderId, orders, paidInvoiceByTableId]);
+  }, [invoiceByOrderId, orders]);
 
   const filterQuery = tableFilter.trim().toLowerCase();
 
@@ -561,33 +533,35 @@ export function InvoicesWorkspace({ rawRole }: Props) {
     return tables
       .filter((table) => {
         const tableId = table.id;
-        const isOccupied = normalizeStatus(table.status) === "OCCUPIED";
-        const hasOpenOrder = latestOpenOrderByTable.has(tableId);
-        const hasIssuedInvoice = issuedInvoiceByTableId.has(tableId);
+        const tableStatus = normalizeStatus(table.status);
+        const isOccupied = tableStatus === "OCCUPIED" || tableStatus === "BILLING";
+        const hasOpenOrder = (openOrdersByTable.get(tableId) || []).length > 0;
+        const hasIssuedInvoice = (issuedInvoicesByTableId.get(tableId) || []).length > 0;
         if (!isOccupied) return false;
         if (!hasOpenOrder && !hasIssuedInvoice) return false;
         if (!filterQuery) return true;
         return tableSearch(table).includes(filterQuery);
       })
       .map((table) => {
-        const order = latestOpenOrderByTable.get(table.id);
-        const currentInvoice = issuedInvoiceByTableId.get(table.id) || null;
-        return { table, order, currentInvoice };
+        const rowOrders = openOrdersByTable.get(table.id) || [];
+        const currentInvoices = issuedInvoicesByTableId.get(table.id) || [];
+        const readyOrders = rowOrders.filter((order) => canGenerateInvoice(order));
+        return { table, orders: rowOrders, currentInvoices, readyOrders };
       });
-  }, [filterQuery, issuedInvoiceByTableId, latestOpenOrderByTable, tables]);
+  }, [filterQuery, issuedInvoicesByTableId, openOrdersByTable, tables]);
 
   const pendingBillingRows = useMemo(
-    () => billingRows.filter((row) => row.order && canGenerateInvoice(row.order) && !invoiceByOrderId.has(row.order.id)),
-    [billingRows, invoiceByOrderId],
+    () => billingRows.filter((row) => row.readyOrders.length > 0 && row.currentInvoices.length === 0),
+    [billingRows],
   );
   const occupiedTablesCount = useMemo(
     () =>
       tables.filter((table) => {
         if (normalizeStatus(table.status) !== "OCCUPIED") return false;
         const tableId = table.id;
-        return latestOpenOrderByTable.has(tableId) || issuedInvoiceByTableId.has(tableId);
+        return (openOrdersByTable.get(tableId) || []).length > 0 || (issuedInvoicesByTableId.get(tableId) || []).length > 0;
       }).length,
-    [issuedInvoiceByTableId, latestOpenOrderByTable, tables],
+    [issuedInvoicesByTableId, openOrdersByTable, tables],
   );
 
   const issuedInvoices = useMemo(
@@ -680,6 +654,66 @@ export function InvoicesWorkspace({ rawRole }: Props) {
     }
   }
 
+  async function handleCreateGroupInvoice(table: TableRecord, ordersToBill: OrderRecord[]) {
+    if (!ordersToBill.length) return;
+    try {
+      const response = await createGroupInvoice({
+        tableId: table.id,
+        ...(ordersToBill.length > 1 ? { orderIds: ordersToBill.map((order) => order.id) } : {}),
+      }).unwrap();
+
+      if (response.invoice?.id) {
+        setInvoiceOverrides((prev) => ({ ...prev, [response.invoice.id]: response.invoice }));
+        setSelectedInvoiceId(response.invoice.id);
+        setIsInvoiceViewOpen(true);
+      }
+
+      showSuccess(
+        response.message ||
+          `${ordersToBill.length > 1 ? "Group invoice" : "Invoice"} created for ${table.name || `Table ${table.number}`}`,
+      );
+      refetchTables();
+      refetchOrders();
+      refetchInvoices();
+    } catch (error) {
+      showError(getErrorMessage(error));
+    }
+  }
+
+  function selectedReadyOrders(tableId: string, readyOrders: OrderRecord[]): OrderRecord[] {
+    const selectedIds = selectedBillingOrderIds[tableId];
+    if (!selectedIds?.length) return readyOrders;
+    const idSet = new Set(selectedIds);
+    const selected = readyOrders.filter((order) => idSet.has(order.id));
+    return selected.length ? selected : readyOrders;
+  }
+
+  function toggleBillingOrder(tableId: string, orderId: string) {
+    setSelectedBillingOrderIds((current) => {
+      const existing = current[tableId] || [];
+      return {
+        ...current,
+        [tableId]: existing.includes(orderId)
+          ? existing.filter((id) => id !== orderId)
+          : [...existing, orderId],
+      };
+    });
+  }
+
+  function selectAllBillingOrders(tableId: string, readyOrders: OrderRecord[]) {
+    setSelectedBillingOrderIds((current) => ({
+      ...current,
+      [tableId]: readyOrders.map((order) => order.id),
+    }));
+  }
+
+  function clearBillingSelection(tableId: string) {
+    setSelectedBillingOrderIds((current) => ({
+      ...current,
+      [tableId]: [],
+    }));
+  }
+
   async function handlePayInvoice(invoice: InvoiceRecord, method: "CASH" | "UPI") {
     // const amount = invoiceAmount(invoice);
     const amount = Math.max(
@@ -696,21 +730,6 @@ export function InvoicesWorkspace({ rawRole }: Props) {
       }).unwrap();
 
       showSuccess(response.message || "Payment done");
-      const paidInvoice = response.invoice?.id ? response.invoice : invoice;
-      const paidTableId = paidInvoice.table?.id || invoice.table?.id;
-
-      if (paidTableId) {
-        try {
-          await updateTable({
-            tableId: paidTableId,
-            status: "AVAILABLE",
-            customerId: "",
-          }).unwrap();
-        } catch {
-          showInfo("Payment ho gaya, lekin table auto-release nahi hua. Manual refresh/check kar lo.");
-        }
-      }
-
       if (response.invoice?.id) {
         setInvoiceOverrides((prev) => ({ ...prev, [response.invoice.id]: response.invoice }));
         setSelectedInvoiceId(response.invoice.id);
@@ -812,15 +831,20 @@ export function InvoicesWorkspace({ rawRole }: Props) {
               ) : (
                 <>
                   <div className="space-y-2 p-2 md:hidden">
-                    {billingRows.map(({ table, order, currentInvoice }) => {
-                      const isReadyForInvoice = canGenerateInvoice(order);
-                      const rowAmount = currentInvoice ? invoiceAmount(currentInvoice) : order ? itemTotal(order) : 0;
-                      const orderStatus = normalizeStatus(order?.status);
-                      const orderHint = !order
-                        ? "No open order"
-                        : isReadyForInvoice
-                          ? "Ready to bill"
-                          : `Waiting for READY/SERVED (${orderStatus || "PLACED"})`;
+                    {billingRows.map(({ table, orders: tableOrders, currentInvoices, readyOrders }) => {
+                      const primaryInvoice = currentInvoices[0] || null;
+                      const rowAmount = primaryInvoice
+                        ? currentInvoices.reduce((sum, invoice) => sum + invoiceAmount(invoice), 0)
+                        : tableOrders.reduce((sum, order) => sum + itemTotal(order), 0);
+                      const selectedOrders = selectedReadyOrders(table.id, readyOrders);
+                      const orderHint =
+                        currentInvoices.length > 0
+                          ? `${currentInvoices.length} issued invoice${currentInvoices.length === 1 ? "" : "s"} pending`
+                          : readyOrders.length > 0
+                            ? `${readyOrders.length} order${readyOrders.length === 1 ? "" : "s"} ready to bill`
+                            : tableOrders.length > 0
+                              ? `${tableOrders.length} running order${tableOrders.length === 1 ? "" : "s"}`
+                              : "No open order";
 
                       return (
                         <article key={`mobile-${table.id}`} className="rounded-xl border border-[#e6dccb] bg-white p-3">
@@ -832,55 +856,88 @@ export function InvoicesWorkspace({ rawRole }: Props) {
                             <p className="text-sm font-semibold text-slate-900">{fmtCurrency(rowAmount)}</p>
                           </div>
                           <p className="mt-2 text-xs text-slate-600">{orderHint}</p>
-                          <div className="mt-2 flex flex-wrap gap-2">
-                            {order ? (
-                              <span className={`inline-flex rounded-full border px-2.5 py-1 text-[10px] font-semibold ${statusPill(order.status)}`}>
-                                {order.status}
+                          <div className="mt-2 flex flex-wrap gap-2 text-[10px]">
+                            {tableOrders.map((order) => (
+                              <span key={order.id} className={`inline-flex rounded-full border px-2.5 py-1 font-semibold ${statusPill(order.status)}`}>
+                                {order.orderNumber ? `#${order.orderNumber}` : order.id.slice(-4)} {order.status}
                               </span>
-                            ) : null}
-                            {currentInvoice ? (
-                              <span className={`inline-flex rounded-full border px-2.5 py-1 text-[10px] font-semibold ${statusPill(currentInvoice.status)}`}>
-                                INV {shortInvoiceId(currentInvoice.id)}
+                            ))}
+                            {currentInvoices.map((invoice) => (
+                              <span key={invoice.id} className={`inline-flex rounded-full border px-2.5 py-1 font-semibold ${statusPill(invoice.status)}`}>
+                                INV {shortInvoiceId(invoice.id)}{invoice.isGroupInvoice ? " Group" : ""}
                               </span>
-                            ) : (
-                              <span className="inline-flex rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-[10px] font-semibold text-slate-600">
-                                Not generated
-                              </span>
-                            )}
+                            ))}
                           </div>
+                          {readyOrders.length > 0 ? (
+                            <div className="mt-3 rounded-xl border border-slate-200 bg-slate-50 p-2.5">
+                              <div className="flex items-center justify-between gap-2">
+                                <p className="text-[11px] font-semibold text-slate-700">Select orders to bill</p>
+                                <div className="flex gap-2 text-[10px] font-semibold">
+                                  <button type="button" onClick={() => selectAllBillingOrders(table.id, readyOrders)} className="text-slate-600">
+                                    All
+                                  </button>
+                                  <button type="button" onClick={() => clearBillingSelection(table.id)} className="text-slate-600">
+                                    Clear
+                                  </button>
+                                </div>
+                              </div>
+                              <div className="mt-2 space-y-1.5">
+                                {readyOrders.map((order) => {
+                                  const checked = selectedOrders.some((entry) => entry.id === order.id);
+                                  return (
+                                    <label key={order.id} className="flex items-center gap-2 rounded-lg bg-white px-2 py-1.5 text-[11px] text-slate-700">
+                                      <input
+                                        type="checkbox"
+                                        checked={checked}
+                                        onChange={() => toggleBillingOrder(table.id, order.id)}
+                                        className="h-4 w-4 rounded border-slate-300"
+                                      />
+                                      <span className="min-w-0 flex-1">
+                                        {order.orderNumber ? `#${order.orderNumber}` : order.id.slice(-4)}
+                                        {order.customerName ? ` • ${order.customerName}` : ""}
+                                      </span>
+                                      <span className="font-semibold">{fmtCurrency(itemTotal(order))}</span>
+                                    </label>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          ) : null}
                           <div className="mt-3 flex flex-wrap gap-2">
-                            {currentInvoice ? (
+                            {currentInvoices.length > 0 ? (
                               <>
-                                <button
-                                  type="button"
-                                  onClick={() => openInvoiceView(currentInvoice.id)}
-                                  className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-semibold text-slate-700"
-                                >
-                                  View
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={() =>
-                                    downloadInvoicePdf(currentInvoice, {
-                                      ...receiptProfile,
-                                      customerName: invoiceCustomerMap.get(currentInvoice.id) || "-",
-                                    })
-                                  }
-                                  className="rounded-xl border border-blue-200 bg-blue-50 px-3 py-1.5 text-xs font-semibold text-blue-700"
-                                >
-                                  Download PDF
-                                </button>
+                                {currentInvoices.map((invoice) => (
+                                  <button
+                                    key={invoice.id}
+                                    type="button"
+                                    onClick={() => openInvoiceView(invoice.id)}
+                                    className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-semibold text-slate-700"
+                                  >
+                                    View INV {shortInvoiceId(invoice.id)}
+                                  </button>
+                                ))}
                               </>
-                            ) : (
+                            ) : null}
+                            {selectedOrders.length === 1 ? (
                               <button
                                 type="button"
-                                disabled={!isReadyForInvoice || !order || isCreating}
-                                onClick={() => order && handleCreateInvoice(order)}
+                                disabled={isCreating}
+                                onClick={() => handleCreateInvoice(selectedOrders[0])}
                                 className="rounded-xl bg-amber-500 px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-50"
                               >
-                                {!order ? "No Order" : !isReadyForInvoice ? "Wait READY" : isCreating ? "Creating..." : "Create Invoice"}
+                                {isCreating ? "Creating..." : "Bill Selected"}
                               </button>
-                            )}
+                            ) : null}
+                            {selectedOrders.length > 1 ? (
+                              <button
+                                type="button"
+                                disabled={isCreatingGroup}
+                                onClick={() => handleCreateGroupInvoice(table, selectedOrders)}
+                                className="rounded-xl bg-slate-900 px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-50"
+                              >
+                                {isCreatingGroup ? "Creating..." : `Bill Selected ${selectedOrders.length}`}
+                              </button>
+                            ) : null}
                           </div>
                         </article>
                       );
@@ -899,15 +956,18 @@ export function InvoicesWorkspace({ rawRole }: Props) {
                       </tr>
                     </thead>
                     <tbody>
-                      {billingRows.map(({ table, order, currentInvoice }) => {
-                        const isReadyForInvoice = canGenerateInvoice(order);
-                        const rowAmount = currentInvoice ? invoiceAmount(currentInvoice) : order ? itemTotal(order) : 0;
-                        const orderStatus = normalizeStatus(order?.status);
-                        const orderHint = !order
-                          ? "No open order"
-                          : isReadyForInvoice
-                            ? "Ready to bill"
-                            : `Waiting for READY/SERVED (${orderStatus || "PLACED"})`;
+                      {billingRows.map(({ table, orders: tableOrders, currentInvoices, readyOrders }) => {
+                        const primaryInvoice = currentInvoices[0] || null;
+                        const rowAmount = primaryInvoice
+                          ? currentInvoices.reduce((sum, invoice) => sum + invoiceAmount(invoice), 0)
+                          : tableOrders.reduce((sum, order) => sum + itemTotal(order), 0);
+                        const selectedOrders = selectedReadyOrders(table.id, readyOrders);
+                        const orderHint =
+                          currentInvoices.length > 0
+                            ? `${currentInvoices.length} issued invoice${currentInvoices.length === 1 ? "" : "s"} pending payment`
+                            : readyOrders.length > 0
+                              ? `${readyOrders.length} order${readyOrders.length === 1 ? "" : "s"} ready to bill`
+                              : `${tableOrders.length} running order${tableOrders.length === 1 ? "" : "s"}`;
 
                         return (
                           <tr key={table.id} className="border-t border-[#eee4d1]">
@@ -916,62 +976,99 @@ export function InvoicesWorkspace({ rawRole }: Props) {
                               <p className="mt-1 text-xs text-slate-500">T{table.number}</p>
                             </td>
                             <td className="px-3 py-3">
-                              {order ? (
-                                <>
-                                  <span className={`inline-flex rounded-full border px-2.5 py-1 text-[10px] font-semibold ${statusPill(order.status)}`}>
-                                    {order.status}
-                                  </span>
-                                  <p className="mt-1 text-xs text-slate-500">{order.items.length} item(s) | {timeAgo(order.updatedAt || order.createdAt)}</p>
-                                  <p className="mt-1 text-[11px] font-medium text-slate-700">{orderHint}</p>
-                                </>
-                              ) : (
-                                <span className="text-xs text-slate-500">No open order</span>
-                              )}
+                              <div className="space-y-1.5">
+                                {tableOrders.length === 0 ? (
+                                  <span className="text-xs text-slate-500">No open order</span>
+                                ) : (
+                                  tableOrders.map((order) => (
+                                    <div key={order.id} className="rounded-xl border border-slate-100 bg-slate-50 px-2.5 py-2">
+                                      <div className="flex items-center justify-between gap-2">
+                                        <span className={`inline-flex rounded-full border px-2.5 py-1 text-[10px] font-semibold ${statusPill(order.status)}`}>
+                                          {order.orderNumber ? `#${order.orderNumber}` : order.id.slice(-4)} {order.status}
+                                        </span>
+                                        <span className="text-[11px] font-semibold text-slate-800">{fmtCurrency(itemTotal(order))}</span>
+                                      </div>
+                                      <p className="mt-1 text-xs text-slate-500">
+                                        {order.items.length} item(s) | {timeAgo(order.updatedAt || order.createdAt)}
+                                        {order.customerName ? ` | ${order.customerName}` : ""}
+                                      </p>
+                                      {canGenerateInvoice(order) ? (
+                                        <label className="mt-2 flex items-center gap-2 text-[11px] text-slate-700">
+                                          <input
+                                            type="checkbox"
+                                            checked={selectedOrders.some((entry) => entry.id === order.id)}
+                                            onChange={() => toggleBillingOrder(table.id, order.id)}
+                                            className="h-4 w-4 rounded border-slate-300"
+                                          />
+                                          Select for next invoice
+                                        </label>
+                                      ) : null}
+                                    </div>
+                                  ))
+                                )}
+                                <p className="text-[11px] font-medium text-slate-700">{orderHint}</p>
+                                {readyOrders.length > 0 ? (
+                                  <div className="flex gap-3 text-[11px] font-semibold text-slate-600">
+                                    <button type="button" onClick={() => selectAllBillingOrders(table.id, readyOrders)}>
+                                      Select all ready
+                                    </button>
+                                    <button type="button" onClick={() => clearBillingSelection(table.id)}>
+                                      Clear
+                                    </button>
+                                  </div>
+                                ) : null}
+                              </div>
                             </td>
                             <td className="px-3 py-3 text-sm font-semibold text-slate-900">{fmtCurrency(rowAmount)}</td>
                             <td className="px-3 py-3">
-                              {currentInvoice ? (
-                                <span className={`inline-flex rounded-full border px-2.5 py-1 text-[10px] font-semibold ${statusPill(currentInvoice.status)}`}>
-                                  INV {shortInvoiceId(currentInvoice.id)}
-                                </span>
-                              ) : (
+                              {currentInvoices.length === 0 ? (
                                 <span className="text-xs text-slate-500">Not generated</span>
+                              ) : (
+                                <div className="flex flex-wrap gap-2">
+                                  {currentInvoices.map((invoice) => (
+                                    <span key={invoice.id} className={`inline-flex rounded-full border px-2.5 py-1 text-[10px] font-semibold ${statusPill(invoice.status)}`}>
+                                      INV {shortInvoiceId(invoice.id)}{invoice.isGroupInvoice ? " Group" : ""}
+                                    </span>
+                                  ))}
+                                </div>
                               )}
                             </td>
                             <td className="px-3 py-3">
                               <div className="flex justify-end gap-2">
-                                {currentInvoice ? (
+                                {currentInvoices.length > 0 ? (
                                   <>
-                                    <button
-                                      type="button"
-                                      onClick={() => openInvoiceView(currentInvoice.id)}
-                                      className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-semibold text-slate-700"
-                                    >
-                                      View
-                                    </button>
-                                    <button
-                                      type="button"
-                                      onClick={() =>
-                                        downloadInvoicePdf(currentInvoice, {
-                                          ...receiptProfile,
-                                          customerName: invoiceCustomerMap.get(currentInvoice.id) || "-",
-                                        })
-                                      }
-                                      className="rounded-xl border border-blue-200 bg-blue-50 px-3 py-1.5 text-xs font-semibold text-blue-700"
-                                    >
-                                      Download PDF
-                                    </button>
+                                    {currentInvoices.map((invoice) => (
+                                      <button
+                                        key={invoice.id}
+                                        type="button"
+                                        onClick={() => openInvoiceView(invoice.id)}
+                                        className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-semibold text-slate-700"
+                                      >
+                                        View INV {shortInvoiceId(invoice.id)}
+                                      </button>
+                                    ))}
                                   </>
-                                ) : (
+                                ) : null}
+                                {selectedOrders.length === 1 ? (
                                   <button
                                     type="button"
-                                    disabled={!isReadyForInvoice || !order || isCreating}
-                                    onClick={() => order && handleCreateInvoice(order)}
+                                    disabled={isCreating}
+                                    onClick={() => handleCreateInvoice(selectedOrders[0])}
                                     className="rounded-xl bg-amber-500 px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-50"
                                   >
-                                    {!order ? "No Order" : !isReadyForInvoice ? "Wait READY" : isCreating ? "Creating..." : "Create Invoice"}
+                                    {isCreating ? "Creating..." : "Bill Selected"}
                                   </button>
-                                )}
+                                ) : null}
+                                {selectedOrders.length > 1 ? (
+                                  <button
+                                    type="button"
+                                    disabled={isCreatingGroup}
+                                    onClick={() => handleCreateGroupInvoice(table, selectedOrders)}
+                                    className="rounded-xl bg-slate-900 px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-50"
+                                  >
+                                    {isCreatingGroup ? "Creating..." : `Bill Selected ${selectedOrders.length}`}
+                                  </button>
+                                ) : null}
                               </div>
                             </td>
                           </tr>

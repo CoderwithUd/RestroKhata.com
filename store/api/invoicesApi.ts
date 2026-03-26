@@ -2,6 +2,7 @@ import { createApi } from "@reduxjs/toolkit/query/react";
 import { baseQueryWithReauth } from "@/store/api/baseQuery";
 import type {
   CreateInvoicePayload,
+  CreateGroupInvoicePayload,
   DeleteInvoiceResponse,
   InvoiceRecord,
   InvoiceResponse,
@@ -98,6 +99,8 @@ function parseInvoice(value: unknown): InvoiceRecord | null {
     id,
     tenantId: asString(record.tenantId),
     orderId,
+    orderIds: asArray(record.orderIds).map((value) => asString(value)).filter((value): value is string => Boolean(value)),
+    isGroupInvoice: Boolean(record.isGroupInvoice),
     table: tableId
       ? {
           id: tableId,
@@ -239,6 +242,17 @@ export const invoicesApi = createApi({
       invalidatesTags: [{ type: "Invoices", id: "LIST" }],
     }),
 
+    createGroupInvoice: builder.mutation<InvoiceResponse, CreateGroupInvoicePayload>({
+      query: (payload) => ({
+        url: "/invoices/group",
+        method: "POST",
+        credentials: "include",
+        body: payload,
+      }),
+      transformResponse: (response: unknown) => parseInvoiceResponse(response, "Group invoice created"),
+      invalidatesTags: [{ type: "Invoices", id: "LIST" }],
+    }),
+
     updateInvoice: builder.mutation<InvoiceResponse, UpdateInvoiceArgs>({
       query: ({ invoiceId, payload }) => ({
         url: `/invoices/${invoiceId}`,
@@ -289,6 +303,7 @@ export const {
   useGetInvoicesQuery,
   useGetInvoiceByIdQuery,
   useCreateInvoiceMutation,
+  useCreateGroupInvoiceMutation,
   useUpdateInvoiceMutation,
   usePayInvoiceMutation,
   useDeleteInvoiceMutation,

@@ -4,6 +4,7 @@ export type OrderStatus =
   | "IN_PROGRESS"
   | "READY"
   | "SERVED"
+  | "COMPLETED"
   | "CANCELLED"
   | string;
 
@@ -58,6 +59,8 @@ export type OrderRecord = {
   tableName?: string;
   customerName?: string;
   customerPhone?: string;
+  source?: "STAFF" | "QR" | string;
+  sessionToken?: string;
   sourceLabel?: string;
   itemsSummary?: string;
   status: OrderStatus;
@@ -153,6 +156,8 @@ export type CreateOrderPayload = {
   tableId: string;
   note?: string;
   items: OrderItemPayload[];
+  forceNew?: boolean;
+  appendToOrderId?: string;
 };
 
 // ─── Update payload ───────────────────────────────────────────────────────────

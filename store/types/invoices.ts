@@ -26,6 +26,8 @@ export type InvoiceRecord = {
   id: string;
   tenantId?: string;
   orderId: string;
+  orderIds?: string[];
+  isGroupInvoice?: boolean;
   table?: InvoiceTableRef;
   status: InvoiceStatus;
   note?: string;
@@ -67,6 +69,16 @@ export type CreateInvoicePayload = {
   note?: string;
   discountType?: InvoiceDiscountType;
   discountValue?: number;
+};
+
+export type CreateGroupInvoicePayload = {
+  tableId: string;
+  orderIds?: string[];
+  note?: string;
+  discountType?: InvoiceDiscountType;
+  discountValue?: number;
+  customerName?: string;
+  customerPhone?: string;
 };
 
 export type UpdateInvoicePayload = {

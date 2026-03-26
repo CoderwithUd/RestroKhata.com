@@ -66,6 +66,7 @@ const STATUS_LABELS: Record<string, string> = {
   IN_PROGRESS: "Cooking",
   READY: "Ready",
   SERVED: "Served",
+  COMPLETED: "Completed",
   CANCELLED: "Cancelled",
 };
 
@@ -117,6 +118,10 @@ function sortOrdersByLatest(orders: OrderRecord[]): OrderRecord[] {
 function canGenerateInvoiceForStatus(status?: string): boolean {
   const normalized = normalizeStatus(status);
   return normalized === "READY" || normalized === "SERVED";
+}
+
+function isOrderActiveForTable(status?: string): boolean {
+  return ["PLACED", "IN_PROGRESS", "READY", "SERVED"].includes(normalizeStatus(status));
 }
 
 type OrderItemDelta = {
@@ -317,41 +322,37 @@ function TableGrid({
   issuedInvoiceTableIds,
   appendSignals,
   onSelectTable,
-  onCreateInvoice,
-  creatingInvoiceOrderId,
 }: {
   tables: TableRecord[];
   orders: OrderRecord[];
   invoicedOrderIds: Set<string>;
   issuedInvoiceTableIds: Set<string>;
   appendSignals: Record<string, OrderAppendSignal>;
-  onSelectTable: (table: TableRecord, existingOrder?: OrderRecord) => void;
-  onCreateInvoice: (order: OrderRecord) => void;
-  creatingInvoiceOrderId?: string | null;
+  onSelectTable: (table: TableRecord) => void;
 }) {
-  const activeOrderByTable = useMemo(() => {
-    const map: Record<string, OrderRecord> = {};
-    for (const o of sortOrdersByLatest(orders)) {
-      const tid = o.table?.id || o.tableId;
-      if (!tid || invoicedOrderIds.has(o.id)) continue;
-      if (map[tid]) continue;
-      if (["PLACED", "IN_PROGRESS", "READY", "SERVED"].includes(normalizeStatus(o.status))) {
-        map[tid] = o;
-      }
+  const activeOrdersByTable = useMemo(() => {
+    const map: Record<string, OrderRecord[]> = {};
+    for (const order of sortOrdersByLatest(orders)) {
+      const tableId = order.table?.id || order.tableId;
+      if (!tableId || invoicedOrderIds.has(order.id) || !isOrderActiveForTable(order.status)) continue;
+      if (!map[tableId]) map[tableId] = [];
+      map[tableId].push(order);
     }
     return map;
   }, [invoicedOrderIds, orders]);
 
   return (
     <div>
-      <p className="mb-3 text-xs text-slate-500">Tap a table to take or add an order</p>
+      <p className="mb-3 text-xs text-slate-500">Tap a table to create a new order or continue any running order</p>
       <div className="grid grid-cols-3 gap-2.5 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-7">
         {tables.map((table) => {
-          const existing = activeOrderByTable[table.id];
-          const hasOrder = Boolean(existing);
+          const tableOrders = activeOrdersByTable[table.id] || [];
+          const latestOrder = tableOrders[0];
+          const hasOrder = tableOrders.length > 0;
           const billingLocked = issuedInvoiceTableIds.has(table.id);
-          const canInvoice = Boolean(existing && canGenerateInvoiceForStatus(existing.status));
-          const appendSignal = existing ? appendSignals[existing.id] : undefined;
+          const readyCount = tableOrders.filter((order) => canGenerateInvoiceForStatus(order.status)).length;
+          const qrCount = tableOrders.filter((order) => normalizeStatus(order.source) === "QR").length;
+          const appendSignal = latestOrder ? appendSignals[latestOrder.id] : undefined;
           const visualStatus = hasOrder ? "OCCUPIED" : table.status;
           return (
             <div
@@ -361,7 +362,7 @@ function TableGrid({
               <button
                 type="button"
                 onClick={() => {
-                  if (!billingLocked) onSelectTable(table, existing);
+                  if (!billingLocked) onSelectTable(table);
                 }}
                 disabled={billingLocked}
                 className="flex flex-1 flex-col items-center justify-center gap-0.5 rounded-t-[calc(1rem-2px)] px-1 transition active:scale-95 hover:scale-[1.03] disabled:cursor-not-allowed disabled:opacity-70"
@@ -374,7 +375,7 @@ function TableGrid({
                   </span>
                 ) : hasOrder ? (
                   <span className="rounded-full bg-amber-500 px-1.5 py-0.5 text-[9px] font-bold text-white">
-                    {STATUS_LABELS[existing?.status || ""] || "Active"}
+                    {tableOrders.length} active
                   </span>
                 ) : (
                   <span className="mt-0.5 text-[9px] opacity-60">
@@ -394,16 +395,12 @@ function TableGrid({
                     +{appendSignal.totalAddedQty} new
                   </span>
                 </div>
-              ) : hasOrder && canInvoice ? (
+              ) : hasOrder ? (
                 <div className="px-1 pb-1">
-                  <button
-                    type="button"
-                    onClick={() => existing && onCreateInvoice(existing)}
-                    disabled={!existing || creatingInvoiceOrderId === existing.id}
-                    className="w-full rounded-full border border-emerald-300 bg-emerald-50 px-1.5 py-0.5 text-[9px] font-bold text-emerald-700 disabled:opacity-60"
-                  >
-                    {creatingInvoiceOrderId === existing?.id ? "..." : "Invoice"}
-                  </button>
+                  <span className="block w-full rounded-full border border-slate-200 bg-white px-1.5 py-0.5 text-[9px] font-bold text-slate-600">
+                    {readyCount > 0 ? `${readyCount} ready` : STATUS_LABELS[latestOrder?.status || ""] || "Running"}
+                    {qrCount > 0 ? ` | ${qrCount} QR` : ""}
+                  </span>
                 </div>
               ) : null}
             </div>
@@ -422,7 +419,12 @@ function TableGrid({
 // ─── Waiter Step 2 — Menu Browser + Cart ─────────────────────────────────────
 function MenuBrowser({
   table,
+  tableOrders,
   existingOrder,
+  composeMode,
+  selectedOrderId,
+  onComposeModeChange,
+  onSelectedOrderIdChange,
   servingItemKey,
   onServeExistingOrderItem,
   onServeReadyItems,
@@ -430,7 +432,12 @@ function MenuBrowser({
   onConfirm,
 }: {
   table: TableRecord;
+  tableOrders: OrderRecord[];
   existingOrder?: OrderRecord;
+  composeMode: "append-latest" | "append-specific" | "force-new";
+  selectedOrderId?: string | null;
+  onComposeModeChange: (mode: "append-latest" | "append-specific" | "force-new") => void;
+  onSelectedOrderIdChange: (orderId: string) => void;
   servingItemKey?: string | null;
   onServeExistingOrderItem: (order: OrderRecord, item: OrderItem) => void;
   onServeReadyItems: (order: OrderRecord) => void;
@@ -647,9 +654,11 @@ function MenuBrowser({
         </button>
         <div className="min-w-0 flex-1">
           <p className="text-base font-bold">Table {table.number} — {table.name}</p>
-          {existingOrder && (
-            <p className="text-xs text-amber-600">Active order exists — adding more items</p>
-          )}
+          <p className="text-xs text-slate-500">
+            {tableOrders.length === 0
+              ? "No running order on this table"
+              : `${tableOrders.length} running order${tableOrders.length === 1 ? "" : "s"} on this table`}
+          </p>
         </div>
         {/* Mobile cart btn */}
         <button
@@ -665,11 +674,76 @@ function MenuBrowser({
       <div className="flex min-h-0 flex-1 gap-3 pt-3">
         {/* Left: categories + items */}
         <div className="flex min-w-0 flex-1 flex-col">
+          {tableOrders.length > 0 ? (
+            <div className="mb-2 rounded-xl border border-slate-200 bg-white p-2.5">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div>
+                  <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Order target</p>
+                  <p className="mt-0.5 text-xs text-slate-600">Choose where new items should go</p>
+                </div>
+                <div className="flex flex-wrap gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => onComposeModeChange("append-latest")}
+                    className={`rounded-full border px-3 py-1 text-[11px] font-semibold ${
+                      composeMode === "append-latest"
+                        ? "border-amber-300 bg-amber-100 text-amber-900"
+                        : "border-slate-200 bg-slate-50 text-slate-600"
+                    }`}
+                  >
+                    Add to latest
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => onComposeModeChange("append-specific")}
+                    className={`rounded-full border px-3 py-1 text-[11px] font-semibold ${
+                      composeMode === "append-specific"
+                        ? "border-amber-300 bg-amber-100 text-amber-900"
+                        : "border-slate-200 bg-slate-50 text-slate-600"
+                    }`}
+                  >
+                    Pick order
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => onComposeModeChange("force-new")}
+                    className={`rounded-full border px-3 py-1 text-[11px] font-semibold ${
+                      composeMode === "force-new"
+                        ? "border-emerald-300 bg-emerald-100 text-emerald-900"
+                        : "border-slate-200 bg-slate-50 text-slate-600"
+                    }`}
+                  >
+                    Start new
+                  </button>
+                </div>
+              </div>
+              {composeMode === "append-specific" ? (
+                <div className="mt-2 flex flex-wrap gap-1.5">
+                  {tableOrders.map((order) => (
+                    <button
+                      key={order.id}
+                      type="button"
+                      onClick={() => onSelectedOrderIdChange(order.id)}
+                      className={`rounded-xl border px-3 py-2 text-left text-[11px] font-semibold ${
+                        selectedOrderId === order.id
+                          ? "border-amber-300 bg-amber-50 text-amber-900"
+                          : "border-slate-200 bg-slate-50 text-slate-700"
+                      }`}
+                    >
+                      {(order.orderNumber ? `#${order.orderNumber}` : `Order ${order.id.slice(-4)}`)}
+                      {` • ${STATUS_LABELS[normalizeStatus(order.status)] || order.status}`}
+                      {order.customerName ? ` • ${order.customerName}` : ""}
+                    </button>
+                  ))}
+                </div>
+              ) : null}
+            </div>
+          ) : null}
           {existingOrder && existingOrder.items.length > 0 ? (
             <div className="mb-2 rounded-xl border border-amber-200 bg-amber-50 p-2.5">
               <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
                 <p className="text-[11px] font-semibold text-amber-800">
-                  Existing order items (tap +1 to add quickly)
+                  Target order items (tap +1 to add quickly)
                 </p>
                 {existingOrder && readyExistingItems.length > 0 ? (
                   <button
@@ -969,7 +1043,7 @@ function MenuBrowser({
               onClick={() => onConfirm(cart, tableNote)}
               className="w-full rounded-xl bg-amber-500 py-2.5 text-sm font-bold text-white shadow-md shadow-amber-200 disabled:opacity-40 active:scale-95 transition"
             >
-              {existingOrder ? "Add to Order" : "Place Order"}
+              {composeMode === "force-new" ? "Create New Order" : "Add Items"}
             </button>
           </div>
         </div>
@@ -1022,7 +1096,7 @@ function MenuBrowser({
               onClick={() => { setCartOpen(false); onConfirm(cart, tableNote); }}
               className="mt-3 w-full rounded-2xl bg-amber-500 py-3.5 text-base font-bold text-white shadow-lg shadow-amber-200 disabled:opacity-40"
             >
-              {existingOrder ? "Add to Order" : "Place Order"}
+              {composeMode === "force-new" ? "Create New Order" : "Add Items"}
             </button>
           </div>
         </div>
@@ -1033,6 +1107,7 @@ function MenuBrowser({
 
 // ─── Waiter View ──────────────────────────────────────────────────────────────
 type WaiterStep = "tables" | "menu" | "placing";
+type WaiterComposerMode = "append-latest" | "append-specific" | "force-new";
 
 function WaiterActionBoard({
   orders,
@@ -1253,6 +1328,8 @@ function WaiterView({ onOrderPlaced, initialTableId, mode = "board" }: WaiterVie
   const [step, setStep] = useState<WaiterStep>("tables");
   const [selectedTable, setSelectedTable] = useState<TableRecord | null>(null);
   const [, setExistingOrder] = useState<OrderRecord | undefined>(undefined);
+  const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
+  const [composeMode, setComposeMode] = useState<WaiterComposerMode>("force-new");
   const autoSelectedTableRef = useRef<string | null>(null);
   const routeDrivenMenu = mode === "select-items";
   const routeDrivenTableSelection = mode === "select-table";
@@ -1318,16 +1395,24 @@ function WaiterView({ onOrderPlaced, initialTableId, mode = "board" }: WaiterVie
     () => buildAppendSignals(waiterActionOrders),
     [waiterActionOrders],
   );
-  const currentExistingOrder = useMemo(() => {
+  const selectedTableOrders = useMemo(() => {
     if (!selectedTable) return undefined;
-
-    return sortOrdersByLatest(orders).find((order) => {
+    return sortOrdersByLatest(orders).filter((order) => {
       const orderTableId = order.table?.id || order.tableId;
       if (orderTableId !== selectedTable.id) return false;
       if (invoicedOrderIds.has(order.id)) return false;
-      return ["PLACED", "IN_PROGRESS", "READY", "SERVED"].includes(normalizeStatus(order.status));
+      return isOrderActiveForTable(order.status);
     });
   }, [invoicedOrderIds, orders, selectedTable]);
+
+  const currentExistingOrder = useMemo(() => {
+    const tableOrders = selectedTableOrders || [];
+    if (!tableOrders.length || composeMode === "force-new") return undefined;
+    if (composeMode === "append-specific") {
+      return tableOrders.find((order) => order.id === selectedOrderId) || tableOrders[0];
+    }
+    return tableOrders[0];
+  }, [composeMode, selectedOrderId, selectedTableOrders]);
 
   useEffect(() => {
     const targetTableId = initialTableId?.trim();
@@ -1340,25 +1425,33 @@ function WaiterView({ onOrderPlaced, initialTableId, mode = "board" }: WaiterVie
     const table = tables.find((row) => row.id === targetTableId);
     if (!table) return;
 
-    const existing = orders.find((order) => {
-      const orderTableId = order.table?.id || order.tableId;
-      if (orderTableId !== table.id) return false;
-      return normalizeStatus(order.status) !== "CANCELLED";
-    });
-
     setSelectedTable(table);
-    setExistingOrder(existing);
     setStep("menu");
     autoSelectedTableRef.current = targetTableId;
   }, [initialTableId, orders, tables]);
 
-  function handleSelectTable(table: TableRecord, existing?: OrderRecord) {
+  useEffect(() => {
+    const tableOrders = selectedTableOrders || [];
+    if (!selectedTable) return;
+    if (tableOrders.length === 0) {
+      setComposeMode("force-new");
+      setSelectedOrderId(null);
+      return;
+    }
+    if (!selectedOrderId || !tableOrders.some((order) => order.id === selectedOrderId)) {
+      setSelectedOrderId(tableOrders[0].id);
+    }
+    if (tableOrders.length === 1) {
+      setComposeMode("append-specific");
+    }
+  }, [selectedOrderId, selectedTable, selectedTableOrders]);
+
+  function handleSelectTable(table: TableRecord) {
     if (routeDrivenTableSelection) {
       router.push(`/dashboard/orders/items?tableId=${encodeURIComponent(table.id)}`);
       return;
     }
     setSelectedTable(table);
-    setExistingOrder(existing);
     setStep("menu");
   }
 
@@ -1458,13 +1551,24 @@ function WaiterView({ onOrderPlaced, initialTableId, mode = "board" }: WaiterVie
         }));
 
         // API_REFERENCE.md: incremental add should use POST /orders.
-        // Backend appends into the active open order for the same table.
-        await createOrder({
+        const payload = {
           tableId: selectedTable.id,
           ...(tableNote ? { note: tableNote } : {}),
           items,
-        }).unwrap();
-        showSuccess(currentExistingOrder ? "Items appended to active order!" : "Order placed successfully!");
+          ...(composeMode === "force-new"
+            ? { forceNew: true }
+            : composeMode === "append-specific" && currentExistingOrder?.id
+              ? { appendToOrderId: currentExistingOrder.id }
+              : {}),
+        };
+        await createOrder(payload).unwrap();
+        showSuccess(
+          composeMode === "force-new"
+            ? "New order created successfully!"
+            : currentExistingOrder
+              ? "Items added to selected order!"
+              : "Order placed successfully!",
+        );
         refetchOrders();
         refetchInvoices();
         refetchTables();
@@ -1472,12 +1576,14 @@ function WaiterView({ onOrderPlaced, initialTableId, mode = "board" }: WaiterVie
         setStep("tables");
         setSelectedTable(null);
         setExistingOrder(undefined);
+        setSelectedOrderId(null);
+        setComposeMode("force-new");
       } catch (e) {
         showError(getErrorMessage(e));
         setStep("menu");
       }
     },
-    [createOrder, currentExistingOrder, onOrderPlaced, refetchInvoices, refetchOrders, refetchTables, selectedTable],
+    [composeMode, createOrder, currentExistingOrder, onOrderPlaced, refetchInvoices, refetchOrders, refetchTables, selectedTable],
   );
 
   return (
@@ -1506,8 +1612,6 @@ function WaiterView({ onOrderPlaced, initialTableId, mode = "board" }: WaiterVie
               issuedInvoiceTableIds={issuedInvoiceTableIds}
               appendSignals={appendSignals}
               onSelectTable={handleSelectTable}
-              onCreateInvoice={handleCreateInvoice}
-              creatingInvoiceOrderId={creatingInvoiceOrderId}
             />
           ) : null}
           {mode === "board" || waiterLiveOnly ? (
@@ -1557,7 +1661,12 @@ function WaiterView({ onOrderPlaced, initialTableId, mode = "board" }: WaiterVie
           <MenuBrowser
             key={`${selectedTable.id}:${currentExistingOrder?.id || "fresh"}`}
             table={selectedTable}
+            tableOrders={selectedTableOrders || []}
             existingOrder={currentExistingOrder}
+            composeMode={composeMode}
+            selectedOrderId={selectedOrderId}
+            onComposeModeChange={setComposeMode}
+            onSelectedOrderIdChange={setSelectedOrderId}
             servingItemKey={servingItemKey}
             onServeExistingOrderItem={handleMarkItemServed}
             onServeReadyItems={handleMarkReadyItemsServed}
@@ -1569,6 +1678,8 @@ function WaiterView({ onOrderPlaced, initialTableId, mode = "board" }: WaiterVie
               setStep("tables");
               setSelectedTable(null);
               setExistingOrder(undefined);
+              setSelectedOrderId(null);
+              setComposeMode("force-new");
             }}
             onConfirm={handleConfirm}
           />

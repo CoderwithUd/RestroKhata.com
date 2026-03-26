@@ -144,6 +144,8 @@ function parseOrder(value: unknown): OrderRecord | null {
     tableName,
     customerName,
     customerPhone,
+    source: (asString(r.source) as OrderRecord["source"]) || undefined,
+    sessionToken: asString(r.sessionToken),
     sourceLabel:
       asString(r.sourceLabel) ||
       (tableName && customerName
