@@ -1,567 +1,524 @@
 # Restro Backend API Reference
 
-Single source of truth for all APIs and business logic.
+Updated for production QR order, item-correction, and invoice flow.
 
-## 1) Core Business Flow
+## 1. Core Lifecycle
 
-### Table -> Order -> Invoice lifecycle
-- Table starts as `available` or `reserved`.
-- Order create (staff/public) sets table `occupied`.
-- Running-order mode:
-  - If same table has an open, non-cancelled, non-invoiced order, new items append in same order.
-- Invoice create locks order for billing (`billingLocked=true`) and snapshots order totals/items.
-- Invoice pay triggers table status recalculation:
-  - if pending session exists => `occupied`
-  - else `available` (or `reserved` if table was reserved manually)
-- Invoice delete (only non-paid) unlocks order and recalculates table status.
+1. Manager creates a table and generates one static QR token for that table.
+2. Customer scans QR and calls `GET /api/public/menu?token=...`.
+3. Customer creates order with `POST /api/public/orders`.
+4. Same customer keeps using the returned `sessionToken`.
+5. Customer can fetch current order, update quantity, delete own item, cancel own order, request invoice, and create invoice from QR.
+6. Waiter can create multiple independent orders on the same table.
+7. Waiter or manager can fix wrong items before billing by moving, removing, or cancelling item lines.
+8. Invoice can be created only when every item is `SERVED` or `CANCELLED`.
+9. Final payment can be done only by `OWNER` or `MANAGER`.
 
-### Production hardening rules
-- Transaction-backed write flows for order create/update/delete and invoice create/pay/delete.
-- Atomic payment update (`status != PAID/VOID` filter).
-- New order blocked if table has unpaid invoice (`DRAFT` or `ISSUED`).
-- Kitchen can update order status and item kitchen status only (no item payload/customer/table mutation).
+## 2. Role Rules
 
-## 2) Auth and Tenant Rules
+### Staff routes
+- Orders create: `OWNER`, `MANAGER`, `WAITER`
+- Orders read: `OWNER`, `MANAGER`, `WAITER`, `KITCHEN`
+- Orders generic update: `OWNER`, `MANAGER`, `WAITER`, `KITCHEN`
+- Orders delete: `OWNER`, `MANAGER`
+- Item correction endpoints: `OWNER`, `MANAGER`, `WAITER`
+- Invoice create: `OWNER`, `MANAGER`, `WAITER`
+- Invoice pay/update/delete: `OWNER`, `MANAGER`
 
-### Auth
-- Protected routes require access token (cookie or `Authorization: Bearer`).
-- Owner and staff login now use `whatsappNumber + password`.
-- `email` is optional for staff but required for owner registration.
-- Legacy old users ke liye temporary email login fallback supported hai jab tak woh apna WhatsApp number bind na kar dein.
+### Public QR routes
+- Public customer can only access order linked to `token + sessionToken`
+- Public customer can only edit items whose `kitchenStatus = PLACED`
+- Public customer cannot pay invoice
 
-### Tenant
-- Staff APIs: tenant from JWT membership.
-- Public APIs (`/api/public/*`): tenant resolved by:
-  - `token` (QR token) OR
-  - `tenantSlug` (`x-tenant-slug`, body, query, or subdomain).
+## 3. Status Enums
 
-### Subscription
-- Staff and public flows require active subscription (`TRIAL` or `ACTIVE` and not expired).
+### Order status
+- `PLACED`
+- `IN_PROGRESS`
+- `READY`
+- `SERVED`
+- `COMPLETED`
+- `CANCELLED`
 
-## 3) Role Access Matrix
-
-### Orders (`/api/orders`)
-- Create: `OWNER`, `MANAGER`, `WAITER`
-- List/Get: `OWNER`, `MANAGER`, `WAITER`, `KITCHEN`
-- Update: `OWNER`, `MANAGER`, `WAITER`, `KITCHEN`
-  - `KITCHEN`: status-only updates
-- Delete: `OWNER`, `MANAGER`
-
-### Invoices (`/api/invoices`)
-- Read (`GET`): `OWNER`, `MANAGER`, `WAITER`
-- Create (`POST /api/invoices`): `OWNER`, `MANAGER`, `WAITER`
-- Other write (`PUT`, `pay`, `DELETE`): `OWNER`, `MANAGER`
-
-### Tables (`/api/tables`)
-- Create/Update/Delete/QR: `OWNER`, `MANAGER`
-- List: `OWNER`, `MANAGER`, `WAITER`, `KITCHEN`
-
-### Customers (`/api/customers`)
-- List/Get: `OWNER`, `MANAGER`, `WAITER`
-
-## 4) Status Enums
-
-### Table
-- `available`
-- `occupied`
-- `reserved`
-
-### Order
+### Item kitchen status
 - `PLACED`
 - `IN_PROGRESS`
 - `READY`
 - `SERVED`
 - `CANCELLED`
 
-### Order Item Kitchen Status
-- Every order item has:
-  - `lineId` (stable per item line)
-  - `kitchenStatus` (`PLACED | IN_PROGRESS | READY | SERVED | CANCELLED`)
-- Order-level `status` is derived from item-level `kitchenStatus` when items are appended/replaced/item-status-updated.
-
-### Invoice
+### Invoice status
 - `DRAFT`
 - `ISSUED`
 - `PAID`
 - `VOID`
 
-### Reservation Advance Payment Status
-- `not_required`
-- `pending`
-- `partial`
-- `paid`
+## 4. Key Business Rules
 
-## 5) API Endpoints and Examples
+- A table can have multiple open orders at the same time.
+- Staff can create a fresh order on the same table using `forceNew: true`.
+- Staff can append items to a specific order using `appendToOrderId`.
+- QR customers are isolated by `sessionToken`. One customer cannot modify another customer order on the same table.
+- Once invoice is created, order becomes billing-locked and item/order mutation is blocked.
+- Wrong item correction is allowed only before kitchen starts work.
+- In this backend, editable item means `kitchenStatus = PLACED`.
+- `IN_PROGRESS`, `READY`, `SERVED`, `CANCELLED` item lines cannot be moved or deleted.
+- Group invoice is available for staff when one table has multiple open orders.
+- Public invoice creation is single-order only and tied to that QR session.
 
-## Health
+## 5. Shared Response Shapes
 
-### GET `/api/health`
-Response:
-```json
-{ "ok": true }
-```
-
-## Auth
-
-### POST `/api/auth/register`
+### Order response
 ```json
 {
-  "whatsappNumber": "9876543210",
-  "tenantName": "My Cafe",
-  "email": "owner@example.com",
-  "address": {
-    "line1": "MG Road",
-    "city": "Raipur",
-    "state": "Chhattisgarh",
-    "country": "India",
-    "postalCode": "492001"
+  "id": "orderId",
+  "tenantId": "tenantId",
+  "table": {
+    "id": "tableId",
+    "number": 5,
+    "name": "Table 5"
   },
-  "password": "StrongPass123",
-  "ownerName": "Owner Name",
-  "gstNumber": "22AAAAA0000A1Z5",
-  "secondaryNumber": "9898989898",
-  "tenantSlug": "my-cafe"
-}
-```
-Notes:
-- Required fields: `whatsappNumber`, `tenantName`, `email`, `address`, `password`.
-- Optional fields accepted and stored: `ownerName`, `gstNumber`, `secondaryNumber`, `tenantSlug`.
-- Backend address ko geocode karke tenant `location.latitude` and `location.longitude` store karta hai.
-
-### POST `/api/auth/login`
-```json
-{
-  "whatsappNumber": "9876543210",
-  "password": "StrongPass123",
-  "tenantSlug": "my-cafe"
-}
-```
-Legacy fallback example for old email-only users:
-```json
-{
-  "email": "owner@example.com",
-  "password": "StrongPass123",
-  "tenantSlug": "my-cafe"
-}
-```
-
-### GET `/api/auth/me`
-Response user object now includes:
-```json
-{
-  "user": {
-    "id": "65f1f2c9c8f7f6a2d3000011",
-    "name": "Owner Name",
-    "email": "owner@example.com",
-    "whatsappNumber": "9876543210"
-  }
-}
-```
-
-### PUT `/api/auth/me`
-```json
-{
-  "name": "Updated Owner",
-  "whatsappNumber": "9898989898",
-  "email": "updated.owner@example.com",
-  "password": "NewStrongPass123"
-}
-```
-Notes:
-- Old email-only user login karke isi endpoint se apna `whatsappNumber` add kar sakta hai.
-- `email` optional hai; empty string bhejne par clear kiya ja sakta hai.
-- `whatsappNumber` unique rehna chahiye.
-
-## Tenant and Staff
-
-### GET `/api/tenant/profile`
-Tenant response includes:
-```json
-{
-  "tenant": {
-    "name": "My Cafe",
-    "contactNumber": "9876543210",
-    "email": "owner@example.com",
-    "secondaryNumber": "9898989898",
-    "ownerName": "Owner Name",
-    "gstNumber": "22AAAAA0000A1Z5",
-    "address": {
-      "fullAddress": "MG Road, Raipur, Chhattisgarh, India, 492001",
-      "line1": "MG Road",
-      "city": "Raipur",
-      "state": "Chhattisgarh",
-      "country": "India",
-      "postalCode": "492001"
-    },
-    "location": {
-      "latitude": 21.2514,
-      "longitude": 81.6296,
-      "formattedAddress": "MG Road, Raipur, Chhattisgarh, India, 492001",
-      "provider": "nominatim"
+  "source": "QR",
+  "sessionToken": "qr-session-token",
+  "customer": {
+    "id": "customerId",
+    "name": "Rahul",
+    "phone": "9876543210"
+  },
+  "status": "PLACED",
+  "note": "",
+  "items": [
+    {
+      "lineId": "lineId1",
+      "itemId": "itemId",
+      "variantId": "variantId",
+      "name": "Paneer Tikka",
+      "variantName": "Full",
+      "quantity": 2,
+      "unitPrice": 220,
+      "taxPercentage": 5,
+      "options": [],
+      "note": "",
+      "lineSubTotal": 440,
+      "lineTax": 22,
+      "lineTotal": 462,
+      "kitchenStatus": "PLACED",
+      "addedAt": "2026-03-27T10:00:00.000Z"
     }
-  }
+  ],
+  "subTotal": 440,
+  "taxTotal": 22,
+  "grandTotal": 462,
+  "invoiceRequest": {
+    "requestedAt": "2026-03-27T10:15:00.000Z",
+    "source": "QR",
+    "name": "Rahul",
+    "phone": "9876543210"
+  },
+  "createdBy": {
+    "userId": null,
+    "role": "GUEST",
+    "name": "Rahul"
+  },
+  "updatedBy": {
+    "userId": null,
+    "role": "GUEST",
+    "name": "Rahul"
+  },
+  "createdAt": "2026-03-27T10:00:00.000Z",
+  "updatedAt": "2026-03-27T10:15:00.000Z"
 }
 ```
 
-### PUT `/api/tenant/profile`
+### Invoice response
 ```json
 {
-  "tenantName": "My Updated Cafe",
-  "whatsappNumber": "9876543210",
-  "email": "contact@mycafe.com",
-  "secondaryNumber": "9898989898",
-  "ownerName": "Owner Name",
-  "gstNumber": "22AAAAA0000A1Z5",
-  "address": {
-    "line1": "Civil Lines",
-    "city": "Raipur",
-    "state": "Chhattisgarh",
-    "country": "India",
-    "postalCode": "492001"
-  }
-}
-```
-Notes:
-- Access: `OWNER`, `MANAGER`
-- Address update par backend coordinates dobara geocode karke `tenant.location` refresh karta hai.
-- Agar geocoder address resolve na kare to bhi profile update fail nahi hota; address save ho jata hai aur previous location preserve rehti hai.
-- `location` payload (`latitude`, `longitude`) manually bhejkar direct coordinates bhi save kiye ja sakte hain.
-- `secondaryNumber`, `ownerName`, `gstNumber`, `email` clear bhi kiye ja sakte hain.
-
-### POST `/api/tenant/staff`
-```json
-{
-  "name": "Ravi",
-  "whatsappNumber": "9898989898",
-  "email": "ravi.waiter@example.com",
-  "password": "StrongPass123",
-  "role": "WAITER"
-}
-```
-Notes:
-- Required fields: `name`, `whatsappNumber`, `password`, `role`.
-- `email` optional hai.
-- Staff user response mein `whatsappNumber` bhi aata hai.
-
-### PUT `/api/tenant/staff/:membershipId`
-```json
-{
-  "name": "Ravi Kumar",
-  "whatsappNumber": "9898989899",
-  "email": "ravi.kumar@example.com",
-  "password": "NewStrongPass123",
-  "role": "MANAGER",
-  "isActive": true
-}
-```
-Notes:
-- Staff update me `password` change allowed hai.
-- `email` ko empty string/null bhejkar clear kiya ja sakta hai.
-- `whatsappNumber` unique rehna chahiye.
-
-## Tables
-
-### POST `/api/tables`
-```json
-{
-  "number": 12,
-  "name": "Patio 12",
-  "capacity": 4,
-  "status": "available"
+  "id": "invoiceId",
+  "tenantId": "tenantId",
+  "isGroupInvoice": false,
+  "orderId": "orderId",
+  "orderIds": [],
+  "table": {
+    "id": "tableId",
+    "number": 5,
+    "name": "Table 5"
+  },
+  "customer": {
+    "id": "customerId",
+    "name": "Rahul",
+    "phone": "9876543210"
+  },
+  "status": "ISSUED",
+  "note": "",
+  "items": [],
+  "subTotal": 440,
+  "taxTotal": 22,
+  "grandTotal": 462,
+  "discount": {
+    "type": null,
+    "value": 0,
+    "amount": 0
+  },
+  "totalDue": 462,
+  "balanceDue": 462,
+  "payment": null,
+  "createdAt": "2026-03-27T10:20:00.000Z",
+  "updatedAt": "2026-03-27T10:20:00.000Z"
 }
 ```
 
-Reserved table create example:
-```json
-{
-  "number": 20,
-  "name": "Banquet 20",
-  "capacity": 8,
-  "status": "reserved",
-  "reservation": {
-    "customerName": "Ankit",
-    "customerPhone": "9876543210",
-    "partySize": 8,
-    "reservedFor": "2026-03-25T19:30:00+05:30",
-    "note": "Birthday party",
-    "advancePayment": {
-      "required": true,
-      "amount": 2000,
-      "paidAmount": 500,
-      "method": "UPI",
-      "reference": "ADV-9981"
-    }
-  }
-}
-```
+## 6. Public QR APIs
 
-### GET `/api/tables?isActive=true`
-
-### PUT `/api/tables/:tableId`
-```json
-{
-  "name": "Window 12",
-  "status": "reserved",
-  "reservation": {
-    "customerName": "Rahul",
-    "customerPhone": "9876543210",
-    "partySize": 6,
-    "reservedFor": "2026-03-22T20:00:00+05:30",
-    "note": "Corporate dinner",
-    "advancePayment": {
-      "required": false
-    }
-  }
-}
-```
-Notes:
-- `status=reserved` par customer details mandatory hain (`customerName` + `customerPhone`).
-- Reservation payload dene par table status automatically `reserved` set hota hai.
-- `status=available` par reservation details clear ho jaati hain.
-- Manual reservation active ho to billing complete hone ke baad table wapas `reserved` reh sakta hai.
-
-### DELETE `/api/tables/:tableId`
-- blocked if pending session exists.
-
-### GET `/api/tables/:tableId/qr`
-
-### POST `/api/tables/:tableId/qr-token`
-```json
-{
-  "expiresInHours": 720
-}
-```
-
-## Public Menu and Guest Orders
+Use one static QR token per table.
 
 ### GET `/api/public/menu?token=<TABLE_QR_TOKEN>`
 
+Returns tenant, table, and public menu tree.
+
 ### POST `/api/public/orders`
+
+Create a new QR order or append to same QR order.
+
+Request for first order:
 ```json
 {
   "token": "TABLE_QR_TOKEN",
   "customerName": "Rahul",
   "customerPhone": "9876543210",
+  "note": "",
   "items": [
-    {
-      "itemId": "65f1f2c9c8f7f6a2d3000001",
-      "variantId": "65f1f2c9c8f7f6a2d4000001",
-      "quantity": 2,
-      "optionIds": ["65f1f2c9c8f7f6a2d5000001"]
-    }
-  ],
-  "note": "Less spicy"
+    { "itemId": "itemId1", "variantId": "variantId1", "quantity": 2 }
+  ]
 }
 ```
-Notes:
-- Public QR order me `customerName` aur `customerPhone` mandatory hain.
-- Customer number ke basis par tenant-level customer record upsert hota hai.
 
-Possible response messages:
-- `order created`
-- `items appended to active order`
-
-## Orders (Staff)
-
-### POST `/api/orders`
+Request for repeat action on same order:
 ```json
 {
-  "tableId": "65f1f2c9c8f7f6a2d1011111",
-  "customerName": "Walk-in Guest",
+  "token": "TABLE_QR_TOKEN",
+  "sessionToken": "qr-session-token",
+  "customerName": "Rahul",
   "customerPhone": "9876543210",
   "items": [
-    {
-      "itemId": "65f1f2c9c8f7f6a2d3000001",
-      "variantId": "65f1f2c9c8f7f6a2d4000001",
-      "quantity": 1,
-      "optionIds": []
-    }
-  ],
-  "note": "No onion"
-}
-```
-Id based customer example:
-```json
-{
-  "tableId": "65f1f2c9c8f7f6a2d1011111",
-  "customerId": "67f0d98342b16f0ef1ab1234",
-  "items": [
-    {
-      "itemId": "65f1f2c9c8f7f6a2d3000001",
-      "variantId": "65f1f2c9c8f7f6a2d4000001",
-      "quantity": 1,
-      "optionIds": []
-    }
+    { "itemId": "itemId2", "variantId": "variantId2", "quantity": 1 }
   ]
 }
 ```
-Notes:
-- Staff order me customer optional hai.
-- `customerId` se existing tenant customer directly attach ho sakta hai.
-- Agar `customerName`/`customerPhone` pair diya gaya ho to customer record upsert hota hai.
-- `customerId` aur `customerName`/`customerPhone` ek saath allowed nahi hain.
-- `customerName` aur `customerPhone` hamesha pair me dene honge (ek field akeli allowed nahi).
 
-### GET `/api/orders?status=PLACED,IN_PROGRESS&tableId=<tableId>&page=1&limit=20`
-- For `KITCHEN` role, when `status` query is not provided, API defaults to active statuses only (`PLACED`, `IN_PROGRESS`, `READY`).
+Behavior:
+- If `sessionToken` is missing, a new independent QR order is created.
+- If `sessionToken` matches an open order on same table, items append to that order only.
+- If previous session order is `COMPLETED` or `CANCELLED`, backend creates a fresh order and returns a new `sessionToken`.
 
-### GET `/api/orders/kitchen/items?status=PLACED,IN_PROGRESS&includeDone=false&tableId=<tableId>&limit=200`
-- Kitchen-focused queue (item-wise).
-- `orderStatus` is emitted from effective item statuses (not stale stored value).
-- `SERVED/CANCELLED` items default excluded. `includeDone=true` only works for `OWNER/MANAGER`.
-- Orders already marked `SERVED/CANCELLED` are also excluded by default (legacy-data safety).
-- Returns each item line with:
-  - `lineId`
-  - `kitchenStatus`
-  - `addedAt`
-  - `ageMinutes`
-  - `priorityLabel` / `priorityScore`
+### GET `/api/public/orders/current?token=<TABLE_QR_TOKEN>&sessionToken=<SESSION_TOKEN>`
 
-### GET `/api/orders/:orderId`
+Returns current QR order and its invoice if already created.
+
+Response:
+```json
+{
+  "order": {},
+  "invoice": null
+}
+```
+
+### PUT `/api/public/orders/current/items/:lineId`
+
+Update one QR item line.
+
+Request:
+```json
+{
+  "token": "TABLE_QR_TOKEN",
+  "sessionToken": "qr-session-token",
+  "quantity": 3,
+  "note": "less spicy"
+}
+```
+
+Rules:
+- Allowed only when target line status is `PLACED`
+- Cannot update after invoice creation
+
+### DELETE `/api/public/orders/current/items/:lineId?token=<TABLE_QR_TOKEN>&sessionToken=<SESSION_TOKEN>`
+
+Delete one QR item line.
+
+Rules:
+- Allowed only when target line status is `PLACED`
+- Last remaining line cannot be deleted; call order cancel instead
+
+### POST `/api/public/orders/current/cancel`
+
+Cancel the full QR order.
+
+Request:
+```json
+{
+  "token": "TABLE_QR_TOKEN",
+  "sessionToken": "qr-session-token"
+}
+```
+
+Rules:
+- Full order cancel works only when all non-cancelled items are still `PLACED`
+- If kitchen has started work on any active item, cancel is rejected
+
+### POST `/api/public/orders/current/request-invoice`
+
+Marks order as bill-requested for waiter dashboard/UI.
+
+Request:
+```json
+{
+  "token": "TABLE_QR_TOKEN",
+  "sessionToken": "qr-session-token"
+}
+```
+
+Response:
+```json
+{
+  "message": "invoice requested successfully",
+  "order": {}
+}
+```
+
+### POST `/api/public/orders/current/invoice`
+
+Create a single-order invoice directly from QR session.
+
+Request:
+```json
+{
+  "token": "TABLE_QR_TOKEN",
+  "sessionToken": "qr-session-token",
+  "note": "Please send bill"
+}
+```
+
+Rules:
+- Allowed only when all items are `SERVED` or `CANCELLED`
+- Invoice status becomes `ISSUED`
+- Final payment still requires protected staff API
+
+## 7. Staff Order APIs
+
+### POST `/api/orders`
+
+Default behavior:
+```json
+{
+  "tableId": "tableId",
+  "items": [
+    { "itemId": "itemId1", "variantId": "variantId1", "quantity": 2 }
+  ]
+}
+```
+
+If there is an open non-billed order on same table, backend appends to latest open order.
+
+### Create second independent order on same table
+```json
+{
+  "tableId": "tableId",
+  "forceNew": true,
+  "items": [
+    { "itemId": "itemId1", "variantId": "variantId1", "quantity": 1 }
+  ]
+}
+```
+
+### Append to a specific order
+```json
+{
+  "tableId": "tableId",
+  "appendToOrderId": "targetOrderId",
+  "items": [
+    { "itemId": "itemId2", "variantId": "variantId2", "quantity": 1 }
+  ]
+}
+```
 
 ### PUT `/api/orders/:orderId`
-Status update example:
-```json
-{ "status": "IN_PROGRESS" }
-```
-Notes:
-- Order-level `status` update now synchronizes all item `kitchenStatus` to the same value (with transition validation), so kitchen queue stays consistent.
-- Use only one of these per request: `status` or `itemStatusUpdates` or `items`.
 
-Item kitchen status update example:
+Generic order update.
+
+Rules:
+- `WAITER` can still update safe order fields and kitchen statuses through existing flow
+- Full item-array replacement is now restricted to `OWNER` and `MANAGER`
+- Waiter should use dedicated correction APIs for item exchange/remove/cancel
+
+## 8. Staff Item Correction APIs
+
+These are the APIs for real-life wrong-item scenarios before invoice.
+
+### POST `/api/orders/:orderId/items/:lineId/remove`
+
+Remove item line completely or partially.
+
+Request:
 ```json
 {
-  "itemStatusUpdates": [
-    { "lineId": "67aa21c9a8e2cf0f5a000111", "status": "IN_PROGRESS" },
-    { "lineId": "67aa21c9a8e2cf0f5a000112", "status": "READY" }
-  ]
-}
-```
-Item replace example:
-```json
-{
-  "items": [
-    {
-      "itemId": "65f1f2c9c8f7f6a2d3000002",
-      "variantId": "65f1f2c9c8f7f6a2d4000002",
-      "quantity": 3,
-      "optionIds": []
-    }
-  ]
+  "quantity": 1
 }
 ```
 
-### DELETE `/api/orders/:orderId`
-- blocked if invoice exists for the order.
+Rules:
+- If `quantity` omitted, full line quantity is removed
+- Allowed only when source line is `PLACED`
+- Last remaining item cannot be removed
 
-## Invoices
+### POST `/api/orders/:orderId/items/:lineId/cancel`
+
+Soft-cancel one line.
+
+Request body can be empty.
+
+Rules:
+- Allowed only when source line is `PLACED`
+- Line status becomes `CANCELLED`
+
+### POST `/api/orders/:orderId/items/:lineId/move`
+
+Move wrong item to another open order on same table.
+
+Request:
+```json
+{
+  "targetOrderId": "orderB",
+  "quantity": 1
+}
+```
+
+Rules:
+- Source and target orders must both be open and non-billed
+- Source and target must belong to the same table
+- Source line must be `PLACED`
+- Partial quantity move is supported
+- If full quantity is moved, line leaves source order
+- If partial quantity is moved, source line quantity is reduced and a new line is created in target order
+
+## 9. Invoice APIs
 
 ### POST `/api/invoices`
+
+Create single-order invoice from staff side.
+
+Request:
 ```json
 {
-  "orderId": "65f1f2c9c8f7f6a2d2000001",
+  "orderId": "orderId",
   "discountType": "PERCENTAGE",
   "discountValue": 10,
-  "note": "Festival discount",
-  "customer": {
-    "name": "Rahul",
-    "phone": "9876543210"
-  }
+  "note": "VIP discount"
 }
 ```
-Id based customer example:
+
+Rules:
+- Allowed for `OWNER`, `MANAGER`, `WAITER`
+- All items must be `SERVED` or `CANCELLED`
+
+### POST `/api/invoices/group`
+
+Create one bill for multiple open orders on same table.
+
+Bill all eligible open orders on a table:
 ```json
 {
-  "orderId": "65f1f2c9c8f7f6a2d2000001",
-  "customerId": "67f0d98342b16f0ef1ab1234"
+  "tableId": "tableId"
 }
 ```
-- Invoice create allowed only when all order items are `SERVED` or `CANCELLED`.
-- Invoice customer optional hai.
-- Priority: invoice request me `customerId`/customer payload diya ho to woh use hota hai; warna order customer fallback hota hai.
-- `customerId` aur customer name/phone payload ek saath allowed nahi hain.
-- Invoice bina customer ke bhi create ho sakti hai.
 
-## Customers
-
-### GET `/api/customers?q=rahul&page=1&limit=20`
-- Tenant-scoped customer search (name/phone).
-
-### GET `/api/customers/:customerId`
-- Tenant-scoped single customer fetch.
-
-### GET `/api/invoices?status=ISSUED,PAID&tableId=<tableId>&page=1&limit=20`
-
-### GET `/api/invoices/:invoiceId`
-
-### PUT `/api/invoices/:invoiceId`
+Bill selected orders only:
 ```json
 {
-  "note": "Updated note",
+  "tableId": "tableId",
+  "orderIds": ["orderA", "orderB"],
   "discountType": "FLAT",
-  "discountValue": 50
+  "discountValue": 100,
+  "note": "Group dinner"
 }
 ```
+
+Rules:
+- Only open non-billed orders are eligible
+- Every included order must belong to same table
+- Every included item must be `SERVED` or `CANCELLED`
 
 ### POST `/api/invoices/:invoiceId/pay`
+
+Final payment endpoint.
+
+Request:
 ```json
 {
-  "method": "CARD",
-  "reference": "TXN-92011",
-  "paidAmount": 1250
+  "method": "CASH",
+  "reference": "",
+  "paidAmount": 462
 }
 ```
+
+Rules:
+- Allowed only for `OWNER` or `MANAGER`
+- On success invoice becomes `PAID`
+- Covered order or orders become `COMPLETED`
+- Table status recalculates automatically
+
+### PUT `/api/invoices/:invoiceId`
+
+Owner or manager can update note and discount before payment.
 
 ### DELETE `/api/invoices/:invoiceId`
-- allowed only when status is not `PAID`.
 
-## Expenses
+Owner or manager can delete only non-paid invoice.
 
-### POST `/api/expenses`
-```json
-{
-  "title": "Milk Purchase",
-  "amount": 850,
-  "category": "Inventory",
-  "expenseDate": "2026-03-19"
-}
-```
+Behavior:
+- Order lock is removed
+- Table status recalculates
 
-### GET `/api/expenses?page=1&limit=20`
+## 10. Frontend Contract Notes
 
-### PUT `/api/expenses/:expenseId`
+### Static QR flow
+1. Customer scans QR.
+2. Frontend calls `GET /api/public/menu?token=...`.
+3. Frontend stores `sessionToken` returned by first `POST /api/public/orders`.
+4. All future QR order calls must include same `sessionToken`.
+5. If backend returns a new `sessionToken`, frontend must replace local stored token.
 
-### DELETE `/api/expenses/:expenseId`
+### Recommended customer UI states
+- Cart editable: line status `PLACED`
+- Locked by kitchen: line status `IN_PROGRESS`, `READY`, or `SERVED`
+- Bill requested: `order.invoiceRequest != null`
+- Invoice issued: `invoice.status = ISSUED`
+- Paid: `invoice.status = PAID`
 
-## Reports
+### Recommended waiter UI states
+- Show each open order separately on same table
+- Show `invoiceRequest` badge when customer requests bill
+- Use move/remove/cancel correction endpoints before invoice create
+- For split billing use single-order invoices
+- For one combined bill use group invoice
 
-### GET `/api/reports/summary?range=today`
+## 11. Production Edge Cases
 
-### GET `/api/reports/summary?start=2026-03-01&end=2026-03-19`
+- Same table can have Order A and Order B together.
+- Waiter can accidentally add item to wrong order.
+- Before kitchen starts, waiter can move item from Order B to Order A.
+- If wrong item should disappear fully, waiter can remove line.
+- If customer placed wrong line from QR and kitchen has not started, customer can delete it.
+- If customer wants full order cancellation, all active lines must still be `PLACED`.
+- If invoice already exists, order mutation is blocked.
+- If unpaid invoice exists on table, fresh new order creation is blocked for that table.
 
-Report notes:
-- Sales metrics are calculated from `PAID` invoices.
-- Order/invoice distribution grouped by status.
+## 12. Common Error Cases
 
-## 6) Error Patterns
+- `400` invalid id, invalid quantity, invalid discount
+- `404` table/order/invoice/session line not found
+- `409` billing lock, already invoiced, invalid status transition, kitchen-started item correction blocked
 
-Common responses:
-- `400` validation/input errors
-- `401` auth token errors
-- `402` inactive subscription
-- `403` role/membership restrictions
-- `404` resource not found
-- `409` business conflict (duplicate invoice, invalid transition, billing lock, etc.)
-- `500` server errors
-
-## 7) Important Operational Notes
-
-- Order and invoice writes are transaction-backed when deployment supports MongoDB transactions.
-- For non-transaction deployments, atomic guards are still applied, but replica set is strongly recommended.
-- Keep `tenantId`-scoped indexes intact for performance and isolation.
-- User identity unique index now runs on `whatsappNumberNormalized`.
-- `email` index is sparse because staff email optional hai.
-- `invoice (tenantId, orderId)` uniqueness is enforced at DB level.
-- Kitchen realtime refresh event:
-  - Socket event: `kitchen.queue.changed`
-  - Triggered on order create/append/update/delete and invoice create/pay/delete.
+Examples:
+- `cannot update order after invoice is created`
+- `cannot create invoice until all items are served or cancelled`
+- `cannot move item once kitchen work has started; only PLACED items are editable`
+- `cannot create order while table has unpaid invoice`

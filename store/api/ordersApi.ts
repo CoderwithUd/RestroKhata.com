@@ -1,16 +1,19 @@
 import { createApi } from "@reduxjs/toolkit/query/react";
 import { baseQueryWithReauth } from "@/store/api/baseQuery";
 import type {
+  CancelOrderItemArgs,
   CreateOrderPayload,
   DeleteOrderResponse,
   KitchenItemsQueryParams,
   KitchenItemsResponse,
   KitchenQueueItem,
+  MoveOrderItemArgs,
   OrderItem,
   OrderRecord,
   OrderResponse,
   OrdersListResponse,
   OrdersQueryParams,
+  RemoveOrderItemArgs,
   UpdateOrderArgs,
 } from "@/store/types/orders";
 
@@ -54,6 +57,7 @@ function parseOrderItem(value: unknown): OrderItem | null {
     quantity: asNumber(r.quantity) ?? 1,
     unitPrice: asNumber(r.unitPrice) ?? asNumber(r.price) ?? 0,
     status: (rawStatus as OrderItem["status"]) || undefined,
+    kitchenStatus: (rawStatus as OrderItem["kitchenStatus"]) || undefined,
     taxPercentage: asNumber(r.taxPercentage),
     options: asArray(r.options)
       .map((opt) => {
@@ -78,10 +82,8 @@ function parseOrderItem(value: unknown): OrderItem | null {
 function parseUserRef(value: unknown) {
   const r = asRecord(value);
   if (!r) return undefined;
-  const userId = asString(r.userId) || asString(r.id);
-  if (!userId) return undefined;
   return {
-    userId,
+    userId: asString(r.userId) || asString(r.id) || null,
     role: asString(r.role) || "",
     name: asString(r.name),
   };
@@ -134,6 +136,7 @@ function parseOrder(value: unknown): OrderRecord | null {
     .map(parseOrderItem)
     .filter((i): i is NonNullable<typeof i> => Boolean(i));
   const status = asString(r.status) || "PLACED";
+  const invoiceRequestRecord = asRecord(r.invoiceRequest);
 
   return {
     id,
@@ -164,6 +167,14 @@ function parseOrder(value: unknown): OrderRecord | null {
     grandTotal: asNumber(r.grandTotal) ?? asNumber(r.total) ?? asNumber(r.totalAmount) ?? asNumber(r.amount),
     createdBy: parseUserRef(r.createdBy),
     updatedBy: parseUserRef(r.updatedBy),
+    invoiceRequest: invoiceRequestRecord
+      ? {
+          requestedAt: asString(invoiceRequestRecord.requestedAt),
+          source: asString(invoiceRequestRecord.source),
+          name: asString(invoiceRequestRecord.name),
+          phone: asString(invoiceRequestRecord.phone),
+        }
+      : null,
     createdAt: asString(r.createdAt),
     updatedAt: asString(r.updatedAt),
     raw: r,
@@ -464,6 +475,48 @@ export const ordersApi = createApi({
         { type: "Orders", id: orderId },
       ],
     }),
+
+    removeOrderItem: builder.mutation<OrderResponse, RemoveOrderItemArgs>({
+      query: ({ orderId, lineId, payload }) => ({
+        url: `/orders/${orderId}/items/${lineId}/remove`,
+        method: "POST",
+        credentials: "include",
+        body: payload,
+      }),
+      transformResponse: (response: unknown) => parseOrderResponse(response, "Order item removed"),
+      invalidatesTags: (_result, _error, { orderId }) => [
+        { type: "Orders", id: "LIST" },
+        { type: "Orders", id: orderId },
+      ],
+    }),
+
+    cancelOrderItem: builder.mutation<OrderResponse, CancelOrderItemArgs>({
+      query: ({ orderId, lineId }) => ({
+        url: `/orders/${orderId}/items/${lineId}/cancel`,
+        method: "POST",
+        credentials: "include",
+      }),
+      transformResponse: (response: unknown) => parseOrderResponse(response, "Order item cancelled"),
+      invalidatesTags: (_result, _error, { orderId }) => [
+        { type: "Orders", id: "LIST" },
+        { type: "Orders", id: orderId },
+      ],
+    }),
+
+    moveOrderItem: builder.mutation<OrderResponse, MoveOrderItemArgs>({
+      query: ({ orderId, lineId, payload }) => ({
+        url: `/orders/${orderId}/items/${lineId}/move`,
+        method: "POST",
+        credentials: "include",
+        body: payload,
+      }),
+      transformResponse: (response: unknown) => parseOrderResponse(response, "Order item moved"),
+      invalidatesTags: (_result, _error, { orderId, payload }) => [
+        { type: "Orders", id: "LIST" },
+        { type: "Orders", id: orderId },
+        { type: "Orders", id: payload.targetOrderId },
+      ],
+    }),
   }),
 });
 
@@ -474,4 +527,7 @@ export const {
   useCreateOrderMutation,
   useUpdateOrderMutation,
   useDeleteOrderMutation,
+  useRemoveOrderItemMutation,
+  useCancelOrderItemMutation,
+  useMoveOrderItemMutation,
 } = ordersApi;

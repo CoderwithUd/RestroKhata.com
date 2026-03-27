@@ -7,10 +7,13 @@ import { getErrorMessage } from "@/lib/error";
 import { showError, showInfo, showSuccess } from "@/lib/feedback";
 import { useOrderSocket } from "@/lib/use-order-socket";
 import {
+  useCancelOrderItemMutation,
   useCreateOrderMutation,
   useDeleteOrderMutation,
   useGetKitchenOrderItemsQuery,
   useGetOrdersQuery,
+  useMoveOrderItemMutation,
+  useRemoveOrderItemMutation,
   useUpdateOrderMutation,
 } from "@/store/api/ordersApi";
 import { useCreateInvoiceMutation, useGetInvoicesQuery } from "@/store/api/invoicesApi";
@@ -1111,6 +1114,7 @@ type WaiterComposerMode = "append-latest" | "append-specific" | "force-new";
 
 function WaiterActionBoard({
   orders,
+  allOrders,
   appendSignals,
   servingOrderId,
   servingItemKey,
@@ -1119,9 +1123,14 @@ function WaiterActionBoard({
   onMarkItemServed,
   onMarkReadyItemsServed,
   onCreateInvoice,
+  correctingLineKey,
+  onRemovePlacedItem,
+  onCancelPlacedItem,
+  onMovePlacedItem,
   className,
 }: {
   orders: OrderRecord[];
+  allOrders: OrderRecord[];
   appendSignals: Record<string, OrderAppendSignal>;
   servingOrderId?: string | null;
   servingItemKey?: string | null;
@@ -1130,6 +1139,10 @@ function WaiterActionBoard({
   onMarkItemServed: (order: OrderRecord, item: OrderItem) => void;
   onMarkReadyItemsServed: (order: OrderRecord) => void;
   onCreateInvoice: (order: OrderRecord) => void;
+  correctingLineKey?: string | null;
+  onRemovePlacedItem: (order: OrderRecord, item: OrderItem) => void;
+  onCancelPlacedItem: (order: OrderRecord, item: OrderItem) => void;
+  onMovePlacedItem: (order: OrderRecord, item: OrderItem, targetOrderId: string) => void;
   className?: string;
 }) {
   const readyCount = orders.filter((order) => normalizeStatus(order.status) === "READY").length;
@@ -1260,6 +1273,14 @@ function WaiterActionBoard({
                       const itemActionKey = item.lineId
                         ? orderItemActionKey(order.id, item.lineId, itemNextStatus)
                         : null;
+                      const correctionKey = item.lineId ? `${order.id}:${item.lineId}` : null;
+                      const isPlaced = normalizeStatus(item.status) === "PLACED";
+                      const moveTargets = allOrders.filter(
+                        (candidate) =>
+                          candidate.id !== order.id &&
+                          (candidate.table?.id || candidate.tableId) === (order.table?.id || order.tableId) &&
+                          ["PLACED", "IN_PROGRESS", "READY", "SERVED"].includes(normalizeStatus(candidate.status)),
+                      );
                       return (
                         <div
                           key={`${item.itemId}-${item.variantId || "base"}-${index}`}
@@ -1281,6 +1302,46 @@ function WaiterActionBoard({
                             <span className={`rounded-full border px-2 py-0.5 text-[10px] font-semibold ${itemStatusClass(item.status)}`}>
                               {itemStatusLabel(item.status)}
                             </span>
+                            {isPlaced && item.lineId ? (
+                              <>
+                                {moveTargets.length > 0 ? (
+                                  <select
+                                    defaultValue=""
+                                    disabled={correctingLineKey === correctionKey}
+                                    onChange={(event) => {
+                                      const targetOrderId = event.target.value;
+                                      if (!targetOrderId) return;
+                                      onMovePlacedItem(order, item, targetOrderId);
+                                      event.currentTarget.value = "";
+                                    }}
+                                    className="rounded-full border border-slate-200 bg-white px-2 py-0.5 text-[10px] font-semibold text-slate-600 disabled:opacity-50"
+                                  >
+                                    <option value="">Move</option>
+                                    {moveTargets.map((candidate) => (
+                                      <option key={candidate.id} value={candidate.id}>
+                                        #{candidate.orderNumber || candidate.id.slice(-4)}
+                                      </option>
+                                    ))}
+                                  </select>
+                                ) : null}
+                                <button
+                                  type="button"
+                                  onClick={() => onRemovePlacedItem(order, item)}
+                                  disabled={correctingLineKey === correctionKey}
+                                  className="rounded-full border border-rose-200 bg-rose-50 px-2 py-0.5 text-[10px] font-bold text-rose-700 disabled:opacity-50"
+                                >
+                                  Remove
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => onCancelPlacedItem(order, item)}
+                                  disabled={correctingLineKey === correctionKey}
+                                  className="rounded-full border border-slate-200 bg-slate-100 px-2 py-0.5 text-[10px] font-bold text-slate-700 disabled:opacity-50"
+                                >
+                                  Cancel
+                                </button>
+                              </>
+                            ) : null}
                             {item.lineId && itemNextStatus ? (
                               <button
                                 type="button"
@@ -1320,11 +1381,15 @@ function WaiterView({ onOrderPlaced, initialTableId, mode = "board" }: WaiterVie
   const { data: invoicesData, refetch: refetchInvoices } = useGetInvoicesQuery();
   const [createOrder, { isLoading: isCreating }] = useCreateOrderMutation();
   const [updateOrder] = useUpdateOrderMutation();
+  const [removeOrderItem] = useRemoveOrderItemMutation();
+  const [cancelOrderItem] = useCancelOrderItemMutation();
+  const [moveOrderItem] = useMoveOrderItemMutation();
   const [createInvoice, { isLoading: isCreatingInvoice }] = useCreateInvoiceMutation();
   const [socketConnected, setSocketConnected] = useState(false);
   const [creatingInvoiceOrderId, setCreatingInvoiceOrderId] = useState<string | null>(null);
   const [servingOrderId, setServingOrderId] = useState<string | null>(null);
   const [servingItemKey, setServingItemKey] = useState<string | null>(null);
+  const [correctingLineKey, setCorrectingLineKey] = useState<string | null>(null);
   const [step, setStep] = useState<WaiterStep>("tables");
   const [selectedTable, setSelectedTable] = useState<TableRecord | null>(null);
   const [, setExistingOrder] = useState<OrderRecord | undefined>(undefined);
@@ -1537,6 +1602,55 @@ function WaiterView({ onOrderPlaced, initialTableId, mode = "board" }: WaiterVie
     }
   }
 
+  async function handleRemovePlacedItem(order: OrderRecord, item: OrderItem) {
+    if (!item.lineId) return;
+    try {
+      setCorrectingLineKey(`${order.id}:${item.lineId}`);
+      await removeOrderItem({ orderId: order.id, lineId: item.lineId }).unwrap();
+      showSuccess(`${item.name} removed`);
+      refetchOrders();
+      refetchTables();
+    } catch (error) {
+      showError(getErrorMessage(error));
+    } finally {
+      setCorrectingLineKey(null);
+    }
+  }
+
+  async function handleCancelPlacedItem(order: OrderRecord, item: OrderItem) {
+    if (!item.lineId) return;
+    try {
+      setCorrectingLineKey(`${order.id}:${item.lineId}`);
+      await cancelOrderItem({ orderId: order.id, lineId: item.lineId }).unwrap();
+      showSuccess(`${item.name} cancelled`);
+      refetchOrders();
+      refetchTables();
+    } catch (error) {
+      showError(getErrorMessage(error));
+    } finally {
+      setCorrectingLineKey(null);
+    }
+  }
+
+  async function handleMovePlacedItem(order: OrderRecord, item: OrderItem, targetOrderId: string) {
+    if (!item.lineId || !targetOrderId) return;
+    try {
+      setCorrectingLineKey(`${order.id}:${item.lineId}`);
+      await moveOrderItem({
+        orderId: order.id,
+        lineId: item.lineId,
+        payload: { targetOrderId },
+      }).unwrap();
+      showSuccess(`${item.name} moved to selected order`);
+      refetchOrders();
+      refetchTables();
+    } catch (error) {
+      showError(getErrorMessage(error));
+    } finally {
+      setCorrectingLineKey(null);
+    }
+  }
+
   const handleConfirm = useCallback(
     async (cart: CartEntry[], tableNote: string) => {
       if (!selectedTable) return;
@@ -1633,6 +1747,7 @@ function WaiterView({ onOrderPlaced, initialTableId, mode = "board" }: WaiterVie
               ) : null}
             <WaiterActionBoard
               orders={waiterActionOrders}
+              allOrders={orders}
               appendSignals={appendSignals}
               servingOrderId={servingOrderId}
               servingItemKey={servingItemKey}
@@ -1641,6 +1756,10 @@ function WaiterView({ onOrderPlaced, initialTableId, mode = "board" }: WaiterVie
               onMarkItemServed={handleMarkItemServed}
               onMarkReadyItemsServed={handleMarkReadyItemsServed}
               onCreateInvoice={handleCreateInvoice}
+              correctingLineKey={correctingLineKey}
+              onRemovePlacedItem={handleRemovePlacedItem}
+              onCancelPlacedItem={handleCancelPlacedItem}
+              onMovePlacedItem={handleMovePlacedItem}
               className="mt-0"
             />
             </div>
@@ -1741,7 +1860,7 @@ function OrderCard({
 }) {
   const [expanded, setExpanded] = useState(false);
   const canEdit = role === "owner" || role === "manager" || role === "waiter";
-  const canDelete = role === "owner" || role === "manager" || role === "waiter";
+  const canDelete = role === "owner" || role === "manager";
   const nextStatus = NEXT_STATUS[order.status];
   const activeItemsList = activeOrderItems(order);
   const itemStatuses = activeItemsList

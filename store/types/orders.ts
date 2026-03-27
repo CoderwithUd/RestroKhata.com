@@ -32,6 +32,7 @@ export type OrderItem = {
   quantity: number;
   unitPrice: number;
   status?: OrderStatus;
+  kitchenStatus?: OrderStatus;
   taxPercentage?: number;
   options?: OrderItemOption[];
   note?: string;
@@ -44,9 +45,16 @@ export type OrderItem = {
 
 // ─── Creator / updater ref ───────────────────────────────────────────────────
 export type OrderUserRef = {
-  userId: string;
+  userId: string | null;
   role: string;
   name?: string;
+};
+
+export type OrderInvoiceRequest = {
+  requestedAt?: string;
+  source?: string;
+  name?: string;
+  phone?: string;
 };
 
 // ─── Full order record ───────────────────────────────────────────────────────
@@ -72,6 +80,7 @@ export type OrderRecord = {
   raw?: Record<string, unknown>;
   createdBy?: OrderUserRef;
   updatedBy?: OrderUserRef;
+  invoiceRequest?: OrderInvoiceRequest | null;
   createdAt?: string;
   updatedAt?: string;
 };
@@ -174,6 +183,32 @@ export type UpdateOrderPayload = {
 export type UpdateOrderArgs = {
   orderId: string;
   payload: UpdateOrderPayload;
+};
+
+export type RemoveOrderItemPayload = {
+  quantity?: number;
+};
+
+export type RemoveOrderItemArgs = {
+  orderId: string;
+  lineId: string;
+  payload?: RemoveOrderItemPayload;
+};
+
+export type CancelOrderItemArgs = {
+  orderId: string;
+  lineId: string;
+};
+
+export type MoveOrderItemPayload = {
+  targetOrderId: string;
+  quantity?: number;
+};
+
+export type MoveOrderItemArgs = {
+  orderId: string;
+  lineId: string;
+  payload: MoveOrderItemPayload;
 };
 
 // ─── Delete response ──────────────────────────────────────────────────────────

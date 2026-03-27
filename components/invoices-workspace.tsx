@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { useConfirm } from "@/components/confirm-provider";
 import { downloadInvoicePdf } from "@/lib/invoice-pdf";
 import { getErrorMessage } from "@/lib/error";
 import { showError, showInfo, showSuccess } from "@/lib/feedback";
@@ -8,8 +9,10 @@ import { useOrderSocket, type SocketOrderRole } from "@/lib/use-order-socket";
 import {
   useCreateInvoiceMutation,
   useCreateGroupInvoiceMutation,
+  useDeleteInvoiceMutation,
   useGetInvoicesQuery,
   usePayInvoiceMutation,
+  useUpdateInvoiceMutation,
 } from "@/store/api/invoicesApi";
 import { useTentantProfileQuery } from "@/store/api/authApi";
 import { useGetOrdersQuery } from "@/store/api/ordersApi";
@@ -25,6 +28,11 @@ type Props = {
 };
 
 type DiscountInput = { type: "PERCENTAGE" | "FLAT"; value: number };
+type DraftBillingState = {
+  table: TableRecord;
+  orders: OrderRecord[];
+  discount: DiscountInput;
+};
 type HistoryRange = "all" | "today" | "yesterday" | "week" | "month";
 type ReceiptProfile = {
   tenantName: string;
@@ -184,6 +192,18 @@ function invoiceAmount(invoice: InvoiceRecord): number {
   return fromItems > 0 ? fromItems : 0;
 }
 
+function draftItemsTotal(orders: OrderRecord[]): number {
+  return orders.reduce((sum, order) => sum + itemTotal(order), 0);
+}
+
+function draftDiscountAmount(total: number, discount: DiscountInput): number {
+  if (!(discount.value > 0)) return 0;
+  if (discount.type === "PERCENTAGE") {
+    return Math.min(total, (total * discount.value) / 100);
+  }
+  return Math.min(total, discount.value);
+}
+
 function sortByLatest<T extends { updatedAt?: string; createdAt?: string }>(items: T[]): T[] {
   return [...items].sort((left, right) => {
     const a = new Date(left.updatedAt || left.createdAt || 0).getTime();
@@ -247,7 +267,12 @@ function InvoicePreview({
   profile,
   customerName,
   isPaying,
+  isPrivilegedBilling,
+  isUpdating,
+  isDeleting,
   onPay,
+  onApplyDiscount,
+  onDelete,
   onDownloadPdf,
   onShare,
 }: {
@@ -255,7 +280,12 @@ function InvoicePreview({
   profile: ReceiptProfile;
   customerName: string;
   isPaying: boolean;
+  isPrivilegedBilling: boolean;
+  isUpdating: boolean;
+  isDeleting: boolean;
   onPay: (invoice: InvoiceRecord, method: "CASH" | "UPI") => void;
+  onApplyDiscount: (invoice: InvoiceRecord) => void;
+  onDelete: (invoice: InvoiceRecord) => void;
   onDownloadPdf: (invoice: InvoiceRecord) => void;
   onShare: (invoice: InvoiceRecord) => void;
 }) {
@@ -274,7 +304,7 @@ function InvoicePreview({
   0
 );
   const isIssued = normalizeStatus(invoice.status) === "ISSUED";
-  const canCollectPayment = isIssued && due > 0;
+  const canCollectPayment = isPrivilegedBilling && isIssued && due > 0;
 
   return (
     <article className="rounded-[28px] border border-[#dfd2bb] bg-[linear-gradient(170deg,#fffef9_0%,#fff6e8_100%)] p-4 shadow-[0_24px_50px_-36px_rgba(53,38,18,0.5)]">
@@ -351,6 +381,26 @@ function InvoicePreview({
         >
           WhatsApp Share
         </button>
+        {isPrivilegedBilling && isIssued ? (
+          <>
+            <button
+              type="button"
+              disabled={isUpdating}
+              onClick={() => onApplyDiscount(invoice)}
+              className="rounded-2xl border border-amber-200 bg-amber-50 px-3 py-3 text-sm font-semibold text-amber-800 disabled:opacity-50"
+            >
+              {isUpdating ? "Updating..." : "Update Discount"}
+            </button>
+            <button
+              type="button"
+              disabled={isDeleting}
+              onClick={() => onDelete(invoice)}
+              className="rounded-2xl border border-rose-200 bg-rose-50 px-3 py-3 text-sm font-semibold text-rose-700 disabled:opacity-50"
+            >
+              {isDeleting ? "Deleting..." : "Delete Invoice"}
+            </button>
+          </>
+        ) : null}
         {canCollectPayment ? (
           <>
             <button
@@ -376,7 +426,9 @@ function InvoicePreview({
               ? `Payment already collected${invoice.payment?.method ? ` via ${invoice.payment.method}` : ""}.`
               : due <= 0
                 ? "No balance left to collect."
-                : "Only ISSUED invoices can be collected."}
+                : isPrivilegedBilling
+                  ? "Only ISSUED invoices can be collected."
+                  : "Final payment sirf manager ya owner kar sakta hai."}
           </div>
         )}
       </div>
@@ -385,8 +437,10 @@ function InvoicePreview({
 }
 
 export function InvoicesWorkspace({ rawRole }: Props) {
+  const confirm = useConfirm();
   const token = useAppSelector(selectAuthToken);
   const role = normalizeRole(rawRole);
+  const isPrivilegedBilling = role === "owner" || role === "manager";
   const [tableFilter, setTableFilter] = useState("");
   const [historyRange, setHistoryRange] = useState<HistoryRange>("today");
   const [customerFilter, setCustomerFilter] = useState("");
@@ -395,6 +449,7 @@ export function InvoicesWorkspace({ rawRole }: Props) {
   const [selectedInvoiceId, setSelectedInvoiceId] = useState<string | null>(null);
   const [isInvoiceViewOpen, setIsInvoiceViewOpen] = useState(false);
   const [invoiceOverrides, setInvoiceOverrides] = useState<Record<string, InvoiceRecord>>({});
+  const [draftBilling, setDraftBilling] = useState<DraftBillingState | null>(null);
   const { data: tenantProfile } = useTentantProfileQuery();
 
   const {
@@ -419,6 +474,8 @@ export function InvoicesWorkspace({ rawRole }: Props) {
   const [createInvoice, { isLoading: isCreating }] = useCreateInvoiceMutation();
   const [createGroupInvoice, { isLoading: isCreatingGroup }] = useCreateGroupInvoiceMutation();
   const [payInvoice, { isLoading: isPaying }] = usePayInvoiceMutation();
+  const [updateInvoice, { isLoading: isUpdatingInvoice }] = useUpdateInvoiceMutation();
+  const [deleteInvoice, { isLoading: isDeletingInvoice }] = useDeleteInvoiceMutation();
 
   useOrderSocket({
     token,
@@ -632,6 +689,15 @@ export function InvoicesWorkspace({ rawRole }: Props) {
     setIsInvoiceViewOpen(true);
   }
 
+  function openDraftInvoice(table: TableRecord, ordersToBill: OrderRecord[]) {
+    if (!ordersToBill.length) return;
+    setDraftBilling({
+      table,
+      orders: ordersToBill,
+      discount: { type: "PERCENTAGE", value: 0 },
+    });
+  }
+
   async function handleCreateInvoice(order: OrderRecord, discount?: DiscountInput) {
     try {
       const response = await createInvoice({
@@ -646,6 +712,7 @@ export function InvoicesWorkspace({ rawRole }: Props) {
       }
 
       showSuccess(response.message || `Invoice created for ${order.table?.name || `Table ${order.table?.number}`}`);
+      setDraftBilling(null);
       refetchTables();
       refetchOrders();
       refetchInvoices();
@@ -654,12 +721,13 @@ export function InvoicesWorkspace({ rawRole }: Props) {
     }
   }
 
-  async function handleCreateGroupInvoice(table: TableRecord, ordersToBill: OrderRecord[]) {
+  async function handleCreateGroupInvoice(table: TableRecord, ordersToBill: OrderRecord[], discount?: DiscountInput) {
     if (!ordersToBill.length) return;
     try {
       const response = await createGroupInvoice({
         tableId: table.id,
         ...(ordersToBill.length > 1 ? { orderIds: ordersToBill.map((order) => order.id) } : {}),
+        ...(discount ? { discountType: discount.type, discountValue: discount.value } : {}),
       }).unwrap();
 
       if (response.invoice?.id) {
@@ -672,6 +740,7 @@ export function InvoicesWorkspace({ rawRole }: Props) {
         response.message ||
           `${ordersToBill.length > 1 ? "Group invoice" : "Invoice"} created for ${table.name || `Table ${table.number}`}`,
       );
+      setDraftBilling(null);
       refetchTables();
       refetchOrders();
       refetchInvoices();
@@ -715,6 +784,7 @@ export function InvoicesWorkspace({ rawRole }: Props) {
   }
 
   async function handlePayInvoice(invoice: InvoiceRecord, method: "CASH" | "UPI") {
+    if (!isPrivilegedBilling) return;
     // const amount = invoiceAmount(invoice);
     const amount = Math.max(
   (invoice.totalDue ?? 0) -
@@ -741,6 +811,66 @@ export function InvoicesWorkspace({ rawRole }: Props) {
       refetchTables();
       refetchOrders();
       refetchInvoices();
+    } catch (error) {
+      showError(getErrorMessage(error));
+    }
+  }
+
+  async function handleApplyInvoiceDiscount(invoice: InvoiceRecord) {
+    if (!isPrivilegedBilling) return;
+
+    const nextValue = window.prompt("Discount value", String(invoice.discount?.value ?? 0));
+    if (nextValue == null) return;
+
+    const parsedValue = Number(nextValue);
+    if (!Number.isFinite(parsedValue) || parsedValue < 0) {
+      showError("Enter a valid discount value");
+      return;
+    }
+
+    const nextTypeRaw = window.prompt("Discount type: PERCENTAGE or FLAT", invoice.discount?.type || "PERCENTAGE");
+    if (nextTypeRaw == null) return;
+    const nextType = nextTypeRaw.trim().toUpperCase();
+    if (nextType !== "PERCENTAGE" && nextType !== "FLAT") {
+      showError("Discount type must be PERCENTAGE or FLAT");
+      return;
+    }
+
+    try {
+      const response = await updateInvoice({
+        invoiceId: invoice.id,
+        payload: {
+          discountType: nextType,
+          discountValue: parsedValue,
+        },
+      }).unwrap();
+      showSuccess(response.message || "Invoice updated");
+      refetchInvoices();
+      refetchOrders();
+      refetchTables();
+    } catch (error) {
+      showError(getErrorMessage(error));
+    }
+  }
+
+  async function handleDeleteInvoice(invoice: InvoiceRecord) {
+    if (!isPrivilegedBilling) return;
+    const approved = await confirm({
+      title: "Delete Invoice",
+      message: "Delete this unpaid invoice and unlock the order?",
+      confirmText: "Delete Invoice",
+      cancelText: "Keep Invoice",
+      tone: "danger",
+    });
+    if (!approved) return;
+
+    try {
+      const response = await deleteInvoice(invoice.id).unwrap();
+      showSuccess(response.message || "Invoice deleted");
+      setIsInvoiceViewOpen(false);
+      refetchInvoices();
+      refetchOrders();
+      refetchTables();
     } catch (error) {
       showError(getErrorMessage(error));
     }
@@ -922,7 +1052,7 @@ export function InvoicesWorkspace({ rawRole }: Props) {
                               <button
                                 type="button"
                                 disabled={isCreating}
-                                onClick={() => handleCreateInvoice(selectedOrders[0])}
+                                onClick={() => openDraftInvoice(table, selectedOrders)}
                                 className="rounded-xl bg-amber-500 px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-50"
                               >
                                 {isCreating ? "Creating..." : "Bill Selected"}
@@ -932,7 +1062,7 @@ export function InvoicesWorkspace({ rawRole }: Props) {
                               <button
                                 type="button"
                                 disabled={isCreatingGroup}
-                                onClick={() => handleCreateGroupInvoice(table, selectedOrders)}
+                                onClick={() => openDraftInvoice(table, selectedOrders)}
                                 className="rounded-xl bg-slate-900 px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-50"
                               >
                                 {isCreatingGroup ? "Creating..." : `Bill Selected ${selectedOrders.length}`}
@@ -1053,7 +1183,7 @@ export function InvoicesWorkspace({ rawRole }: Props) {
                                   <button
                                     type="button"
                                     disabled={isCreating}
-                                    onClick={() => handleCreateInvoice(selectedOrders[0])}
+                                    onClick={() => openDraftInvoice(table, selectedOrders)}
                                     className="rounded-xl bg-amber-500 px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-50"
                                   >
                                     {isCreating ? "Creating..." : "Bill Selected"}
@@ -1063,7 +1193,7 @@ export function InvoicesWorkspace({ rawRole }: Props) {
                                   <button
                                     type="button"
                                     disabled={isCreatingGroup}
-                                    onClick={() => handleCreateGroupInvoice(table, selectedOrders)}
+                                    onClick={() => openDraftInvoice(table, selectedOrders)}
                                     className="rounded-xl bg-slate-900 px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-50"
                                   >
                                     {isCreatingGroup ? "Creating..." : `Bill Selected ${selectedOrders.length}`}
@@ -1232,6 +1362,162 @@ export function InvoicesWorkspace({ rawRole }: Props) {
           </article>
       </section>
 
+      {draftBilling ? (
+        <div className="fixed inset-0 z-50 flex items-end justify-center bg-slate-900/55 p-0 sm:items-center sm:p-4">
+          <button type="button" className="absolute inset-0" onClick={() => setDraftBilling(null)} aria-label="Close invoice draft" />
+          <div className="relative z-10 h-[92vh] w-full overflow-y-auto rounded-t-3xl border border-[#e3d6bc] bg-[#f8f4ec] p-4 shadow-2xl sm:h-auto sm:max-h-[92vh] sm:max-w-3xl sm:rounded-3xl sm:p-5">
+            <div className="mb-4 flex items-center justify-between gap-2">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Invoice Preview</p>
+                <h4 className="mt-1 text-lg font-semibold text-slate-900">
+                  {draftBilling.orders.length > 1 ? `Group bill for ${draftBilling.table.name}` : `Bill for ${draftBilling.table.name}`}
+                </h4>
+              </div>
+              <button
+                type="button"
+                onClick={() => setDraftBilling(null)}
+                className="rounded-xl border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700"
+              >
+                Close
+              </button>
+            </div>
+
+            <div className="rounded-[28px] border border-[#dfd2bb] bg-[linear-gradient(170deg,#fffef9_0%,#fff6e8_100%)] p-4">
+              <div className="space-y-3">
+                {draftBilling.orders.map((order) => (
+                  <article key={order.id} className="rounded-2xl border border-[#eadfc9] bg-white/85 p-3">
+                    <div className="flex items-center justify-between gap-2">
+                      <div>
+                        <p className="text-sm font-semibold text-slate-900">
+                          {order.orderNumber ? `#${order.orderNumber}` : order.id.slice(-4)} {order.customerName ? `| ${order.customerName}` : ""}
+                        </p>
+                        <p className="text-xs text-slate-500">{order.items.length} item(s)</p>
+                      </div>
+                      <span className="text-sm font-semibold text-slate-900">{fmtCurrency(itemTotal(order))}</span>
+                    </div>
+                    <div className="mt-3 space-y-2">
+                      {order.items.map((item, index) => (
+                        <div key={`${order.id}-${item.itemId}-${item.variantId || "base"}-${index}`} className="flex items-start justify-between gap-3 text-sm">
+                          <div className="min-w-0">
+                            <p className="font-medium text-slate-900">
+                              {item.quantity}x {item.name}
+                              {item.variantName ? ` (${item.variantName})` : ""}
+                            </p>
+                            <p className="text-xs text-slate-500">{normalizeStatus(item.status) || "PLACED"}</p>
+                          </div>
+                          <span className="font-semibold text-slate-900">{fmtCurrency(item.lineTotal ?? item.unitPrice * item.quantity)}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </article>
+                ))}
+              </div>
+
+              <div className="mt-4 rounded-2xl border border-[#eadfc9] bg-white/90 p-4">
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <label className="text-sm text-slate-700">
+                    <span className="mb-1 block text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">Discount Type</span>
+                    <select
+                      value={draftBilling.discount.type}
+                      disabled={!isPrivilegedBilling}
+                      onChange={(event) =>
+                        setDraftBilling((current) =>
+                          current
+                            ? { ...current, discount: { ...current.discount, type: event.target.value as DiscountInput["type"] } }
+                            : current,
+                        )
+                      }
+                      className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm disabled:opacity-50"
+                    >
+                      <option value="PERCENTAGE">Percentage</option>
+                      <option value="FLAT">Flat</option>
+                    </select>
+                  </label>
+                  <label className="text-sm text-slate-700">
+                    <span className="mb-1 block text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">Discount Value</span>
+                    <input
+                      type="number"
+                      min="0"
+                      value={draftBilling.discount.value}
+                      disabled={!isPrivilegedBilling}
+                      onChange={(event) =>
+                        setDraftBilling((current) =>
+                          current
+                            ? {
+                                ...current,
+                                discount: { ...current.discount, value: Math.max(0, Number(event.target.value) || 0) },
+                              }
+                            : current,
+                        )
+                      }
+                      className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm disabled:opacity-50"
+                    />
+                  </label>
+                </div>
+                {!isPrivilegedBilling ? (
+                  <p className="mt-2 text-xs text-slate-500">Discount sirf manager ya owner set kar sakta hai.</p>
+                ) : null}
+                {(() => {
+                  const total = draftItemsTotal(draftBilling.orders);
+                  const discountAmount = draftDiscountAmount(total, draftBilling.discount);
+                  const finalTotal = Math.max(total - discountAmount, 0);
+                  return (
+                    <div className="mt-4 space-y-1 text-sm">
+                      <div className="flex items-center justify-between text-slate-600">
+                        <span>Items total</span>
+                        <span>{fmtCurrency(total)}</span>
+                      </div>
+                      <div className="flex items-center justify-between text-slate-600">
+                        <span>Discount</span>
+                        <span>{fmtCurrency(discountAmount)}</span>
+                      </div>
+                      <div className="flex items-center justify-between border-t border-dashed border-[#d8ccb6] pt-2 text-base font-semibold text-slate-900">
+                        <span>Estimated total</span>
+                        <span>{fmtCurrency(finalTotal)}</span>
+                      </div>
+                    </div>
+                  );
+                })()}
+              </div>
+            </div>
+
+            <div className="mt-4 flex flex-wrap justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setDraftBilling(null)}
+                className="rounded-2xl border border-slate-300 bg-white px-4 py-3 text-sm font-semibold text-slate-700"
+              >
+                Back
+              </button>
+              <button
+                type="button"
+                disabled={draftBilling.orders.length === 1 ? isCreating : isCreatingGroup}
+                onClick={() => {
+                  if (draftBilling.orders.length === 1) {
+                    handleCreateInvoice(draftBilling.orders[0], isPrivilegedBilling ? draftBilling.discount : undefined);
+                    return;
+                  }
+                  handleCreateGroupInvoice(
+                    draftBilling.table,
+                    draftBilling.orders,
+                    isPrivilegedBilling ? draftBilling.discount : undefined,
+                  );
+                }}
+                className="rounded-2xl bg-slate-900 px-4 py-3 text-sm font-semibold text-white disabled:opacity-50"
+              >
+                {draftBilling.orders.length === 1
+                  ? isCreating
+                    ? "Creating..."
+                    : "Create Invoice"
+                  : isCreatingGroup
+                    ? "Creating..."
+                    : "Create Group Invoice"}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
       {isInvoiceViewOpen && selectedInvoice ? (
         <div className="fixed inset-0 z-50 flex items-end justify-center bg-slate-900/55 p-0 sm:items-center sm:p-4">
           <button type="button" className="absolute inset-0" onClick={() => setIsInvoiceViewOpen(false)} aria-label="Close invoice view" />
@@ -1255,7 +1541,12 @@ export function InvoicesWorkspace({ rawRole }: Props) {
               profile={receiptProfile}
               customerName={invoiceCustomerMap.get(selectedInvoice.id) || "-"}
               isPaying={isPaying}
+              isPrivilegedBilling={isPrivilegedBilling}
+              isUpdating={isUpdatingInvoice}
+              isDeleting={isDeletingInvoice}
               onPay={handlePayInvoice}
+              onApplyDiscount={handleApplyInvoiceDiscount}
+              onDelete={handleDeleteInvoice}
               onShare={handleShareInvoice}
               onDownloadPdf={(invoice) =>
                 downloadInvoicePdf(invoice, {

@@ -94,6 +94,9 @@ function parseInvoice(value: unknown): InvoiceRecord | null {
 
   const discountRecord = asRecord(record.discount);
   const paymentRecord = asRecord(record.payment);
+  const customerRecord =
+    asRecord(record.customer) ||
+    asRecord(nestedOrder?.customer);
 
   return {
     id,
@@ -133,6 +136,13 @@ function parseInvoice(value: unknown): InvoiceRecord | null {
           paidAt: asString(paymentRecord.paidAt),
         }
       : null,
+    customer: customerRecord
+      ? {
+          id: asString(customerRecord.id) || asString(customerRecord._id),
+          name: asString(customerRecord.name) || asString(record.customerName),
+          phone: asString(customerRecord.phone) || asString(record.customerPhone),
+        }
+      : undefined,
     createdAt: asString(record.createdAt),
     updatedAt: asString(record.updatedAt),
     raw: record,

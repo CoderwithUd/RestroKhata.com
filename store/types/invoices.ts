@@ -39,6 +39,11 @@ export type InvoiceRecord = {
   totalDue?: number;
   balanceDue?: number;
   payment?: InvoicePayment | null;
+  customer?: {
+    id?: string;
+    name?: string;
+    phone?: string;
+  };
   createdAt?: string;
   updatedAt?: string;
   raw?: Record<string, unknown>;
