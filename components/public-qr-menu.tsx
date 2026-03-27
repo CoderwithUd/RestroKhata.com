@@ -307,6 +307,32 @@ function sessionStorageKey(args: {
   ].join(":");
 }
 
+function buildPublicOrderLocator(args: {
+  token?: string;
+  tenantSlug?: string;
+  tableId?: string;
+  tableNumber?: string;
+  sessionToken?: string;
+}): Record<string, string | number> {
+  const payload: Record<string, string | number> = {};
+
+  if (args.token) {
+    payload.token = args.token;
+  } else {
+    if (args.tenantSlug) payload.tenantSlug = args.tenantSlug;
+    if (args.tableId) payload.tableId = args.tableId;
+    if (!args.tableId && args.tableNumber) {
+      const parsedTableNumber = Number(args.tableNumber);
+      payload.tableNumber = Number.isFinite(parsedTableNumber)
+        ? parsedTableNumber
+        : args.tableNumber;
+    }
+  }
+
+  if (args.sessionToken) payload.sessionToken = args.sessionToken;
+  return payload;
+}
+
 function availableVariants(item: PublicItem): PublicVariant[] {
   const available = item.variants.filter((variant) => variant.isAvailable);
   return available.length ? available : item.variants;
@@ -422,6 +448,29 @@ function canCreatePublicInvoice(order: PublicOrder | null): boolean {
     const status = normalizeStatus(item.kitchenStatus);
     return status === "SERVED" || status === "CANCELLED";
   });
+}
+
+function canCancelPublicOrder(order: PublicOrder | null, invoice: PublicInvoice | null): boolean {
+  if (!order || invoice || !order.items.length) return false;
+  return order.items.every((item) => isPlacedLine(item));
+}
+
+function publicItemStatusLabel(status?: string): string {
+  const normalized = normalizeStatus(status);
+  if (normalized === "IN_PROGRESS") return "Cooking";
+  if (normalized === "READY") return "Ready";
+  if (normalized === "SERVED") return "Served";
+  if (normalized === "CANCELLED") return "Cancelled";
+  return "Placed";
+}
+
+function publicItemStatusClass(status?: string): string {
+  const normalized = normalizeStatus(status);
+  if (normalized === "IN_PROGRESS") return "border-rose-200 bg-rose-50 text-rose-700";
+  if (normalized === "READY") return "border-emerald-200 bg-emerald-50 text-emerald-700";
+  if (normalized === "SERVED") return "border-sky-200 bg-sky-50 text-sky-700";
+  if (normalized === "CANCELLED") return "border-slate-200 bg-slate-100 text-slate-500";
+  return "border-amber-200 bg-amber-50 text-amber-700";
 }
 
 function SummaryPanel({
@@ -617,6 +666,7 @@ function CurrentOrderPanel({
   onIncrement,
   onDecrement,
   onDelete,
+  onCancelOrder,
   onRequestInvoice,
   onCreateInvoice,
 }: {
@@ -628,10 +678,18 @@ function CurrentOrderPanel({
   onIncrement: (item: PublicOrderItem) => void;
   onDecrement: (item: PublicOrderItem) => void;
   onDelete: (item: PublicOrderItem) => void;
+  onCancelOrder: () => void;
   onRequestInvoice: () => void;
   onCreateInvoice: () => void;
 }) {
   if (!order && !invoice) return null;
+
+  const statusCounts = order?.items.reduce<Record<string, number>>((accumulator, item) => {
+    const key = normalizeStatus(item.kitchenStatus) || "PLACED";
+    accumulator[key] = (accumulator[key] || 0) + item.quantity;
+    return accumulator;
+  }, {});
+  const canCancelOrder = canCancelPublicOrder(order, invoice);
 
   return (
     <section className="rounded-[28px] border border-[#e5d8c5] bg-white/95 p-4 shadow-[0_18px_50px_-38px_rgba(110,72,23,0.45)]">
@@ -664,6 +722,17 @@ function CurrentOrderPanel({
 
       {order ? (
         <div className="mt-4 space-y-3">
+          <div className="grid gap-2 sm:grid-cols-4">
+            {(["PLACED", "IN_PROGRESS", "READY", "SERVED"] as const).map((status) => (
+              <div key={status} className="rounded-2xl border border-[#efe4d3] bg-[#fcfaf6] p-3">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">
+                  {publicItemStatusLabel(status)}
+                </p>
+                <p className="mt-1 text-lg font-semibold text-slate-900">{statusCounts?.[status] || 0}</p>
+              </div>
+            ))}
+          </div>
+
           <div className="space-y-2">
             {order.items.map((item, index) => {
               const isPlaced = isPlacedLine(item);
@@ -680,11 +749,12 @@ function CurrentOrderPanel({
                         {item.quantity}x {item.name}
                         {item.variantName ? ` (${item.variantName})` : ""}
                       </p>
-                      <p className="mt-1 text-xs text-slate-500">
-                        Status:{" "}
-                        {normalizeStatus(item.kitchenStatus) || "PLACED"} |{" "}
-                        {formatMoney(lineAmount(item))}
-                      </p>
+                      <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-slate-500">
+                        <span className={`rounded-full border px-2.5 py-1 font-semibold ${publicItemStatusClass(item.kitchenStatus)}`}>
+                          {publicItemStatusLabel(item.kitchenStatus)}
+                        </span>
+                        <span>{formatMoney(lineAmount(item))}</span>
+                      </div>
                       {item.note ? (
                         <p className="mt-1 text-xs italic text-amber-700">
                           {item.note}
@@ -761,9 +831,32 @@ function CurrentOrderPanel({
                   {invoiceBusy ? "Creating..." : "Create Invoice"}
                 </button>
               ) : null}
+              {!invoice && order && !canCreatePublicInvoice(order) ? (
+                <button
+                  type="button"
+                  disabled
+                  className="rounded-[18px] border border-slate-200 bg-slate-100 px-4 py-2.5 text-sm font-semibold text-slate-500"
+                >
+                  Create Invoice After Serve
+                </button>
+              ) : null}
+              {canCancelOrder ? (
+                <button
+                  type="button"
+                  onClick={onCancelOrder}
+                  disabled={invoiceBusy}
+                  className="rounded-[18px] border border-rose-200 bg-rose-50 px-4 py-2.5 text-sm font-semibold text-rose-700 disabled:opacity-50"
+                >
+                  Cancel Full Order
+                </button>
+              ) : null}
               {!invoice ? (
                 <p className="self-center text-xs text-slate-500">
-                  Final payment sirf manager ya owner karega.
+                  {canCancelOrder
+                    ? "Cooking start hone se pehle aap pura order cancel bhi kar sakte ho."
+                    : !canCreatePublicInvoice(order)
+                      ? "Invoice tabhi banega jab sab items served ya cancelled ho jayenge."
+                    : "Final payment sirf manager ya owner karega."}
                 </p>
               ) : null}
             </div>
@@ -1034,6 +1127,17 @@ export function PublicQrMenu({
   const orderEnabled = Boolean(
     token || (tenantSlug && (resolvedTableId || resolvedTableNumber)),
   );
+  const publicOrderLocator = useMemo(
+    () =>
+      buildPublicOrderLocator({
+        token,
+        tenantSlug,
+        tableId: resolvedTableId,
+        tableNumber: resolvedTableNumber,
+        sessionToken,
+      }),
+    [resolvedTableId, resolvedTableNumber, sessionToken, tenantSlug, token],
+  );
 
   const publicHeaders = useMemo(
     () => ({
@@ -1044,7 +1148,7 @@ export function PublicQrMenu({
   );
 
   const refreshCurrentOrder = useCallback(async () => {
-    if (!sessionToken || !token) {
+    if (!sessionToken || (!token && !(tenantSlug && (resolvedTableId || resolvedTableNumber)))) {
       setCurrentOrder(null);
       setCurrentInvoice(null);
       setCurrentOrderError("");
@@ -1055,9 +1159,9 @@ export function PublicQrMenu({
     setCurrentOrderError("");
 
     try {
-      const params = new URLSearchParams({
-        token,
-        sessionToken,
+      const params = new URLSearchParams();
+      Object.entries(publicOrderLocator).forEach(([key, value]) => {
+        params.set(key, String(value));
       });
       const response = await fetch(
         `${API_BASE_URL}/public/orders/current?${params.toString()}`,
@@ -1088,7 +1192,7 @@ export function PublicQrMenu({
     } finally {
       setIsCurrentOrderLoading(false);
     }
-  }, [sessionToken, tenantSlug, token]);
+  }, [publicOrderLocator, resolvedTableId, resolvedTableNumber, sessionToken, tenantSlug, token]);
 
   useEffect(() => {
     refreshCurrentOrder();
@@ -1225,6 +1329,7 @@ export function PublicQrMenu({
 
       const orderRecord = asRecord((body as Record<string, unknown>)?.order);
       const nextSessionToken = asString(orderRecord?.sessionToken);
+      const parsedOrder = parsePublicOrder(orderRecord);
       if (typeof window !== "undefined") {
         const key = sessionStorageKey({
           token,
@@ -1236,6 +1341,10 @@ export function PublicQrMenu({
           window.localStorage.setItem(key, nextSessionToken);
           setSessionToken(nextSessionToken);
         }
+      }
+      if (parsedOrder) {
+        setCurrentOrder(parsedOrder);
+        setCurrentInvoice(null);
       }
 
       const message =
@@ -1258,7 +1367,12 @@ export function PublicQrMenu({
   }
 
   async function updateCurrentLine(item: PublicOrderItem, quantity: number) {
-    if (!item.lineId || !token || !sessionToken) return;
+    if (
+      !item.lineId ||
+      !sessionToken ||
+      (!token && !(tenantSlug && (resolvedTableId || resolvedTableNumber)))
+    )
+      return;
 
     setBusyLineId(item.lineId);
     setCurrentOrderError("");
@@ -1271,8 +1385,7 @@ export function PublicQrMenu({
           headers: publicHeaders,
           credentials: "omit",
           body: JSON.stringify({
-            token,
-            sessionToken,
+            ...publicOrderLocator,
             quantity,
           }),
         },
@@ -1295,12 +1408,20 @@ export function PublicQrMenu({
   }
 
   async function deleteCurrentLine(item: PublicOrderItem) {
-    if (!item.lineId || !token || !sessionToken) return;
+    if (
+      !item.lineId ||
+      !sessionToken ||
+      (!token && !(tenantSlug && (resolvedTableId || resolvedTableNumber)))
+    )
+      return;
 
     setBusyLineId(item.lineId);
     setCurrentOrderError("");
     try {
-      const params = new URLSearchParams({ token, sessionToken });
+      const params = new URLSearchParams();
+      Object.entries(publicOrderLocator).forEach(([key, value]) => {
+        params.set(key, String(value));
+      });
       const response = await fetch(
         `${API_BASE_URL}/public/orders/current/items/${item.lineId}?${params.toString()}`,
         {
@@ -1327,7 +1448,11 @@ export function PublicQrMenu({
   }
 
   async function requestInvoiceForCurrentOrder() {
-    if (!token || !sessionToken) return;
+    if (
+      !sessionToken ||
+      (!token && !(tenantSlug && (resolvedTableId || resolvedTableNumber)))
+    )
+      return;
 
     setInvoiceBusy(true);
     setCurrentOrderError("");
@@ -1338,7 +1463,7 @@ export function PublicQrMenu({
           method: "POST",
           headers: publicHeaders,
           credentials: "omit",
-          body: JSON.stringify({ token, sessionToken }),
+          body: JSON.stringify(publicOrderLocator),
         },
       );
       const body = await response.json().catch(() => ({}));
@@ -1362,8 +1487,53 @@ export function PublicQrMenu({
     }
   }
 
+  async function cancelCurrentOrder() {
+    if (
+      !sessionToken ||
+      (!token && !(tenantSlug && (resolvedTableId || resolvedTableNumber)))
+    )
+      return;
+
+    setInvoiceBusy(true);
+    setCurrentOrderError("");
+    setSubmitSuccess("");
+    try {
+      const response = await fetch(
+        `${API_BASE_URL}/public/orders/current/cancel`,
+        {
+          method: "POST",
+          headers: publicHeaders,
+          credentials: "omit",
+          body: JSON.stringify(publicOrderLocator),
+        },
+      );
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(
+          asString((body as Record<string, unknown>)?.message) ||
+            "Order cancel failed",
+        );
+      }
+      setSubmitSuccess(
+        asString((body as Record<string, unknown>)?.message) ||
+          "Order cancelled",
+      );
+      await refreshCurrentOrder();
+    } catch (issue) {
+      setCurrentOrderError(
+        issue instanceof Error ? issue.message : "Order cancel failed",
+      );
+    } finally {
+      setInvoiceBusy(false);
+    }
+  }
+
   async function createInvoiceForCurrentOrder() {
-    if (!token || !sessionToken) return;
+    if (
+      !sessionToken ||
+      (!token && !(tenantSlug && (resolvedTableId || resolvedTableNumber)))
+    )
+      return;
 
     setInvoiceBusy(true);
     setCurrentOrderError("");
@@ -1375,8 +1545,7 @@ export function PublicQrMenu({
           headers: publicHeaders,
           credentials: "omit",
           body: JSON.stringify({
-            token,
-            sessionToken,
+            ...publicOrderLocator,
             note: "Bill requested from QR",
           }),
         },
@@ -1556,6 +1725,7 @@ export function PublicQrMenu({
               updateCurrentLine(item, item.quantity - 1);
             }}
             onDelete={deleteCurrentLine}
+            onCancelOrder={cancelCurrentOrder}
             onRequestInvoice={requestInvoiceForCurrentOrder}
             onCreateInvoice={createInvoiceForCurrentOrder}
           />

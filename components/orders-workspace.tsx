@@ -210,6 +210,16 @@ function activeOrderItems(order: OrderRecord): OrderItem[] {
   return (order.items || []).filter((item) => normalizeStatus(item.status) !== "CANCELLED");
 }
 
+function correctionQty(item: OrderItem, value?: number): number {
+  if (!(item.quantity > 0)) return 1;
+  if (!value || !Number.isFinite(value)) return 1;
+  return Math.min(Math.max(1, Math.floor(value)), item.quantity);
+}
+
+function canCorrectOrderItemStatus(status?: string): boolean {
+  return ["PLACED", "IN_PROGRESS", "READY", "SERVED"].includes(normalizeStatus(status));
+}
+
 function getServeableReadyItems(order: OrderRecord): OrderItem[] {
   return activeOrderItems(order).filter(
     (item) => Boolean(item.lineId) && normalizeStatus(item.status) === "READY",
@@ -1111,10 +1121,15 @@ function MenuBrowser({
 // ─── Waiter View ──────────────────────────────────────────────────────────────
 type WaiterStep = "tables" | "menu" | "placing";
 type WaiterComposerMode = "append-latest" | "append-specific" | "force-new";
+type MoveTargetSelection = {
+  targetOrderId?: string;
+  targetTableId?: string;
+};
 
 function WaiterActionBoard({
   orders,
   allOrders,
+  tables,
   appendSignals,
   servingOrderId,
   servingItemKey,
@@ -1124,6 +1139,8 @@ function WaiterActionBoard({
   onMarkReadyItemsServed,
   onCreateInvoice,
   correctingLineKey,
+  correctionQuantities,
+  onCorrectionQuantityChange,
   onRemovePlacedItem,
   onCancelPlacedItem,
   onMovePlacedItem,
@@ -1131,6 +1148,7 @@ function WaiterActionBoard({
 }: {
   orders: OrderRecord[];
   allOrders: OrderRecord[];
+  tables: TableRecord[];
   appendSignals: Record<string, OrderAppendSignal>;
   servingOrderId?: string | null;
   servingItemKey?: string | null;
@@ -1140,9 +1158,11 @@ function WaiterActionBoard({
   onMarkReadyItemsServed: (order: OrderRecord) => void;
   onCreateInvoice: (order: OrderRecord) => void;
   correctingLineKey?: string | null;
-  onRemovePlacedItem: (order: OrderRecord, item: OrderItem) => void;
+  correctionQuantities: Record<string, number>;
+  onCorrectionQuantityChange: (lineKey: string, quantity: number) => void;
+  onRemovePlacedItem: (order: OrderRecord, item: OrderItem, quantity: number) => void;
   onCancelPlacedItem: (order: OrderRecord, item: OrderItem) => void;
-  onMovePlacedItem: (order: OrderRecord, item: OrderItem, targetOrderId: string) => void;
+  onMovePlacedItem: (order: OrderRecord, item: OrderItem, target: MoveTargetSelection, quantity: number) => void;
   className?: string;
 }) {
   const readyCount = orders.filter((order) => normalizeStatus(order.status) === "READY").length;
@@ -1274,26 +1294,32 @@ function WaiterActionBoard({
                         ? orderItemActionKey(order.id, item.lineId, itemNextStatus)
                         : null;
                       const correctionKey = item.lineId ? `${order.id}:${item.lineId}` : null;
-                      const isPlaced = normalizeStatus(item.status) === "PLACED";
+                      const correctionValue = correctionQty(item, correctionKey ? correctionQuantities[correctionKey] : undefined);
+                      const canCorrectItem = Boolean(item.lineId) && canCorrectOrderItemStatus(item.status);
                       const moveTargets = allOrders.filter(
                         (candidate) =>
                           candidate.id !== order.id &&
                           (candidate.table?.id || candidate.tableId) === (order.table?.id || order.tableId) &&
                           ["PLACED", "IN_PROGRESS", "READY", "SERVED"].includes(normalizeStatus(candidate.status)),
                       );
+                      const tableTargets = tables.filter((table) => table.id !== (order.table?.id || order.tableId));
                       return (
                         <div
                           key={`${item.itemId}-${item.variantId || "base"}-${index}`}
-                          className="flex items-start justify-between gap-2 text-xs"
+                          className="rounded-xl border border-slate-100 bg-slate-50 p-2.5 text-xs"
                         >
-                          <div className="min-w-0">
-                            <p className="font-medium text-slate-800">
-                              {item.quantity}x {item.name}
-                              {item.variantName ? ` (${item.variantName})` : ""}
-                            </p>
-                            {item.note ? <p className="text-[11px] italic text-amber-700">{item.note}</p> : null}
-                          </div>
-                          <div className="flex shrink-0 items-center gap-1">
+                          <div className="flex flex-wrap items-start justify-between gap-2">
+                            <div className="min-w-0">
+                              <p className="font-medium text-slate-800">
+                                {item.quantity}x {item.name}
+                                {item.variantName ? ` (${item.variantName})` : ""}
+                              </p>
+                              <p className="mt-1 text-[11px] font-medium text-slate-500">
+                                Status: {itemStatusLabel(item.status)}
+                              </p>
+                              {item.note ? <p className="text-[11px] italic text-amber-700">{item.note}</p> : null}
+                            </div>
+                            <div className="flex shrink-0 items-center gap-1">
                             {delta > 0 ? (
                               <span className="rounded-full border border-amber-300 bg-amber-100 px-2 py-0.5 text-[10px] font-semibold text-amber-900">
                                 +{delta} new
@@ -1302,8 +1328,24 @@ function WaiterActionBoard({
                             <span className={`rounded-full border px-2 py-0.5 text-[10px] font-semibold ${itemStatusClass(item.status)}`}>
                               {itemStatusLabel(item.status)}
                             </span>
-                            {isPlaced && item.lineId ? (
+                            {canCorrectItem ? (
                               <>
+                                {item.quantity > 1 ? (
+                                  <select
+                                    value={String(correctionValue)}
+                                    disabled={correctingLineKey === correctionKey}
+                                    onChange={(event) =>
+                                      onCorrectionQuantityChange(correctionKey as string, Number(event.target.value) || 1)
+                                    }
+                                    className="rounded-full border border-slate-200 bg-white px-2 py-0.5 text-[10px] font-semibold text-slate-600 disabled:opacity-50"
+                                  >
+                                    {Array.from({ length: item.quantity }, (_, idx) => idx + 1).map((qty) => (
+                                      <option key={qty} value={qty}>
+                                        Qty {qty}
+                                      </option>
+                                    ))}
+                                  </select>
+                                ) : null}
                                 {moveTargets.length > 0 ? (
                                   <select
                                     defaultValue=""
@@ -1311,12 +1353,12 @@ function WaiterActionBoard({
                                     onChange={(event) => {
                                       const targetOrderId = event.target.value;
                                       if (!targetOrderId) return;
-                                      onMovePlacedItem(order, item, targetOrderId);
+                                      onMovePlacedItem(order, item, { targetOrderId }, correctionValue);
                                       event.currentTarget.value = "";
                                     }}
                                     className="rounded-full border border-slate-200 bg-white px-2 py-0.5 text-[10px] font-semibold text-slate-600 disabled:opacity-50"
                                   >
-                                    <option value="">Move</option>
+                                    <option value="">Exchange</option>
                                     {moveTargets.map((candidate) => (
                                       <option key={candidate.id} value={candidate.id}>
                                         #{candidate.orderNumber || candidate.id.slice(-4)}
@@ -1324,13 +1366,33 @@ function WaiterActionBoard({
                                     ))}
                                   </select>
                                 ) : null}
+                                {tableTargets.length > 0 ? (
+                                  <select
+                                    defaultValue=""
+                                    disabled={correctingLineKey === correctionKey}
+                                    onChange={(event) => {
+                                      const targetTableId = event.target.value;
+                                      if (!targetTableId) return;
+                                      onMovePlacedItem(order, item, { targetTableId }, correctionValue);
+                                      event.currentTarget.value = "";
+                                    }}
+                                    className="rounded-full border border-slate-200 bg-white px-2 py-0.5 text-[10px] font-semibold text-slate-600 disabled:opacity-50"
+                                  >
+                                    <option value="">Exchange Table</option>
+                                    {tableTargets.map((table) => (
+                                      <option key={table.id} value={table.id}>
+                                        T{table.number}
+                                      </option>
+                                    ))}
+                                  </select>
+                                ) : null}
                                 <button
                                   type="button"
-                                  onClick={() => onRemovePlacedItem(order, item)}
+                                  onClick={() => onRemovePlacedItem(order, item, correctionValue)}
                                   disabled={correctingLineKey === correctionKey}
                                   className="rounded-full border border-rose-200 bg-rose-50 px-2 py-0.5 text-[10px] font-bold text-rose-700 disabled:opacity-50"
                                 >
-                                  Remove
+                                  {item.quantity > 1 ? `Reduce ${correctionValue}` : "Remove Item"}
                                 </button>
                                 <button
                                   type="button"
@@ -1338,7 +1400,7 @@ function WaiterActionBoard({
                                   disabled={correctingLineKey === correctionKey}
                                   className="rounded-full border border-slate-200 bg-slate-100 px-2 py-0.5 text-[10px] font-bold text-slate-700 disabled:opacity-50"
                                 >
-                                  Cancel
+                                  Cancel Item
                                 </button>
                               </>
                             ) : null}
@@ -1353,6 +1415,12 @@ function WaiterActionBoard({
                               </button>
                             ) : null}
                           </div>
+                          </div>
+                          {canCorrectItem ? (
+                            <p className="mt-2 text-[11px] text-slate-500">
+                              `Exchange` = dusre order me bhejo, `Reduce/Remove` = qty ghatao ya hatao, `Cancel Item` = is line ko cancelled mark karo.
+                            </p>
+                          ) : null}
                         </div>
                       );
                     })}
@@ -1390,6 +1458,7 @@ function WaiterView({ onOrderPlaced, initialTableId, mode = "board" }: WaiterVie
   const [servingOrderId, setServingOrderId] = useState<string | null>(null);
   const [servingItemKey, setServingItemKey] = useState<string | null>(null);
   const [correctingLineKey, setCorrectingLineKey] = useState<string | null>(null);
+  const [correctionQuantities, setCorrectionQuantities] = useState<Record<string, number>>({});
   const [step, setStep] = useState<WaiterStep>("tables");
   const [selectedTable, setSelectedTable] = useState<TableRecord | null>(null);
   const [, setExistingOrder] = useState<OrderRecord | undefined>(undefined);
@@ -1602,12 +1671,21 @@ function WaiterView({ onOrderPlaced, initialTableId, mode = "board" }: WaiterVie
     }
   }
 
-  async function handleRemovePlacedItem(order: OrderRecord, item: OrderItem) {
+  function handleCorrectionQuantityChange(lineKey: string, quantity: number) {
+    setCorrectionQuantities((current) => ({ ...current, [lineKey]: quantity }));
+  }
+
+  async function handleRemovePlacedItem(order: OrderRecord, item: OrderItem, quantity: number) {
     if (!item.lineId) return;
+    const nextQuantity = correctionQty(item, quantity);
     try {
       setCorrectingLineKey(`${order.id}:${item.lineId}`);
-      await removeOrderItem({ orderId: order.id, lineId: item.lineId }).unwrap();
-      showSuccess(`${item.name} removed`);
+      await removeOrderItem({
+        orderId: order.id,
+        lineId: item.lineId,
+        payload: nextQuantity < item.quantity ? { quantity: nextQuantity } : undefined,
+      }).unwrap();
+      showSuccess(nextQuantity < item.quantity ? `${nextQuantity} qty removed from ${item.name}` : `${item.name} removed`);
       refetchOrders();
       refetchTables();
     } catch (error) {
@@ -1632,16 +1710,24 @@ function WaiterView({ onOrderPlaced, initialTableId, mode = "board" }: WaiterVie
     }
   }
 
-  async function handleMovePlacedItem(order: OrderRecord, item: OrderItem, targetOrderId: string) {
-    if (!item.lineId || !targetOrderId) return;
+  async function handleMovePlacedItem(order: OrderRecord, item: OrderItem, target: MoveTargetSelection, quantity: number) {
+    if (!item.lineId || (!target.targetOrderId && !target.targetTableId)) return;
+    const nextQuantity = correctionQty(item, quantity);
     try {
       setCorrectingLineKey(`${order.id}:${item.lineId}`);
       await moveOrderItem({
         orderId: order.id,
         lineId: item.lineId,
-        payload: { targetOrderId },
+        payload: {
+          ...target,
+          ...(nextQuantity < item.quantity ? { quantity: nextQuantity } : {}),
+        },
       }).unwrap();
-      showSuccess(`${item.name} moved to selected order`);
+      showSuccess(
+        nextQuantity < item.quantity
+          ? `${nextQuantity} qty exchanged`
+          : `${item.name} exchanged successfully`,
+      );
       refetchOrders();
       refetchTables();
     } catch (error) {
@@ -1748,6 +1834,7 @@ function WaiterView({ onOrderPlaced, initialTableId, mode = "board" }: WaiterVie
             <WaiterActionBoard
               orders={waiterActionOrders}
               allOrders={orders}
+              tables={tables}
               appendSignals={appendSignals}
               servingOrderId={servingOrderId}
               servingItemKey={servingItemKey}
@@ -1757,6 +1844,8 @@ function WaiterView({ onOrderPlaced, initialTableId, mode = "board" }: WaiterVie
               onMarkReadyItemsServed={handleMarkReadyItemsServed}
               onCreateInvoice={handleCreateInvoice}
               correctingLineKey={correctingLineKey}
+              correctionQuantities={correctionQuantities}
+              onCorrectionQuantityChange={handleCorrectionQuantityChange}
               onRemovePlacedItem={handleRemovePlacedItem}
               onCancelPlacedItem={handleCancelPlacedItem}
               onMovePlacedItem={handleMovePlacedItem}
@@ -1951,20 +2040,36 @@ function OrderCard({
 /* eslint-enable @typescript-eslint/no-unused-vars */
 function SmartOrderCard({
   order,
+  allOrders,
+  tables,
   role,
   onStatusChange,
   onItemStatusChange,
   onBatchServeReady,
   onDelete,
+  correctionQuantities,
+  correctingLineKey,
+  onCorrectionQuantityChange,
+  onRemovePlacedItem,
+  onCancelPlacedItem,
+  onMovePlacedItem,
   updatingItemKey,
   compact,
 }: {
   order: OrderRecord;
+  allOrders: OrderRecord[];
+  tables: TableRecord[];
   role: RoleKey;
   onStatusChange: (orderId: string, status: OrderStatus) => void;
   onItemStatusChange: (order: OrderRecord, item: OrderItem, status: OrderStatus) => void;
   onBatchServeReady: (order: OrderRecord) => void;
   onDelete: (orderId: string) => void;
+  correctionQuantities: Record<string, number>;
+  correctingLineKey?: string | null;
+  onCorrectionQuantityChange: (lineKey: string, quantity: number) => void;
+  onRemovePlacedItem: (order: OrderRecord, item: OrderItem, quantity: number) => void;
+  onCancelPlacedItem: (order: OrderRecord, item: OrderItem) => void;
+  onMovePlacedItem: (order: OrderRecord, item: OrderItem, target: MoveTargetSelection, quantity: number) => void;
   updatingItemKey?: string | null;
   compact?: boolean;
 }) {
@@ -1976,9 +2081,12 @@ function SmartOrderCard({
     .map((item) => normalizeStatus(item.status) || "PLACED")
     .filter(Boolean);
   const hasMixedItemStatuses = new Set(itemStatuses).size > 1;
+  const hasEditableItems = activeOrderItems(order).some(
+    (item) => Boolean(item.lineId) && canCorrectOrderItemStatus(item.status),
+  );
   const readyItems = getServeableReadyItems(order);
   const batchServeKey = orderBatchActionKey(order.id, "SERVED");
-  const showExpanded = expanded || hasMixedItemStatuses;
+  const showExpanded = expanded || hasMixedItemStatuses || hasEditableItems;
   const customerLabel = orderCustomerLabel(order);
 
 
@@ -1999,6 +2107,11 @@ function SmartOrderCard({
                 Mixed items
               </span>
             ) : null}
+            {hasEditableItems ? (
+              <span className="rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[10px] font-semibold text-amber-800">
+                Move / Remove Available
+              </span>
+            ) : null}
           </div>
           <p className="mt-0.5 text-xs text-slate-500">{order.items.length} item{order.items.length !== 1 ? "s" : ""} | {fmtCurrency(order.grandTotal ?? order.subTotal)} | {timeAgo(order.createdAt)}</p>
           {customerLabel ? (
@@ -2017,14 +2130,30 @@ function SmartOrderCard({
 
       {showExpanded && (
         <div className="mt-3 space-y-1 border-t border-slate-100 pt-3">
+          {hasEditableItems ? (
+            <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] font-semibold text-amber-800">
+              Item correction: `PLACED`, `IN_PROGRESS`, `READY`, `SERVED` items ke liye niche correction options available hain.
+            </div>
+          ) : null}
           {order.items.map((item, index) => {
             const itemNextStatus = canEdit ? nextOrderItemStatus(item.status, role) : undefined;
             const itemActionKey = item.lineId
               ? orderItemActionKey(order.id, item.lineId, itemNextStatus)
               : null;
+            const correctionKey = item.lineId ? `${order.id}:${item.lineId}` : null;
+            const correctionValue = correctionQty(item, correctionKey ? correctionQuantities[correctionKey] : undefined);
+            const canCorrectItem = Boolean(item.lineId) && canCorrectOrderItemStatus(item.status);
+            const moveTargets = allOrders.filter(
+              (candidate) =>
+                candidate.id !== order.id &&
+                (candidate.table?.id || candidate.tableId) === (order.table?.id || order.tableId) &&
+                ["PLACED", "IN_PROGRESS", "READY", "SERVED"].includes(normalizeStatus(candidate.status)),
+            );
+            const tableTargets = tables.filter((table) => table.id !== (order.table?.id || order.tableId));
 
             return (
-              <div key={`${item.itemId}-${item.variantId || "base"}-${index}`} className="flex flex-wrap items-start justify-between gap-2 text-xs">
+              <div key={`${item.itemId}-${item.variantId || "base"}-${index}`} className="space-y-2 rounded-xl border border-slate-100 bg-slate-50/70 p-2.5 text-xs">
+                <div className="flex flex-wrap items-start justify-between gap-2">
                 <div className="min-w-0 flex-1">
                   <div className="flex flex-wrap items-center gap-1.5">
                     <span className="text-slate-700">
@@ -2035,6 +2164,9 @@ function SmartOrderCard({
                       {itemStatusLabel(item.status)}
                     </span>
                   </div>
+                  <p className="mt-1 text-[11px] font-medium text-slate-500">
+                    Status: {itemStatusLabel(item.status)}
+                  </p>
                   {item.note ? <p className="mt-0.5 italic text-amber-700">{item.note}</p> : null}
                 </div>
                 <div className="flex shrink-0 items-center gap-2">
@@ -2054,6 +2186,83 @@ function SmartOrderCard({
                     </button>
                   ) : null}
                 </div>
+                </div>
+                {canCorrectItem ? (
+                  <div className="flex flex-wrap items-center gap-2">
+                    {item.quantity > 1 ? (
+                      <select
+                        value={String(correctionValue)}
+                        disabled={correctingLineKey === correctionKey}
+                        onChange={(event) =>
+                          onCorrectionQuantityChange(correctionKey as string, Number(event.target.value) || 1)
+                        }
+                        className="rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-semibold text-slate-700 disabled:opacity-50"
+                      >
+                        {Array.from({ length: item.quantity }, (_, idx) => idx + 1).map((qty) => (
+                          <option key={qty} value={qty}>
+                            Qty {qty}
+                          </option>
+                        ))}
+                      </select>
+                    ) : null}
+                    {moveTargets.length > 0 ? (
+                      <select
+                        defaultValue=""
+                        disabled={correctingLineKey === correctionKey}
+                        onChange={(event) => {
+                          const targetOrderId = event.target.value;
+                          if (!targetOrderId) return;
+                          onMovePlacedItem(order, item, { targetOrderId }, correctionValue);
+                          event.currentTarget.value = "";
+                        }}
+                        className="rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-semibold text-slate-700 disabled:opacity-50"
+                      >
+                        <option value="">Exchange</option>
+                        {moveTargets.map((candidate) => (
+                          <option key={candidate.id} value={candidate.id}>
+                            {candidate.orderNumber ? `#${candidate.orderNumber}` : candidate.id.slice(-4)}
+                          </option>
+                        ))}
+                      </select>
+                    ) : null}
+                    {tableTargets.length > 0 ? (
+                      <select
+                        defaultValue=""
+                        disabled={correctingLineKey === correctionKey}
+                        onChange={(event) => {
+                          const targetTableId = event.target.value;
+                          if (!targetTableId) return;
+                          onMovePlacedItem(order, item, { targetTableId }, correctionValue);
+                          event.currentTarget.value = "";
+                        }}
+                        className="rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-semibold text-slate-700 disabled:opacity-50"
+                      >
+                        <option value="">Exchange Table</option>
+                        {tableTargets.map((table) => (
+                          <option key={table.id} value={table.id}>
+                            T{table.number}
+                          </option>
+                        ))}
+                      </select>
+                    ) : null}
+                    <button
+                      type="button"
+                      onClick={() => onRemovePlacedItem(order, item, correctionValue)}
+                      disabled={correctingLineKey === correctionKey}
+                      className="rounded-lg border border-rose-200 bg-rose-50 px-2.5 py-1 text-[11px] font-semibold text-rose-700 disabled:opacity-50"
+                    >
+                      {item.quantity > 1 ? `Reduce ${correctionValue}` : "Remove Item"}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => onCancelPlacedItem(order, item)}
+                      disabled={correctingLineKey === correctionKey}
+                      className="rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-semibold text-slate-700 disabled:opacity-50"
+                    >
+                      Cancel Item
+                    </button>
+                  </div>
+                ) : null}
               </div>
             );
           })}
@@ -2113,12 +2322,18 @@ function ManagerView({ role }: { role: RoleKey }) {
   const [statusFilter, setStatusFilter] = useState<string>("active");
   const [socketConnected, setSocketConnected] = useState(false);
   const [updatingItemKey, setUpdatingItemKey] = useState<string | null>(null);
+  const [correctingLineKey, setCorrectingLineKey] = useState<string | null>(null);
+  const [correctionQuantities, setCorrectionQuantities] = useState<Record<string, number>>({});
   const [updateOrder] = useUpdateOrderMutation();
   const [deleteOrder] = useDeleteOrderMutation();
+  const [removeOrderItem] = useRemoveOrderItemMutation();
+  const [cancelOrderItem] = useCancelOrderItemMutation();
+  const [moveOrderItem] = useMoveOrderItemMutation();
+  const { data: tablesData } = useGetTablesQuery({ isActive: true });
 
   const queryStatus = useMemo(() => {
     if (statusFilter === "active") return ["PLACED", "IN_PROGRESS", "READY"];
-    if (statusFilter === "done") return ["SERVED", "CANCELLED"];
+    if (statusFilter === "done") return ["SERVED", "COMPLETED", "CANCELLED"];
     return undefined;
   }, [statusFilter]);
 
@@ -2210,6 +2425,65 @@ function ManagerView({ role }: { role: RoleKey }) {
     }
   }
 
+  function handleCorrectionQuantityChange(lineKey: string, quantity: number) {
+    setCorrectionQuantities((current) => ({ ...current, [lineKey]: quantity }));
+  }
+
+  async function handleRemovePlacedItem(order: OrderRecord, item: OrderItem, quantity: number) {
+    if (!item.lineId) return;
+    const nextQuantity = correctionQty(item, quantity);
+    try {
+      setCorrectingLineKey(`${order.id}:${item.lineId}`);
+      await removeOrderItem({
+        orderId: order.id,
+        lineId: item.lineId,
+        payload: nextQuantity < item.quantity ? { quantity: nextQuantity } : undefined,
+      }).unwrap();
+      showSuccess(nextQuantity < item.quantity ? `${nextQuantity} qty removed from ${item.name}` : `${item.name} removed`);
+      refetch();
+    } catch (error) {
+      showError(getErrorMessage(error));
+    } finally {
+      setCorrectingLineKey(null);
+    }
+  }
+
+  async function handleCancelPlacedItem(order: OrderRecord, item: OrderItem) {
+    if (!item.lineId) return;
+    try {
+      setCorrectingLineKey(`${order.id}:${item.lineId}`);
+      await cancelOrderItem({ orderId: order.id, lineId: item.lineId }).unwrap();
+      showSuccess(`${item.name} cancelled`);
+      refetch();
+    } catch (error) {
+      showError(getErrorMessage(error));
+    } finally {
+      setCorrectingLineKey(null);
+    }
+  }
+
+  async function handleMovePlacedItem(order: OrderRecord, item: OrderItem, target: MoveTargetSelection, quantity: number) {
+    if (!item.lineId || (!target.targetOrderId && !target.targetTableId)) return;
+    const nextQuantity = correctionQty(item, quantity);
+    try {
+      setCorrectingLineKey(`${order.id}:${item.lineId}`);
+      await moveOrderItem({
+        orderId: order.id,
+        lineId: item.lineId,
+        payload: {
+          ...target,
+          ...(nextQuantity < item.quantity ? { quantity: nextQuantity } : {}),
+        },
+      }).unwrap();
+      showSuccess(nextQuantity < item.quantity ? `${nextQuantity} qty exchanged` : `${item.name} exchanged`);
+      refetch();
+    } catch (error) {
+      showError(getErrorMessage(error));
+    } finally {
+      setCorrectingLineKey(null);
+    }
+  }
+
   async function handleDelete(orderId: string) {
     const approved = await confirm({
       title: "Delete Order",
@@ -2285,11 +2559,19 @@ function ManagerView({ role }: { role: RoleKey }) {
             <SmartOrderCard
               key={order.id}
               order={order}
+              allOrders={orders}
+              tables={tablesData?.items || []}
               role={role}
               onStatusChange={handleStatusChange}
               onItemStatusChange={handleItemStatusChange}
               onBatchServeReady={handleBatchServeReady}
               onDelete={handleDelete}
+              correctionQuantities={correctionQuantities}
+              correctingLineKey={correctingLineKey}
+              onCorrectionQuantityChange={handleCorrectionQuantityChange}
+              onRemovePlacedItem={handleRemovePlacedItem}
+              onCancelPlacedItem={handleCancelPlacedItem}
+              onMovePlacedItem={handleMovePlacedItem}
               updatingItemKey={updatingItemKey}
             />
           ))}

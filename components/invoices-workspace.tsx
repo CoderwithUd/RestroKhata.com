@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useConfirm } from "@/components/confirm-provider";
 import { downloadInvoicePdf } from "@/lib/invoice-pdf";
 import { getErrorMessage } from "@/lib/error";
@@ -15,7 +15,12 @@ import {
   useUpdateInvoiceMutation,
 } from "@/store/api/invoicesApi";
 import { useTentantProfileQuery } from "@/store/api/authApi";
-import { useGetOrdersQuery } from "@/store/api/ordersApi";
+import {
+  useCancelOrderItemMutation,
+  useGetOrdersQuery,
+  useMoveOrderItemMutation,
+  useRemoveOrderItemMutation,
+} from "@/store/api/ordersApi";
 import { useGetTablesQuery } from "@/store/api/tablesApi";
 import { useAppSelector } from "@/store/hooks";
 import { selectAuthToken } from "@/store/slices/authSlice";
@@ -32,6 +37,19 @@ type DraftBillingState = {
   table: TableRecord;
   orders: OrderRecord[];
   discount: DiscountInput;
+};
+type InvoiceEditorState = {
+  invoiceId: string;
+  note: string;
+  discount: DiscountInput;
+};
+type MoveTargetSelection = {
+  targetOrderId?: string;
+  targetTableId?: string;
+};
+type DraftCorrectionState = {
+  quantities: Record<string, number>;
+  busyKey: string | null;
 };
 type HistoryRange = "all" | "today" | "yesterday" | "week" | "month";
 type ReceiptProfile = {
@@ -204,6 +222,37 @@ function draftDiscountAmount(total: number, discount: DiscountInput): number {
   return Math.min(total, discount.value);
 }
 
+function correctionQty(quantity: number | undefined, selected?: number): number {
+  const max = quantity && quantity > 0 ? Math.floor(quantity) : 1;
+  if (!selected || !Number.isFinite(selected)) return 1;
+  return Math.min(Math.max(1, Math.floor(selected)), max);
+}
+
+function canCorrectItemStatus(status?: string): boolean {
+  return ["PLACED", "IN_PROGRESS", "READY", "SERVED"].includes(normalizeStatus(status));
+}
+
+function itemStatusPill(status?: string): string {
+  const normalized = normalizeStatus(status);
+  if (normalized === "SERVED") return "border-emerald-200 bg-emerald-50 text-emerald-700";
+  if (normalized === "READY") return "border-blue-200 bg-blue-50 text-blue-700";
+  if (normalized === "IN_PROGRESS") return "border-rose-200 bg-rose-50 text-rose-700";
+  if (normalized === "PLACED") return "border-amber-200 bg-amber-50 text-amber-700";
+  if (normalized === "CANCELLED") return "border-slate-200 bg-slate-100 text-slate-500";
+  return "border-slate-200 bg-slate-50 text-slate-600";
+}
+
+function createInvoiceEditorState(invoice: InvoiceRecord): InvoiceEditorState {
+  return {
+    invoiceId: invoice.id,
+    note: invoice.note || "",
+    discount: {
+      type: invoice.discount?.type === "FLAT" ? "FLAT" : "PERCENTAGE",
+      value: invoice.discount?.value ?? 0,
+    },
+  };
+}
+
 function sortByLatest<T extends { updatedAt?: string; createdAt?: string }>(items: T[]): T[] {
   return [...items].sort((left, right) => {
     const a = new Date(left.updatedAt || left.createdAt || 0).getTime();
@@ -271,7 +320,7 @@ function InvoicePreview({
   isUpdating,
   isDeleting,
   onPay,
-  onApplyDiscount,
+  onEditInvoice,
   onDelete,
   onDownloadPdf,
   onShare,
@@ -284,7 +333,7 @@ function InvoicePreview({
   isUpdating: boolean;
   isDeleting: boolean;
   onPay: (invoice: InvoiceRecord, method: "CASH" | "UPI") => void;
-  onApplyDiscount: (invoice: InvoiceRecord) => void;
+  onEditInvoice: (invoice: InvoiceRecord) => void;
   onDelete: (invoice: InvoiceRecord) => void;
   onDownloadPdf: (invoice: InvoiceRecord) => void;
   onShare: (invoice: InvoiceRecord) => void;
@@ -386,10 +435,10 @@ function InvoicePreview({
             <button
               type="button"
               disabled={isUpdating}
-              onClick={() => onApplyDiscount(invoice)}
+              onClick={() => onEditInvoice(invoice)}
               className="rounded-2xl border border-amber-200 bg-amber-50 px-3 py-3 text-sm font-semibold text-amber-800 disabled:opacity-50"
             >
-              {isUpdating ? "Updating..." : "Update Discount"}
+              {isUpdating ? "Opening..." : "Edit Invoice"}
             </button>
             <button
               type="button"
@@ -450,6 +499,8 @@ export function InvoicesWorkspace({ rawRole }: Props) {
   const [isInvoiceViewOpen, setIsInvoiceViewOpen] = useState(false);
   const [invoiceOverrides, setInvoiceOverrides] = useState<Record<string, InvoiceRecord>>({});
   const [draftBilling, setDraftBilling] = useState<DraftBillingState | null>(null);
+  const [draftCorrection, setDraftCorrection] = useState<DraftCorrectionState>({ quantities: {}, busyKey: null });
+  const [invoiceEditor, setInvoiceEditor] = useState<InvoiceEditorState | null>(null);
   const { data: tenantProfile } = useTentantProfileQuery();
 
   const {
@@ -476,6 +527,9 @@ export function InvoicesWorkspace({ rawRole }: Props) {
   const [payInvoice, { isLoading: isPaying }] = usePayInvoiceMutation();
   const [updateInvoice, { isLoading: isUpdatingInvoice }] = useUpdateInvoiceMutation();
   const [deleteInvoice, { isLoading: isDeletingInvoice }] = useDeleteInvoiceMutation();
+  const [removeOrderItem] = useRemoveOrderItemMutation();
+  const [cancelOrderItem] = useCancelOrderItemMutation();
+  const [moveOrderItem] = useMoveOrderItemMutation();
 
   useOrderSocket({
     token,
@@ -683,6 +737,50 @@ export function InvoicesWorkspace({ rawRole }: Props) {
     () => invoices.find((invoice) => invoice.id === activeInvoiceId) || null,
     [activeInvoiceId, invoices],
   );
+  const selectedInvoiceOrders = useMemo(() => {
+    if (!selectedInvoice) return [];
+    const orderIds = [...(selectedInvoice.orderIds || []), selectedInvoice.orderId].filter(Boolean);
+    return orderIds
+      .map((orderId) => ordersById.get(orderId))
+      .filter((order): order is OrderRecord => Boolean(order));
+  }, [ordersById, selectedInvoice]);
+  const editingInvoice = useMemo(
+    () =>
+      invoiceEditor
+        ? invoices.find((invoice) => invoice.id === invoiceEditor.invoiceId) || null
+        : null,
+    [invoiceEditor, invoices],
+  );
+  const draftMoveTargets = useMemo(() => {
+    if (!draftBilling) return [];
+    return sortByLatest(openOrdersByTable.get(draftBilling.table.id) || []).filter((order) => isOpenOrderStatus(order.status));
+  }, [draftBilling, openOrdersByTable]);
+
+  useEffect(() => {
+    if (!draftBilling) return;
+    const nextOrders = draftBilling.orders
+      .map((draftOrder) => orders.find((order) => order.id === draftOrder.id) || draftOrder)
+      .filter((order) => isOpenOrderStatus(order.status));
+
+    const changed =
+      nextOrders.length !== draftBilling.orders.length ||
+      nextOrders.some((order, index) => order !== draftBilling.orders[index]);
+
+    if (!changed) return;
+    if (nextOrders.length === 0) {
+      setDraftBilling(null);
+      return;
+    }
+
+    setDraftBilling((current) =>
+      current
+        ? {
+            ...current,
+            orders: nextOrders,
+          }
+        : current,
+    );
+  }, [draftBilling, orders]);
 
   function openInvoiceView(invoiceId: string) {
     setSelectedInvoiceId(invoiceId);
@@ -691,6 +789,7 @@ export function InvoicesWorkspace({ rawRole }: Props) {
 
   function openDraftInvoice(table: TableRecord, ordersToBill: OrderRecord[]) {
     if (!ordersToBill.length) return;
+    setDraftCorrection({ quantities: {}, busyKey: null });
     setDraftBilling({
       table,
       orders: ordersToBill,
@@ -816,35 +915,37 @@ export function InvoicesWorkspace({ rawRole }: Props) {
     }
   }
 
-  async function handleApplyInvoiceDiscount(invoice: InvoiceRecord) {
+  function handleApplyInvoiceDiscount(invoice: InvoiceRecord) {
     if (!isPrivilegedBilling) return;
+    setInvoiceEditor(createInvoiceEditorState(invoice));
+    setSelectedInvoiceId(invoice.id);
+    setIsInvoiceViewOpen(true);
+  }
 
-    const nextValue = window.prompt("Discount value", String(invoice.discount?.value ?? 0));
-    if (nextValue == null) return;
+  async function handleSaveInvoiceEditor() {
+    if (!invoiceEditor || !isPrivilegedBilling) return;
 
-    const parsedValue = Number(nextValue);
+    const parsedValue = Number(invoiceEditor.discount.value);
     if (!Number.isFinite(parsedValue) || parsedValue < 0) {
       showError("Enter a valid discount value");
       return;
     }
 
-    const nextTypeRaw = window.prompt("Discount type: PERCENTAGE or FLAT", invoice.discount?.type || "PERCENTAGE");
-    if (nextTypeRaw == null) return;
-    const nextType = nextTypeRaw.trim().toUpperCase();
-    if (nextType !== "PERCENTAGE" && nextType !== "FLAT") {
-      showError("Discount type must be PERCENTAGE or FLAT");
-      return;
-    }
-
     try {
       const response = await updateInvoice({
-        invoiceId: invoice.id,
+        invoiceId: invoiceEditor.invoiceId,
         payload: {
-          discountType: nextType,
+          note: invoiceEditor.note.trim() || undefined,
+          discountType: invoiceEditor.discount.type,
           discountValue: parsedValue,
         },
       }).unwrap();
       showSuccess(response.message || "Invoice updated");
+      if (response.invoice?.id) {
+        setInvoiceOverrides((prev) => ({ ...prev, [response.invoice.id]: response.invoice }));
+        setSelectedInvoiceId(response.invoice.id);
+      }
+      setInvoiceEditor(null);
       refetchInvoices();
       refetchOrders();
       refetchTables();
@@ -867,6 +968,7 @@ export function InvoicesWorkspace({ rawRole }: Props) {
     try {
       const response = await deleteInvoice(invoice.id).unwrap();
       showSuccess(response.message || "Invoice deleted");
+      setInvoiceEditor(null);
       setIsInvoiceViewOpen(false);
       refetchInvoices();
       refetchOrders();
@@ -894,6 +996,75 @@ export function InvoicesWorkspace({ rawRole }: Props) {
     if (typeof window !== "undefined") {
       const url = `https://wa.me/?text=${encodeURIComponent(text)}`;
       window.open(url, "_blank", "noopener,noreferrer");
+    }
+  }
+
+  function handleDraftCorrectionQuantityChange(lineKey: string, quantity: number) {
+    setDraftCorrection((current) => ({
+      ...current,
+      quantities: { ...current.quantities, [lineKey]: quantity },
+    }));
+  }
+
+  async function handleDraftRemoveItem(orderId: string, lineId: string, itemName: string, quantity: number, maxQuantity: number) {
+    const nextQuantity = correctionQty(maxQuantity, quantity);
+    const busyKey = `${orderId}:${lineId}`;
+    try {
+      setDraftCorrection((current) => ({ ...current, busyKey }));
+      await removeOrderItem({
+        orderId,
+        lineId,
+        payload: nextQuantity < maxQuantity ? { quantity: nextQuantity } : undefined,
+      }).unwrap();
+      showSuccess(nextQuantity < maxQuantity ? `${nextQuantity} qty removed from ${itemName}` : `${itemName} removed`);
+      refetchOrders();
+    } catch (error) {
+      showError(getErrorMessage(error));
+    } finally {
+      setDraftCorrection((current) => ({ ...current, busyKey: null }));
+    }
+  }
+
+  async function handleDraftCancelItem(orderId: string, lineId: string, itemName: string) {
+    const busyKey = `${orderId}:${lineId}`;
+    try {
+      setDraftCorrection((current) => ({ ...current, busyKey }));
+      await cancelOrderItem({ orderId, lineId }).unwrap();
+      showSuccess(`${itemName} cancelled from bill flow`);
+      refetchOrders();
+    } catch (error) {
+      showError(getErrorMessage(error));
+    } finally {
+      setDraftCorrection((current) => ({ ...current, busyKey: null }));
+    }
+  }
+
+  async function handleDraftMoveItem(
+    orderId: string,
+    lineId: string,
+    itemName: string,
+    target: MoveTargetSelection,
+    quantity: number,
+    maxQuantity: number,
+  ) {
+    const nextQuantity = correctionQty(maxQuantity, quantity);
+    const busyKey = `${orderId}:${lineId}`;
+    try {
+      setDraftCorrection((current) => ({ ...current, busyKey }));
+      await moveOrderItem({
+        orderId,
+        lineId,
+        payload: {
+          ...target,
+          ...(nextQuantity < maxQuantity ? { quantity: nextQuantity } : {}),
+        },
+      }).unwrap();
+      showSuccess(nextQuantity < maxQuantity ? `${nextQuantity} qty exchanged from ${itemName}` : `${itemName} exchanged successfully`);
+      refetchOrders();
+    } catch (error) {
+      showError(getErrorMessage(error));
+    } finally {
+      setDraftCorrection((current) => ({ ...current, busyKey: null }));
     }
   }
 
@@ -1366,6 +1537,16 @@ export function InvoicesWorkspace({ rawRole }: Props) {
         <div className="fixed inset-0 z-50 flex items-end justify-center bg-slate-900/55 p-0 sm:items-center sm:p-4">
           <button type="button" className="absolute inset-0" onClick={() => setDraftBilling(null)} aria-label="Close invoice draft" />
           <div className="relative z-10 h-[92vh] w-full overflow-y-auto rounded-t-3xl border border-[#e3d6bc] bg-[#f8f4ec] p-4 shadow-2xl sm:h-auto sm:max-h-[92vh] sm:max-w-3xl sm:rounded-3xl sm:p-5">
+            {(() => {
+              const hasUnbillableItems = draftBilling.orders.some((order) =>
+                order.items.some((item) => {
+                  const status = normalizeStatus(item.status);
+                  return status !== "SERVED" && status !== "CANCELLED";
+                }),
+              );
+
+              return (
+                <>
             <div className="mb-4 flex items-center justify-between gap-2">
               <div>
                 <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Invoice Preview</p>
@@ -1396,18 +1577,128 @@ export function InvoicesWorkspace({ rawRole }: Props) {
                       <span className="text-sm font-semibold text-slate-900">{fmtCurrency(itemTotal(order))}</span>
                     </div>
                     <div className="mt-3 space-y-2">
-                      {order.items.map((item, index) => (
-                        <div key={`${order.id}-${item.itemId}-${item.variantId || "base"}-${index}`} className="flex items-start justify-between gap-3 text-sm">
-                          <div className="min-w-0">
-                            <p className="font-medium text-slate-900">
-                              {item.quantity}x {item.name}
-                              {item.variantName ? ` (${item.variantName})` : ""}
-                            </p>
-                            <p className="text-xs text-slate-500">{normalizeStatus(item.status) || "PLACED"}</p>
-                          </div>
-                          <span className="font-semibold text-slate-900">{fmtCurrency(item.lineTotal ?? item.unitPrice * item.quantity)}</span>
+                      {order.items.some((item) => Boolean(item.lineId) && canCorrectItemStatus(item.status)) ? (
+                        <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] font-semibold text-amber-800">
+                          Item correction: `Exchange` = dusre order me bhejo, `Reduce/Remove` = qty ghatao ya hatao, `Cancel Item` = line cancel karo.
                         </div>
-                      ))}
+                      ) : null}
+                      {order.items.map((item, index) => {
+                        const lineKey = item.lineId ? `${order.id}:${item.lineId}` : `${order.id}:${item.itemId}:${index}`;
+                        const selectedQty = correctionQty(item.quantity, draftCorrection.quantities[lineKey]);
+                        const busy = draftCorrection.busyKey === `${order.id}:${item.lineId || ""}`;
+                        const normalizedStatus = normalizeStatus(item.status);
+                        const canCorrectItem = Boolean(item.lineId) && canCorrectItemStatus(item.status);
+                        const moveTargets = draftMoveTargets.filter((candidate) => candidate.id !== order.id);
+                        const tableTargets = tables.filter((table) => table.id !== draftBilling.table.id);
+                        const billable = normalizedStatus === "SERVED" || normalizedStatus === "CANCELLED";
+
+                        return (
+                          <div key={`${order.id}-${item.itemId}-${item.variantId || "base"}-${index}`} className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm">
+                            <div className="flex items-start justify-between gap-3">
+                              <div className="min-w-0">
+                                <p className="font-medium text-slate-900">
+                                  {item.quantity}x {item.name}
+                                  {item.variantName ? ` (${item.variantName})` : ""}
+                                </p>
+                                <p className="mt-1 text-[11px] font-medium text-slate-500">
+                                  Status: {normalizedStatus || "PLACED"}
+                                </p>
+                                <div className="mt-1 flex flex-wrap items-center gap-2">
+                                  <span className={`inline-flex rounded-full border px-2.5 py-1 text-[10px] font-semibold ${itemStatusPill(item.status)}`}>
+                                    {normalizedStatus || "PLACED"}
+                                  </span>
+                                  <span className="text-xs text-slate-500">{fmtCurrency(item.lineTotal ?? item.unitPrice * item.quantity)}</span>
+                                </div>
+                                {!billable ? (
+                                  <p className="mt-2 text-[11px] text-rose-700">
+                                    Ye item abhi bill-ready nahi hai. Pehle correct karo ya service status fix karo.
+                                  </p>
+                                ) : null}
+                              </div>
+                              <span className="font-semibold text-slate-900">{fmtCurrency(item.lineTotal ?? item.unitPrice * item.quantity)}</span>
+                            </div>
+
+                            {canCorrectItem ? (
+                              <div className="mt-3 flex flex-wrap items-center gap-2">
+                                {item.quantity && item.quantity > 1 ? (
+                                  <select
+                                    value={String(selectedQty)}
+                                    disabled={busy}
+                                    onChange={(event) => handleDraftCorrectionQuantityChange(lineKey, Number(event.target.value) || 1)}
+                                    className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 disabled:opacity-50"
+                                  >
+                                    {Array.from({ length: item.quantity }, (_, idx) => idx + 1).map((qty) => (
+                                      <option key={qty} value={qty}>
+                                        Qty {qty}
+                                      </option>
+                                    ))}
+                                  </select>
+                                ) : null}
+                                {moveTargets.length > 0 ? (
+                                  <select
+                                    defaultValue=""
+                                    disabled={busy}
+                                    onChange={(event) => {
+                                      const targetOrderId = event.target.value;
+                                      if (!targetOrderId || !item.lineId) return;
+                                      handleDraftMoveItem(order.id, item.lineId, item.name, { targetOrderId }, selectedQty, item.quantity);
+                                      event.currentTarget.value = "";
+                                    }}
+                                    className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 disabled:opacity-50"
+                                  >
+                                    <option value="">Exchange order</option>
+                                    {moveTargets.map((candidate) => (
+                                      <option key={candidate.id} value={candidate.id}>
+                                        {candidate.orderNumber ? `#${candidate.orderNumber}` : candidate.id.slice(-4)}
+                                        {candidate.customerName ? ` | ${candidate.customerName}` : ""}
+                                      </option>
+                                    ))}
+                                  </select>
+                                ) : null}
+                                {tableTargets.length > 0 ? (
+                                  <select
+                                    defaultValue=""
+                                    disabled={busy}
+                                    onChange={(event) => {
+                                      const targetTableId = event.target.value;
+                                      if (!targetTableId || !item.lineId) return;
+                                      handleDraftMoveItem(order.id, item.lineId, item.name, { targetTableId }, selectedQty, item.quantity);
+                                      event.currentTarget.value = "";
+                                    }}
+                                    className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 disabled:opacity-50"
+                                  >
+                                    <option value="">Exchange table</option>
+                                    {tableTargets.map((table) => (
+                                      <option key={table.id} value={table.id}>
+                                        T{table.number} {table.name}
+                                      </option>
+                                    ))}
+                                  </select>
+                                ) : null}
+                                <button
+                                  type="button"
+                                  disabled={busy || !item.lineId}
+                                  onClick={() =>
+                                    item.lineId &&
+                                    handleDraftRemoveItem(order.id, item.lineId, item.name, selectedQty, item.quantity)
+                                  }
+                                  className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-700 disabled:opacity-50"
+                                >
+                                  {busy ? "Working..." : item.quantity > 1 ? `Reduce ${selectedQty}` : "Remove Item"}
+                                </button>
+                                <button
+                                  type="button"
+                                  disabled={busy || !item.lineId}
+                                  onClick={() => item.lineId && handleDraftCancelItem(order.id, item.lineId, item.name)}
+                                  className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 disabled:opacity-50"
+                                >
+                                  Cancel Item
+                                </button>
+                              </div>
+                            ) : null}
+                          </div>
+                        );
+                      })}
                     </div>
                   </article>
                 ))}
@@ -1481,6 +1772,12 @@ export function InvoicesWorkspace({ rawRole }: Props) {
               </div>
             </div>
 
+            {hasUnbillableItems ? (
+              <div className="mt-4 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+                Kuch items abhi `SERVED/CANCELLED` nahi hain. Pehle unko correct ya complete karo, fir invoice banao.
+              </div>
+            ) : null}
+
             <div className="mt-4 flex flex-wrap justify-end gap-2">
               <button
                 type="button"
@@ -1491,7 +1788,7 @@ export function InvoicesWorkspace({ rawRole }: Props) {
               </button>
               <button
                 type="button"
-                disabled={draftBilling.orders.length === 1 ? isCreating : isCreatingGroup}
+                disabled={hasUnbillableItems || (draftBilling.orders.length === 1 ? isCreating : isCreatingGroup)}
                 onClick={() => {
                   if (draftBilling.orders.length === 1) {
                     handleCreateInvoice(draftBilling.orders[0], isPrivilegedBilling ? draftBilling.discount : undefined);
@@ -1513,6 +1810,145 @@ export function InvoicesWorkspace({ rawRole }: Props) {
                     ? "Creating..."
                     : "Create Group Invoice"}
               </button>
+            </div>
+                </>
+              );
+            })()}
+          </div>
+        </div>
+      ) : null}
+
+      {invoiceEditor && editingInvoice ? (
+        <div className="fixed inset-0 z-[60] flex items-end justify-center bg-slate-900/60 p-0 sm:items-center sm:p-4">
+          <button
+            type="button"
+            className="absolute inset-0"
+            onClick={() => setInvoiceEditor(null)}
+            aria-label="Close invoice editor"
+          />
+          <div className="relative z-10 h-[88vh] w-full overflow-y-auto rounded-t-3xl border border-[#e3d6bc] bg-[#fcf7ef] p-4 shadow-2xl sm:h-auto sm:max-h-[90vh] sm:max-w-xl sm:rounded-3xl sm:p-5">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Invoice Update</p>
+                <h4 className="mt-1 text-lg font-semibold text-slate-900">INV {shortInvoiceId(editingInvoice.id)}</h4>
+                <p className="mt-1 text-xs text-slate-500">
+                  {editingInvoice.table?.name || `Table ${editingInvoice.table?.number ?? "-"}`} | {invoiceCustomerMap.get(editingInvoice.id) || "-"}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setInvoiceEditor(null)}
+                className="rounded-xl border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700"
+              >
+                Close
+              </button>
+            </div>
+
+            <div className="mt-4 rounded-[28px] border border-[#dfd2bb] bg-white p-4">
+              <div className="grid gap-3 sm:grid-cols-2">
+                <label className="text-sm text-slate-700">
+                  <span className="mb-1 block text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">Discount Type</span>
+                  <select
+                    value={invoiceEditor.discount.type}
+                    onChange={(event) =>
+                      setInvoiceEditor((current) =>
+                        current
+                          ? {
+                              ...current,
+                              discount: { ...current.discount, type: event.target.value as DiscountInput["type"] },
+                            }
+                          : current,
+                      )
+                    }
+                    className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm"
+                  >
+                    <option value="PERCENTAGE">Percentage</option>
+                    <option value="FLAT">Flat</option>
+                  </select>
+                </label>
+                <label className="text-sm text-slate-700">
+                  <span className="mb-1 block text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">Discount Value</span>
+                  <input
+                    type="number"
+                    min="0"
+                    value={invoiceEditor.discount.value}
+                    onChange={(event) =>
+                      setInvoiceEditor((current) =>
+                        current
+                          ? {
+                              ...current,
+                              discount: { ...current.discount, value: Math.max(0, Number(event.target.value) || 0) },
+                            }
+                          : current,
+                      )
+                    }
+                    className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm"
+                  />
+                </label>
+              </div>
+
+              <label className="mt-3 block text-sm text-slate-700">
+                <span className="mb-1 block text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">Invoice Note</span>
+                <textarea
+                  value={invoiceEditor.note}
+                  onChange={(event) =>
+                    setInvoiceEditor((current) => (current ? { ...current, note: event.target.value } : current))
+                  }
+                  rows={3}
+                  placeholder="Optional note for invoice or billing adjustment"
+                  className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none ring-amber-200 focus:ring-2"
+                />
+              </label>
+
+              {(() => {
+                const baseTotal = editingInvoice.subTotal ?? editingInvoice.grandTotal ?? invoiceAmount(editingInvoice);
+                const discountAmount = draftDiscountAmount(baseTotal, invoiceEditor.discount);
+                const estimatedTotal = Math.max(baseTotal - discountAmount, 0);
+                return (
+                  <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm">
+                    <div className="flex items-center justify-between text-slate-600">
+                      <span>Current total</span>
+                      <span>{fmtCurrency(editingInvoice.grandTotal ?? invoiceAmount(editingInvoice))}</span>
+                    </div>
+                    <div className="mt-2 flex items-center justify-between text-slate-600">
+                      <span>Edited discount</span>
+                      <span>{fmtCurrency(discountAmount)}</span>
+                    </div>
+                    <div className="mt-2 flex items-center justify-between border-t border-dashed border-slate-300 pt-2 font-semibold text-slate-900">
+                      <span>Estimated total after save</span>
+                      <span>{fmtCurrency(estimatedTotal)}</span>
+                    </div>
+                  </div>
+                );
+              })()}
+            </div>
+
+            <div className="mt-4 flex flex-wrap justify-between gap-2">
+              <button
+                type="button"
+                disabled={isDeletingInvoice}
+                onClick={() => handleDeleteInvoice(editingInvoice)}
+                className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-semibold text-rose-700 disabled:opacity-50"
+              >
+                {isDeletingInvoice ? "Deleting..." : "Delete Invoice"}
+              </button>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={() => setInvoiceEditor(null)}
+                  className="rounded-2xl border border-slate-300 bg-white px-4 py-3 text-sm font-semibold text-slate-700"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  disabled={isUpdatingInvoice}
+                  onClick={handleSaveInvoiceEditor}
+                  className="rounded-2xl bg-slate-900 px-4 py-3 text-sm font-semibold text-white disabled:opacity-50"
+                >
+                  {isUpdatingInvoice ? "Saving..." : "Save Invoice"}
+                </button>
+              </div>
             </div>
           </div>
         </div>
@@ -1536,6 +1972,33 @@ export function InvoicesWorkspace({ rawRole }: Props) {
               </button>
             </div>
 
+            {normalizeStatus(selectedInvoice.status) === "ISSUED" && selectedInvoiceOrders.length > 0 ? (
+              <div className="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3">
+                <p className="text-sm text-amber-900">
+                  Unpaid invoice hai. Related order items ko correction preview me khol kar `Exchange`, `Reduce/Remove`, `Cancel Item` use kar sakte ho.
+                </p>
+                <button
+                  type="button"
+                  onClick={() =>
+                    openDraftInvoice(
+                      tablesById.get(selectedInvoice.table?.id || "") || {
+                        id: selectedInvoice.table?.id || "",
+                        number: selectedInvoice.table?.number ?? 0,
+                        name: selectedInvoice.table?.name || "Table",
+                        status: "OCCUPIED",
+                        capacity: 0,
+                        isActive: true,
+                      },
+                      selectedInvoiceOrders,
+                    )
+                  }
+                  className="rounded-xl bg-slate-900 px-4 py-2 text-xs font-semibold text-white"
+                >
+                  Open Correction Preview
+                </button>
+              </div>
+            ) : null}
+
             <InvoicePreview
               invoice={selectedInvoice}
               profile={receiptProfile}
@@ -1545,7 +2008,7 @@ export function InvoicesWorkspace({ rawRole }: Props) {
               isUpdating={isUpdatingInvoice}
               isDeleting={isDeletingInvoice}
               onPay={handlePayInvoice}
-              onApplyDiscount={handleApplyInvoiceDiscount}
+              onEditInvoice={handleApplyInvoiceDiscount}
               onDelete={handleDeleteInvoice}
               onShare={handleShareInvoice}
               onDownloadPdf={(invoice) =>

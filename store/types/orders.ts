@@ -201,7 +201,8 @@ export type CancelOrderItemArgs = {
 };
 
 export type MoveOrderItemPayload = {
-  targetOrderId: string;
+  targetOrderId?: string;
+  targetTableId?: string;
   quantity?: number;
 };
 

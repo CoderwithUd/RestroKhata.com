@@ -514,7 +514,7 @@ export const ordersApi = createApi({
       invalidatesTags: (_result, _error, { orderId, payload }) => [
         { type: "Orders", id: "LIST" },
         { type: "Orders", id: orderId },
-        { type: "Orders", id: payload.targetOrderId },
+        ...(payload.targetOrderId ? [{ type: "Orders" as const, id: payload.targetOrderId }] : []),
       ],
     }),
   }),
