@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState ,useRef} from "react";
 import { useConfirm } from "@/components/confirm-provider";
 import { downloadInvoicePdf } from "@/lib/invoice-pdf";
+import { downloadInvoiceReportPdf } from "@/lib/invoice-report-pdf";
 import { getErrorMessage } from "@/lib/error";
 import { showError, showInfo, showSuccess } from "@/lib/feedback";
 import { useOrderSocket, type SocketOrderRole } from "@/lib/use-order-socket";
@@ -37,6 +38,8 @@ type DraftBillingState = {
   table: TableRecord;
   orders: OrderRecord[];
   discount: DiscountInput;
+  customerName: string;
+  customerPhone: string;
 };
 type InvoiceEditorState = {
   invoiceId: string;
@@ -51,7 +54,15 @@ type DraftCorrectionState = {
   quantities: Record<string, number>;
   busyKey: string | null;
 };
-type HistoryRange = "all" | "today" | "yesterday" | "week" | "month";
+type HistoryRange =
+  | "all"
+  | "today"
+  | "yesterday"
+  | "week"
+  | "month"
+  | "quarter"
+  | "halfyear"
+  | "custom";
 type ReceiptProfile = {
   tenantName: string;
   gstNumber?: string;
@@ -67,7 +78,12 @@ function asString(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
 }
 
-function isWithinHistoryRange(value: string | undefined, range: HistoryRange): boolean {
+function isWithinHistoryRange(
+  value: string | undefined,
+  range: HistoryRange,
+  customStartDate?: string,
+  customEndDate?: string,
+): boolean {
   if (range === "all") return true;
   if (!value) return false;
 
@@ -82,6 +98,10 @@ function isWithinHistoryRange(value: string | undefined, range: HistoryRange): b
   weekStart.setDate(weekStart.getDate() - 6);
   const monthStart = new Date(todayStart);
   monthStart.setDate(monthStart.getDate() - 29);
+  const quarterStart = new Date(todayStart);
+  quarterStart.setMonth(quarterStart.getMonth() - 3);
+  const halfYearStart = new Date(todayStart);
+  halfYearStart.setMonth(halfYearStart.getMonth() - 6);
 
   if (range === "today") {
     return date >= todayStart;
@@ -92,7 +112,39 @@ function isWithinHistoryRange(value: string | undefined, range: HistoryRange): b
   if (range === "week") {
     return date >= weekStart;
   }
-  return date >= monthStart;
+  if (range === "month") {
+    return date >= monthStart;
+  }
+  if (range === "quarter") {
+    return date >= quarterStart;
+  }
+  if (range === "halfyear") {
+    return date >= halfYearStart;
+  }
+  if (range === "custom") {
+    if (!customStartDate && !customEndDate) return true;
+    const start = customStartDate
+      ? new Date(`${customStartDate}T00:00:00`)
+      : null;
+    const end = customEndDate ? new Date(`${customEndDate}T23:59:59`) : null;
+    if (start && Number.isNaN(start.getTime())) return false;
+    if (end && Number.isNaN(end.getTime())) return false;
+    if (start && date < start) return false;
+    if (end && date > end) return false;
+    return true;
+  }
+  return true;
+}
+
+function historyRangeLabel(range: HistoryRange): string {
+  if (range === "today") return "Today";
+  if (range === "yesterday") return "Yesterday";
+  if (range === "week") return "Last 7 Days";
+  if (range === "month") return "Last 30 Days";
+  if (range === "quarter") return "Last 3 Months";
+  if (range === "halfyear") return "Last 6 Months";
+  if (range === "custom") return "Custom Range";
+  return "All Time";
 }
 
 function invoiceCustomerName(invoice: InvoiceRecord, order?: OrderRecord): string {
@@ -113,6 +165,68 @@ function invoiceCustomerName(invoice: InvoiceRecord, order?: OrderRecord): strin
   ].filter(Boolean);
 
   return candidates[0] || "-";
+}
+
+function invoiceCustomerPhone(invoice: InvoiceRecord, order?: OrderRecord): string {
+  const invoiceRaw = asRecord(invoice.raw);
+  const invoiceCustomer = asRecord(invoiceRaw?.customer);
+  const nestedOrder = asRecord(invoiceRaw?.order);
+  const nestedOrderCustomer = asRecord(nestedOrder?.customer);
+  const orderRaw = asRecord(order?.raw);
+  const orderCustomer = asRecord(orderRaw?.customer);
+
+  const candidates = [
+    asString(invoiceCustomer?.phone),
+    asString(nestedOrderCustomer?.phone),
+    asString(orderCustomer?.phone),
+    asString(invoiceRaw?.customerPhone),
+    asString(orderRaw?.customerPhone),
+    asString(orderRaw?.customer_phone),
+  ].filter(Boolean);
+
+  return candidates[0] || "";
+}
+
+function normalizePhoneInput(value: string): string {
+  return value.replace(/[^\d+]/g, "");
+}
+
+function validateOptionalCustomer(details: {
+  customerName: string;
+  customerPhone: string;
+}): string | null {
+  const customerName = details.customerName.trim();
+  const customerPhone = normalizePhoneInput(details.customerPhone.trim());
+
+  if (!customerName && !customerPhone) return null;
+  if (!customerName || !customerPhone)
+    return "Customer name and phone dono saath me do, ya dono blank chhodo.";
+
+  const digitCount = customerPhone.replace(/\D/g, "").length;
+  if (digitCount < 7 || digitCount > 15)
+    return "Customer phone me 7 se 15 digits hone chahiye.";
+
+  return null;
+}
+
+function mergeOrdersById(
+  current: OrderRecord[],
+  incoming: OrderRecord[],
+): OrderRecord[] {
+  const map = new Map<string, OrderRecord>();
+  current.forEach((order) => map.set(order.id, order));
+  incoming.forEach((order) => map.set(order.id, order));
+  return sortByLatest(Array.from(map.values()));
+}
+
+function mergeInvoicesById(
+  current: InvoiceRecord[],
+  incoming: InvoiceRecord[],
+): InvoiceRecord[] {
+  const map = new Map<string, InvoiceRecord>();
+  current.forEach((invoice) => map.set(invoice.id, invoice));
+  incoming.forEach((invoice) => map.set(invoice.id, invoice));
+  return sortByLatest(Array.from(map.values()));
 }
 
 function buildInvoiceShareText(invoice: InvoiceRecord, customerName: string, profile: ReceiptProfile): string {
@@ -315,6 +429,7 @@ function InvoicePreview({
   invoice,
   profile,
   customerName,
+  customerPhone,
   isPaying,
   isPrivilegedBilling,
   isUpdating,
@@ -328,6 +443,7 @@ function InvoicePreview({
   invoice: InvoiceRecord | null;
   profile: ReceiptProfile;
   customerName: string;
+  customerPhone: string;
   isPaying: boolean;
   isPrivilegedBilling: boolean;
   isUpdating: boolean;
@@ -374,6 +490,7 @@ function InvoicePreview({
           <div className="flex items-center justify-between"><span>Status</span><span className="font-semibold">{invoice.status}</span></div>
           <div className="flex items-center justify-between"><span>Table</span><span className="font-semibold">{invoice.table?.name || `Table ${invoice.table?.number ?? "-"}`}</span></div>
           <div className="flex items-center justify-between"><span>Customer</span><span className="font-semibold">{customerName}</span></div>
+          <div className="flex items-center justify-between"><span>Phone</span><span className="font-semibold">{customerPhone || "-"}</span></div>
           <div className="flex items-center justify-between"><span>Date</span><span className="font-semibold">{fmtDateTime(invoice.createdAt)}</span></div>
         </div>
 
@@ -428,7 +545,7 @@ function InvoicePreview({
           onClick={() => onShare(invoice)}
           className="rounded-2xl border border-emerald-200 bg-emerald-50 px-3 py-3 text-sm font-semibold text-emerald-700"
         >
-          WhatsApp Share
+          {customerPhone ? "Send On WhatsApp" : "WhatsApp Share"}
         </button>
         {isPrivilegedBilling && isIssued ? (
           <>
@@ -490,8 +607,11 @@ export function InvoicesWorkspace({ rawRole }: Props) {
   const token = useAppSelector(selectAuthToken);
   const role = normalizeRole(rawRole);
   const isPrivilegedBilling = role === "owner" || role === "manager";
+  const loadMoreRef = useRef<HTMLDivElement | null>(null);
   const [tableFilter, setTableFilter] = useState("");
   const [historyRange, setHistoryRange] = useState<HistoryRange>("today");
+  const [customStartDate, setCustomStartDate] = useState("");
+  const [customEndDate, setCustomEndDate] = useState("");
   const [customerFilter, setCustomerFilter] = useState("");
   const [selectedBillingOrderIds, setSelectedBillingOrderIds] = useState<Record<string, string[]>>({});
   const [socketConnected, setSocketConnected] = useState(false);
@@ -501,6 +621,10 @@ export function InvoicesWorkspace({ rawRole }: Props) {
   const [draftBilling, setDraftBilling] = useState<DraftBillingState | null>(null);
   const [draftCorrection, setDraftCorrection] = useState<DraftCorrectionState>({ quantities: {}, busyKey: null });
   const [invoiceEditor, setInvoiceEditor] = useState<InvoiceEditorState | null>(null);
+  const [ordersPage, setOrdersPage] = useState(1);
+  const [ordersFeed, setOrdersFeed] = useState<OrderRecord[]>([]);
+  const [invoicesPage, setInvoicesPage] = useState(1);
+  const [invoicesFeed, setInvoicesFeed] = useState<InvoiceRecord[]>([]);
   const { data: tenantProfile } = useTentantProfileQuery();
 
   const {
@@ -513,14 +637,14 @@ export function InvoicesWorkspace({ rawRole }: Props) {
     isFetching: isOrdersFetching,
     refetch: refetchOrders,
   } = useGetOrdersQuery(
-    { status: ["PLACED", "IN_PROGRESS", "READY", "SERVED"] },
+    { status: ["PLACED", "IN_PROGRESS", "READY", "SERVED"], page: ordersPage, limit: 100 },
     { pollingInterval: 30000 },
   );
   const {
     data: invoicesData,
     isFetching: isInvoicesFetching,
     refetch: refetchInvoices,
-  } = useGetInvoicesQuery(undefined, { pollingInterval: 30000 });
+  } = useGetInvoicesQuery({ page: invoicesPage, limit: 100 }, { pollingInterval: 30000 });
 
   const [createInvoice, { isLoading: isCreating }] = useCreateInvoiceMutation();
   const [createGroupInvoice, { isLoading: isCreatingGroup }] = useCreateGroupInvoiceMutation();
@@ -542,6 +666,10 @@ export function InvoicesWorkspace({ rawRole }: Props) {
         const label = table?.name || (table?.number ? `Table ${table.number}` : "Table");
         showInfo(`${label} is ready for invoice / serve`);
       }
+      setOrdersPage(1);
+      setInvoicesPage(1);
+      setOrdersFeed([]);
+      setInvoicesFeed([]);
       refetchTables();
       refetchOrders();
       refetchInvoices();
@@ -552,7 +680,25 @@ export function InvoicesWorkspace({ rawRole }: Props) {
     const items = tablesData?.items || [];
     return [...items].sort((left, right) => left.number - right.number);
   }, [tablesData]);
-  const orders = useMemo(() => sortByLatest(ordersData?.items || []), [ordersData]);
+  useEffect(() => {
+    if (!ordersData?.items) return;
+    setOrdersFeed((current) =>
+      ordersPage === 1
+        ? sortByLatest(ordersData.items)
+        : mergeOrdersById(current, ordersData.items),
+    );
+  }, [ordersData, ordersPage]);
+
+  useEffect(() => {
+    if (!invoicesData?.items) return;
+    setInvoicesFeed((current) =>
+      invoicesPage === 1
+        ? sortByLatest(invoicesData.items)
+        : mergeInvoicesById(current, invoicesData.items),
+    );
+  }, [invoicesData, invoicesPage]);
+
+  const orders = useMemo(() => sortByLatest(ordersFeed), [ordersFeed]);
   const tablesById = useMemo(
     () => new Map((tablesData?.items || []).map((table) => [table.id, table])),
     [tablesData?.items],
@@ -588,7 +734,7 @@ export function InvoicesWorkspace({ rawRole }: Props) {
       return invoice;
     };
 
-    (invoicesData?.items || []).forEach((invoice) => {
+    invoicesFeed.forEach((invoice) => {
       merged.set(invoice.id, enrichInvoice(invoice));
     });
     Object.values(invoiceOverrides).forEach((invoice) => {
@@ -596,7 +742,39 @@ export function InvoicesWorkspace({ rawRole }: Props) {
     });
 
     return sortByLatest(Array.from(merged.values()));
-  }, [invoiceOverrides, invoicesData?.items, ordersById, tablesById]);
+  }, [invoiceOverrides, invoicesFeed, ordersById, tablesById]);
+
+  const hasMoreOrders =
+    (ordersData?.pagination.totalPages ?? 1) > ordersPage;
+  const hasMoreInvoices =
+    (invoicesData?.pagination.totalPages ?? 1) > invoicesPage;
+
+  useEffect(() => {
+    const node = loadMoreRef.current;
+    if (!node || (!hasMoreOrders && !hasMoreInvoices)) return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const entry = entries[0];
+        if (!entry?.isIntersecting) return;
+        if (hasMoreOrders && !isOrdersFetching) {
+          setOrdersPage((current) => current + 1);
+        }
+        if (hasMoreInvoices && !isInvoicesFetching) {
+          setInvoicesPage((current) => current + 1);
+        }
+      },
+      { rootMargin: "320px 0px" },
+    );
+
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [
+    hasMoreInvoices,
+    hasMoreOrders,
+    isInvoicesFetching,
+    isOrdersFetching,
+  ]);
 
   const invoiceByOrderId = useMemo(() => {
     const map = new Map<string, InvoiceRecord>();
@@ -709,11 +887,27 @@ export function InvoicesWorkspace({ rawRole }: Props) {
     });
     return map;
   }, [invoices, ordersById]);
+  const invoiceCustomerPhoneMap = useMemo(() => {
+    const map = new Map<string, string>();
+    invoices.forEach((invoice) => {
+      const linkedOrder = ordersById.get(invoice.orderId);
+      map.set(invoice.id, invoiceCustomerPhone(invoice, linkedOrder));
+    });
+    return map;
+  }, [invoices, ordersById]);
 
   const historySearch = customerFilter.trim().toLowerCase();
   const historyInvoices = useMemo(() => {
     return invoices.filter((invoice) => {
-      if (!isWithinHistoryRange(invoice.createdAt, historyRange)) return false;
+      if (
+        !isWithinHistoryRange(
+          invoice.createdAt,
+          historyRange,
+          customStartDate,
+          customEndDate,
+        )
+      )
+        return false;
       if (!historySearch) return true;
 
       const customer = (invoiceCustomerMap.get(invoice.id) || "").toLowerCase();
@@ -722,7 +916,14 @@ export function InvoicesWorkspace({ rawRole }: Props) {
 
       return customer.includes(historySearch) || tableText.includes(historySearch) || invoiceText.includes(historySearch);
     });
-  }, [historyRange, historySearch, invoiceCustomerMap, invoices]);
+  }, [
+    customEndDate,
+    customStartDate,
+    historyRange,
+    historySearch,
+    invoiceCustomerMap,
+    invoices,
+  ]);
 
   const invoiceSelectionPool = historyInvoices.length ? historyInvoices : invoices;
 
@@ -789,18 +990,26 @@ export function InvoicesWorkspace({ rawRole }: Props) {
 
   function openDraftInvoice(table: TableRecord, ordersToBill: OrderRecord[]) {
     if (!ordersToBill.length) return;
+    const firstOrder = ordersToBill[0];
     setDraftCorrection({ quantities: {}, busyKey: null });
     setDraftBilling({
       table,
       orders: ordersToBill,
       discount: { type: "PERCENTAGE", value: 0 },
+      customerName: firstOrder.customerName || "",
+      customerPhone: firstOrder.customerPhone || "",
     });
   }
 
-  async function handleCreateInvoice(order: OrderRecord, discount?: DiscountInput) {
+  async function handleCreateInvoice(
+    order: OrderRecord,
+    discount?: DiscountInput,
+    customer?: { customerName: string; customerPhone: string },
+  ) {
     try {
       const response = await createInvoice({
         orderId: order.id,
+        ...(customer?.customerName && customer?.customerPhone ? customer : {}),
         ...(discount ? { discountType: discount.type, discountValue: discount.value } : {}),
       }).unwrap();
 
@@ -820,12 +1029,18 @@ export function InvoicesWorkspace({ rawRole }: Props) {
     }
   }
 
-  async function handleCreateGroupInvoice(table: TableRecord, ordersToBill: OrderRecord[], discount?: DiscountInput) {
+  async function handleCreateGroupInvoice(
+    table: TableRecord,
+    ordersToBill: OrderRecord[],
+    discount?: DiscountInput,
+    customer?: { customerName: string; customerPhone: string },
+  ) {
     if (!ordersToBill.length) return;
     try {
       const response = await createGroupInvoice({
         tableId: table.id,
         ...(ordersToBill.length > 1 ? { orderIds: ordersToBill.map((order) => order.id) } : {}),
+        ...(customer?.customerName && customer?.customerPhone ? customer : {}),
         ...(discount ? { discountType: discount.type, discountValue: discount.value } : {}),
       }).unwrap();
 
@@ -980,6 +1195,7 @@ export function InvoicesWorkspace({ rawRole }: Props) {
 
   async function handleShareInvoice(invoice: InvoiceRecord) {
     const customerName = invoiceCustomerMap.get(invoice.id) || "-";
+    const customerPhone = invoiceCustomerPhoneMap.get(invoice.id) || "";
     const text = buildInvoiceShareText(invoice, customerName, receiptProfile);
     try {
       if (typeof navigator !== "undefined" && navigator.share) {
@@ -994,9 +1210,29 @@ export function InvoicesWorkspace({ rawRole }: Props) {
     }
 
     if (typeof window !== "undefined") {
-      const url = `https://wa.me/?text=${encodeURIComponent(text)}`;
+      const digits = customerPhone.replace(/\D/g, "");
+      const url = digits
+        ? `https://wa.me/${digits}?text=${encodeURIComponent(text)}`
+        : `https://wa.me/?text=${encodeURIComponent(text)}`;
       window.open(url, "_blank", "noopener,noreferrer");
     }
+  }
+
+  function handleExportHistoryPdf() {
+    const customLabel =
+      historyRange === "custom"
+        ? `${customStartDate || "Start"} to ${customEndDate || "Today"}`
+        : historyRangeLabel(historyRange);
+    downloadInvoiceReportPdf({
+      invoices: historyInvoices,
+      customerNameById: invoiceCustomerMap,
+      meta: {
+        ...receiptProfile,
+        title: "Invoice Accounting Report",
+        rangeLabel: customLabel,
+        generatedAt: new Date().toISOString(),
+      },
+    });
   }
 
   function handleDraftCorrectionQuantityChange(lineKey: string, quantity: number) {
@@ -1083,6 +1319,10 @@ export function InvoicesWorkspace({ rawRole }: Props) {
         <button
           type="button"
           onClick={() => {
+            setOrdersPage(1);
+            setInvoicesPage(1);
+            setOrdersFeed([]);
+            setInvoicesFeed([]);
             refetchTables();
             refetchOrders();
             refetchInvoices();
@@ -1389,13 +1629,22 @@ export function InvoicesWorkspace({ rawRole }: Props) {
                 <h3 className="text-lg font-semibold text-slate-900">Invoice History</h3>
                 <p className="text-xs text-slate-500">Filter by today, yesterday, week, month, customer/table.</p>
               </div>
-              <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-[11px] font-semibold text-slate-600">
-                {historyInvoices.length} result
-              </span>
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-[11px] font-semibold text-slate-600">
+                  {historyInvoices.length} result
+                </span>
+                <button
+                  type="button"
+                  onClick={handleExportHistoryPdf}
+                  className="rounded-xl border border-blue-200 bg-blue-50 px-3 py-2 text-xs font-semibold text-blue-700"
+                >
+                  Export Report PDF
+                </button>
+              </div>
             </div>
 
             <div className="mb-3 flex flex-wrap items-center gap-2">
-              {(["today", "yesterday", "week", "month", "all"] as const).map((range) => (
+              {(["today", "yesterday", "week", "month", "quarter", "halfyear", "custom", "all"] as const).map((range) => (
                 <button
                   key={range}
                   type="button"
@@ -1406,9 +1655,39 @@ export function InvoicesWorkspace({ rawRole }: Props) {
                       : "border-slate-200 bg-white text-slate-600"
                   }`}
                 >
-                  {range === "all" ? "All" : range.charAt(0).toUpperCase() + range.slice(1)}
+                  {range === "quarter"
+                    ? "3 Months"
+                    : range === "halfyear"
+                      ? "6 Months"
+                      : range === "custom"
+                        ? "Custom Range"
+                      : range === "all"
+                        ? "All"
+                        : range.charAt(0).toUpperCase() + range.slice(1)}
                 </button>
               ))}
+              {historyRange === "custom" ? (
+                <div className="flex flex-wrap items-center gap-2 rounded-2xl border border-amber-200 bg-amber-50 px-3 py-2">
+                  <label className="text-[11px] font-semibold text-slate-600">
+                    From
+                    <input
+                      type="date"
+                      value={customStartDate}
+                      onChange={(event) => setCustomStartDate(event.target.value)}
+                      className="ml-2 rounded-lg border border-amber-200 bg-white px-2 py-1 text-xs text-slate-700 outline-none"
+                    />
+                  </label>
+                  <label className="text-[11px] font-semibold text-slate-600">
+                    To
+                    <input
+                      type="date"
+                      value={customEndDate}
+                      onChange={(event) => setCustomEndDate(event.target.value)}
+                      className="ml-2 rounded-lg border border-amber-200 bg-white px-2 py-1 text-xs text-slate-700 outline-none"
+                    />
+                  </label>
+                </div>
+              ) : null}
               <input
                 value={customerFilter}
                 onChange={(event) => setCustomerFilter(event.target.value)}
@@ -1705,6 +1984,74 @@ export function InvoicesWorkspace({ rawRole }: Props) {
               </div>
 
               <div className="mt-4 rounded-2xl border border-[#eadfc9] bg-white/90 p-4">
+                <div className="mb-4 rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div>
+                      <p className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">
+                        Optional Customer
+                      </p>
+                      <p className="mt-1 text-sm text-slate-600">
+                        Invoice create karte waqt customer info add kar sakte ho,
+                        ya blank chhod sakte ho.
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setDraftBilling((current) =>
+                          current
+                            ? { ...current, customerName: "", customerPhone: "" }
+                            : current,
+                        )
+                      }
+                      className="rounded-xl border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700"
+                    >
+                      Clear Customer
+                    </button>
+                  </div>
+                  <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                    <label className="text-sm text-slate-700">
+                      <span className="mb-1 block text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">
+                        Customer Name
+                      </span>
+                      <input
+                        value={draftBilling.customerName}
+                        onChange={(event) =>
+                          setDraftBilling((current) =>
+                            current
+                              ? { ...current, customerName: event.target.value }
+                              : current,
+                          )
+                        }
+                        placeholder="Optional guest name"
+                        className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm outline-none ring-amber-200 focus:ring-2"
+                      />
+                    </label>
+                    <label className="text-sm text-slate-700">
+                      <span className="mb-1 block text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">
+                        Customer Phone / WhatsApp
+                      </span>
+                      <input
+                        value={draftBilling.customerPhone}
+                        onChange={(event) =>
+                          setDraftBilling((current) =>
+                            current
+                              ? {
+                                  ...current,
+                                  customerPhone: normalizePhoneInput(
+                                    event.target.value,
+                                  ),
+                                }
+                              : current,
+                          )
+                        }
+                        placeholder="Optional phone number"
+                        className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm outline-none ring-amber-200 focus:ring-2"
+                      />
+                    </label>
+                  </div>
+                </div>
+
                 <div className="grid gap-3 sm:grid-cols-2">
                   <label className="text-sm text-slate-700">
                     <span className="mb-1 block text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">Discount Type</span>
@@ -1790,14 +2137,30 @@ export function InvoicesWorkspace({ rawRole }: Props) {
                 type="button"
                 disabled={hasUnbillableItems || (draftBilling.orders.length === 1 ? isCreating : isCreatingGroup)}
                 onClick={() => {
+                  const customer = {
+                    customerName: draftBilling.customerName.trim(),
+                    customerPhone: normalizePhoneInput(
+                      draftBilling.customerPhone.trim(),
+                    ),
+                  };
+                  const validationError = validateOptionalCustomer(customer);
+                  if (validationError) {
+                    showError(validationError);
+                    return;
+                  }
                   if (draftBilling.orders.length === 1) {
-                    handleCreateInvoice(draftBilling.orders[0], isPrivilegedBilling ? draftBilling.discount : undefined);
+                    handleCreateInvoice(
+                      draftBilling.orders[0],
+                      isPrivilegedBilling ? draftBilling.discount : undefined,
+                      customer,
+                    );
                     return;
                   }
                   handleCreateGroupInvoice(
                     draftBilling.table,
                     draftBilling.orders,
                     isPrivilegedBilling ? draftBilling.discount : undefined,
+                    customer,
                   );
                 }}
                 className="rounded-2xl bg-slate-900 px-4 py-3 text-sm font-semibold text-white disabled:opacity-50"
@@ -2003,6 +2366,7 @@ export function InvoicesWorkspace({ rawRole }: Props) {
               invoice={selectedInvoice}
               profile={receiptProfile}
               customerName={invoiceCustomerMap.get(selectedInvoice.id) || "-"}
+              customerPhone={invoiceCustomerPhoneMap.get(selectedInvoice.id) || ""}
               isPaying={isPaying}
               isPrivilegedBilling={isPrivilegedBilling}
               isUpdating={isUpdatingInvoice}
@@ -2021,6 +2385,16 @@ export function InvoicesWorkspace({ rawRole }: Props) {
           </div>
         </div>
       ) : null}
+
+      <div ref={loadMoreRef} className="flex justify-center py-4 text-xs text-slate-500">
+        {hasMoreOrders || hasMoreInvoices
+          ? isOrdersFetching || isInvoicesFetching
+            ? "Loading more data..."
+            : "Scroll for more invoices and orders"
+          : invoices.length || orders.length
+            ? "All invoice and order data loaded"
+            : ""}
+      </div>
     </div>
   );
 }

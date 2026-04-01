@@ -1,6 +1,23 @@
 export type TableQrFormat = "dataUrl" | "svg";
 export type TableStatus = "AVAILABLE" | "OCCUPIED" | "RESERVED" | "BILLING" | string;
 
+export type TableReservationAdvancePayment = {
+  required?: boolean;
+  amount?: number;
+  paidAmount?: number;
+  method?: string;
+  reference?: string;
+};
+
+export type TableReservation = {
+  customerName?: string;
+  customerPhone?: string;
+  partySize?: number;
+  reservedFor?: string;
+  note?: string;
+  advancePayment?: TableReservationAdvancePayment;
+};
+
 export type TableRecord = {
   id: string;
   tenantId?: string;
@@ -10,6 +27,7 @@ export type TableRecord = {
   isActive: boolean;
   status?: TableStatus;
   customerId?: string;
+  reservation?: TableReservation;
   qrPayload?: string;
   qrFormat?: TableQrFormat;
   qrCode?: string;
@@ -33,6 +51,7 @@ export type CreateTablePayload = {
   isActive?: boolean;
   status?: TableStatus;
   customerId?: string;
+  reservation?: TableReservation;
 };
 
 export type CreateTableResponse = {
@@ -47,6 +66,7 @@ export type UpdateTablePayload = {
   isActive?: boolean;
   status?: TableStatus;
   customerId?: string;
+  reservation?: TableReservation;
 };
 
 export type UpdateTableArgs = UpdateTablePayload & {

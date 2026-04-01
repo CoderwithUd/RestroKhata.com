@@ -72,6 +72,8 @@ export type InvoicesQueryParams = {
 export type CreateInvoicePayload = {
   orderId: string;
   note?: string;
+  customerName?: string;
+  customerPhone?: string;
   discountType?: InvoiceDiscountType;
   discountValue?: number;
 };

@@ -152,7 +152,7 @@ function parseInvoice(value: unknown): InvoiceRecord | null {
 function parseInvoicesList(data: unknown): InvoicesListResponse {
   const root = asRecord(data);
   if (!root) {
-    return { items: [], pagination: { page: 1, limit: 20, total: 0, totalPages: 1 } };
+    return { items: [], pagination: { page: 1, limit: 100, total: 0, totalPages: 1 } };
   }
 
   const raw = asArray(root.items).length ? root.items : asArray(root.invoices);
@@ -165,7 +165,7 @@ function parseInvoicesList(data: unknown): InvoicesListResponse {
     items,
     pagination: {
       page: asNumber(pagination?.page) ?? 1,
-      limit: asNumber(pagination?.limit) ?? 20,
+      limit: asNumber(pagination?.limit) ?? 100,
       total: asNumber(pagination?.total) ?? items.length,
       totalPages: asNumber(pagination?.totalPages) ?? 1,
     },
@@ -217,7 +217,7 @@ export const invoicesApi = createApi({
             orderId: params?.orderId || undefined,
             status: statusForApi,
             page: params?.page ?? 1,
-            limit: params?.limit ?? 20,
+            limit: params?.limit ?? 100,
           },
         };
       },

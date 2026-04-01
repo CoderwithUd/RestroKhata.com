@@ -183,7 +183,7 @@ function parseOrder(value: unknown): OrderRecord | null {
 
 function parseOrdersList(data: unknown): OrdersListResponse {
   const root = asRecord(data);
-  if (!root) return { items: [], pagination: { page: 1, limit: 20, total: 0, totalPages: 1 } };
+  if (!root) return { items: [], pagination: { page: 1, limit: 100, total: 0, totalPages: 1 } };
   const nestedData = asRecord(root.data);
 
   const raw =
@@ -203,7 +203,7 @@ function parseOrdersList(data: unknown): OrdersListResponse {
     items,
     pagination: {
       page: asNumber(pg?.page) ?? 1,
-      limit: asNumber(pg?.limit) ?? 20,
+      limit: asNumber(pg?.limit) ?? 100,
       total: asNumber(pg?.total) ?? items.length,
       totalPages: asNumber(pg?.totalPages) ?? 1,
     },
@@ -286,6 +286,17 @@ function parseKitchenQueueItem(value: unknown): KitchenQueueItem | null {
       asString(record.orderNumber) ||
       asString(nestedOrder?.orderNumber) ||
       asString(nestedOrder?.displayId),
+    source:
+      asString(record.source) ||
+      asString(nestedOrder?.source),
+    orderStatus:
+      (asString(record.orderStatus) as KitchenQueueItem["orderStatus"]) ||
+      (asString(nestedOrder?.status) as KitchenQueueItem["orderStatus"]) ||
+      (asString(record.status) as KitchenQueueItem["orderStatus"]),
+    orderNote:
+      asString(record.orderNote) ||
+      asString(record.note) ||
+      asString(nestedOrder?.note),
     table,
     tableId:
       asString(record.tableId) ||
@@ -307,7 +318,10 @@ function parseKitchenQueueItem(value: unknown): KitchenQueueItem | null {
       asString(customerRecord?.phone) ||
       asString(customerRecord?.mobile),
     itemId,
-    variantId: asString(record.variantId),
+    variantId:
+      asString(record.variantId) ||
+      asString(nestedItem?.variantId) ||
+      asString(nestedItem?._id),
     name:
       asString(record.name) ||
       asString(record.itemName) ||
@@ -316,9 +330,19 @@ function parseKitchenQueueItem(value: unknown): KitchenQueueItem | null {
       asString(nestedItem?.name) ||
       asString(nestedItem?.title) ||
       "Item",
-    variantName: asString(record.variantName),
-    quantity: asNumber(record.quantity) ?? asNumber(record.qty) ?? 1,
-    note: asString(record.note),
+    variantName:
+      asString(record.variantName) ||
+      asString(nestedItem?.variantName) ||
+      asString(nestedItem?.variant),
+    quantity:
+      asNumber(record.quantity) ??
+      asNumber(record.qty) ??
+      asNumber(nestedItem?.quantity) ??
+      asNumber(nestedItem?.qty) ??
+      1,
+    note:
+      asString(nestedItem?.note) ||
+      asString(record.note),
     kitchenStatus:
       (asString(record.kitchenStatus) as KitchenQueueItem["kitchenStatus"]) ||
       (asString(record.itemStatus) as KitchenQueueItem["kitchenStatus"]) ||
@@ -329,8 +353,11 @@ function parseKitchenQueueItem(value: unknown): KitchenQueueItem | null {
       "PLACED",
     addedAt,
     ageMinutes,
-    priorityLabel: asString(record.priorityLabel),
-    priorityScore: asNumber(record.priorityScore),
+    priorityLabel:
+      asString(record.priorityLabel) || asString(nestedItem?.priorityLabel),
+    priorityScore:
+      asNumber(record.priorityScore) ?? asNumber(nestedItem?.priorityScore),
+    item: nestedItem || undefined,
     raw: record,
   };
 }
@@ -357,7 +384,7 @@ function parseKitchenItemsList(data: unknown): KitchenItemsResponse {
                   ? nestedData?.results
                   : asArray(root.results);
 
-  const rawList = asArray(rawItems);
+  const rawList = asArray(rawItems).length ? asArray(rawItems) : [data];
   const items = rawList
     .map(parseKitchenQueueItem)
     .filter((item): item is KitchenQueueItem => Boolean(item));
@@ -390,7 +417,7 @@ export const ordersApi = createApi({
             ? params.status.join(",")
             : (params?.status ?? undefined),
           page: params?.page ?? 1,
-          limit: params?.limit ?? 20,
+          limit: params?.limit ?? 100,
         },
       }),
       transformResponse: (response: unknown) => parseOrdersList(response),
@@ -399,6 +426,28 @@ export const ordersApi = createApi({
         ...(result?.items.map((o) => ({ type: "Orders" as const, id: o.id })) ?? []),
       ],
     }),
+
+    // getKitchenOrderItems: builder.query<KitchenItemsResponse, KitchenItemsQueryParams | void>({
+    //   query: (params) => ({
+    //     url: "/orders/kitchen/items",
+    //     method: "GET",
+    //     credentials: "include",
+    //     params: {
+    //       status: Array.isArray(params?.status)
+    //         ? params.status.join(",")
+    //         : (params?.status ?? undefined),
+    //       includeDone: params?.includeDone ?? false,
+    //       tableId: params?.tableId || undefined,
+    //       page: params?.page ?? 1,
+    //       limit: params?.limit ?? 200,
+    //     },
+    //   }),
+    //   transformResponse: (response: unknown) => parseKitchenItemsList(response),
+    //   providesTags: (result) => [
+    //     { type: "Orders", id: "KITCHEN_ITEMS" },
+    //     ...(result?.items.map((item) => ({ type: "Orders" as const, id: item.orderId })) ?? []),
+    //   ],
+    // }),
 
     getKitchenOrderItems: builder.query<KitchenItemsResponse, KitchenItemsQueryParams | void>({
       query: (params) => ({
@@ -418,10 +467,12 @@ export const ordersApi = createApi({
       transformResponse: (response: unknown) => parseKitchenItemsList(response),
       providesTags: (result) => [
         { type: "Orders", id: "KITCHEN_ITEMS" },
-        ...(result?.items.map((item) => ({ type: "Orders" as const, id: item.orderId })) ?? []),
+        ...(result?.items.map((item) => ({
+          type: "Orders" as const,
+          id: item.orderId,
+        })) ?? []),
       ],
     }),
-
     getOrderById: builder.query<OrderRecord | null, string>({
       query: (orderId) => ({
         url: `/orders/${orderId}`,

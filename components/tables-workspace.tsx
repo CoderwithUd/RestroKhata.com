@@ -17,6 +17,7 @@ import { useGetOrdersQuery } from "@/store/api/ordersApi";
 import { useGetInvoicesQuery } from "@/store/api/invoicesApi";
 import type {
   TableQrFormat,
+  TableReservation,
   TableRecord,
   TableStatus,
 } from "@/store/types/tables";
@@ -38,6 +39,16 @@ type FormState = {
   isActive: boolean;
   status: TableStatus;
   customerId: string;
+  reservationCustomerName: string;
+  reservationCustomerPhone: string;
+  reservationPartySize: number;
+  reservationReservedFor: string;
+  reservationNote: string;
+  advanceRequired: boolean;
+  advanceAmount: number;
+  advancePaidAmount: number;
+  advanceMethod: string;
+  advanceReference: string;
 };
 
 type QrState = {
@@ -161,6 +172,62 @@ const sClass = (s?: string) =>
         : nStatus(s) === "AVAILABLE"
           ? "border-emerald-200 bg-emerald-50 text-emerald-700"
           : "border-slate-300 bg-slate-100 text-slate-700";
+
+function toDateTimeLocal(value?: string): string {
+  if (!value) return "";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  const offset = date.getTimezoneOffset();
+  const local = new Date(date.getTime() - offset * 60000);
+  return local.toISOString().slice(0, 16);
+}
+
+function formatReservationSummary(reservation?: TableReservation): string {
+  if (!reservation) return "Tap Reserve to block the table with customer details.";
+  const parts = [
+    reservation.customerName || "Guest",
+    reservation.customerPhone || "",
+    reservation.partySize ? `${reservation.partySize} guests` : "",
+    reservation.reservedFor
+      ? new Intl.DateTimeFormat("en-IN", {
+          dateStyle: "medium",
+          timeStyle: "short",
+        }).format(new Date(reservation.reservedFor))
+      : "",
+  ].filter(Boolean);
+  return parts.join(" | ");
+}
+
+function buildReservationPayload(form: FormState) {
+  const customerName = form.reservationCustomerName.trim();
+  const customerPhone = form.reservationCustomerPhone.trim();
+  const note = form.reservationNote.trim();
+  const advanceMethod = form.advanceMethod.trim();
+  const advanceReference = form.advanceReference.trim();
+  const reservedFor = form.reservationReservedFor
+    ? new Date(form.reservationReservedFor).toISOString()
+    : undefined;
+
+  if (!customerName && !customerPhone && !note && !reservedFor && !form.advanceRequired)
+    return undefined;
+
+  return {
+    customerName: customerName || undefined,
+    customerPhone: customerPhone || undefined,
+    partySize: norm(form.reservationPartySize, 1),
+    reservedFor,
+    note: note || undefined,
+    advancePayment: {
+      required: form.advanceRequired,
+      amount: form.advanceRequired ? Math.max(0, form.advanceAmount || 0) : 0,
+      paidAmount: form.advanceRequired
+        ? Math.max(0, form.advancePaidAmount || 0)
+        : 0,
+      method: form.advanceRequired ? advanceMethod || undefined : undefined,
+      reference: form.advanceRequired ? advanceReference || undefined : undefined,
+    },
+  };
+}
 
 function qrSrc(qr: string, format: TableQrFormat): string | null {
   if (!qr.trim()) return null;
@@ -400,6 +467,16 @@ export function TablesWorkspace({ tenantName, tenantSlug }: Props) {
     isActive: true,
     status: "AVAILABLE",
     customerId: "",
+    reservationCustomerName: "",
+    reservationCustomerPhone: "",
+    reservationPartySize: 2,
+    reservationReservedFor: "",
+    reservationNote: "",
+    advanceRequired: false,
+    advanceAmount: 0,
+    advancePaidAmount: 0,
+    advanceMethod: "CASH",
+    advanceReference: "",
   });
   const [editing, setEditing] = useState<TableRecord | null>(null);
   const [editForm, setEditForm] = useState<FormState>({
@@ -409,6 +486,16 @@ export function TablesWorkspace({ tenantName, tenantSlug }: Props) {
     isActive: true,
     status: "AVAILABLE",
     customerId: "",
+    reservationCustomerName: "",
+    reservationCustomerPhone: "",
+    reservationPartySize: 2,
+    reservationReservedFor: "",
+    reservationNote: "",
+    advanceRequired: false,
+    advanceAmount: 0,
+    advancePaidAmount: 0,
+    advanceMethod: "CASH",
+    advanceReference: "",
   });
   const [downloadingTemplate, setDownloadingTemplate] = useState(false);
   const [sharingQrLink, setSharingQrLink] = useState(false);
@@ -453,6 +540,8 @@ export function TablesWorkspace({ tenantName, tenantSlug }: Props) {
   }
 
   function openEdit(table: TableRecord) {
+    const reservation = table.reservation;
+    const advancePayment = reservation?.advancePayment;
     setEditing(table);
     setEditForm({
       number: table.number,
@@ -461,6 +550,16 @@ export function TablesWorkspace({ tenantName, tenantSlug }: Props) {
       isActive: table.isActive,
       status: nStatus(table.status),
       customerId: table.customerId || "",
+      reservationCustomerName: reservation?.customerName || "",
+      reservationCustomerPhone: reservation?.customerPhone || "",
+      reservationPartySize: reservation?.partySize || table.capacity || 2,
+      reservationReservedFor: toDateTimeLocal(reservation?.reservedFor),
+      reservationNote: reservation?.note || "",
+      advanceRequired: Boolean(advancePayment?.required),
+      advanceAmount: advancePayment?.amount || 0,
+      advancePaidAmount: advancePayment?.paidAmount || 0,
+      advanceMethod: advancePayment?.method || "CASH",
+      advanceReference: advancePayment?.reference || "",
     });
   }
 
@@ -469,6 +568,8 @@ export function TablesWorkspace({ tenantName, tenantSlug }: Props) {
     if (!editing) return;
     try {
       const status = nStatus(editForm.status);
+      const reservation =
+        status === "RESERVED" ? buildReservationPayload(editForm) : undefined;
       await updateTable({
         tableId: editing.id,
         number: norm(editForm.number, editing.number),
@@ -477,6 +578,7 @@ export function TablesWorkspace({ tenantName, tenantSlug }: Props) {
         isActive: editForm.isActive,
         status,
         customerId: status === "RESERVED" ? editForm.customerId.trim() : "",
+        reservation,
       }).unwrap();
       showSuccess(`Table ${editForm.number} updated`);
       setEditing(null);
@@ -486,21 +588,19 @@ export function TablesWorkspace({ tenantName, tenantSlug }: Props) {
   }
 
   async function quickStatus(table: TableRecord, nextStatus: TableStatus) {
-    let customerId = table.customerId || "";
-    if (nStatus(nextStatus) === "RESERVED" && !customerId.trim()) {
-      const value = window.prompt("Enter customer id for reservation");
-      if (value === null) return;
-      customerId = value.trim();
-      if (!customerId) {
-        showError("Customer id is required for RESERVED status");
-        return;
-      }
+    if (nStatus(nextStatus) === "RESERVED") {
+      openEdit({
+        ...table,
+        status: "RESERVED",
+      });
+      return;
     }
     try {
       await updateTable({
         tableId: table.id,
         status: nStatus(nextStatus),
-        customerId: nStatus(nextStatus) === "RESERVED" ? customerId : "",
+        customerId: "",
+        reservation: undefined,
       }).unwrap();
       showSuccess(`Table ${table.number} marked ${sLabel(nextStatus)}`);
     } catch (e) {
@@ -905,9 +1005,17 @@ export function TablesWorkspace({ tenantName, tenantSlug }: Props) {
                         </div>
                         <p className="mt-3 rounded-lg border border-[#e8e1d4] bg-white px-2.5 py-2 text-[11px] text-slate-600">
                           {reserved
-                            ? `Reserved by customer: ${table.customerId || "Not provided"}`
-                            : "Tap Set Reserved to assign customer and block table."}
+                            ? formatReservationSummary(table.reservation)
+                            : "Tap Reserve to assign customer, slot time, and advance payment."}
                         </p>
+                        {reserved && table.reservation?.advancePayment?.required ? (
+                          <div className="mt-2 rounded-lg border border-blue-200 bg-blue-50 px-2.5 py-2 text-[11px] text-blue-800">
+                            Advance: {table.reservation.advancePayment.paidAmount || 0} / {table.reservation.advancePayment.amount || 0}
+                            {table.reservation.advancePayment.method
+                              ? ` • ${table.reservation.advancePayment.method}`
+                              : ""}
+                          </div>
+                        ) : null}
                         {canOpenOrder(table) ? (
                           <button
                             type="button"
@@ -1220,6 +1328,11 @@ export function TablesWorkspace({ tenantName, tenantSlug }: Props) {
                                     {issuedInvoiceCountByTable.get(table.id)} invoice
                                   </span>
                                 ) : null}
+                                {reserved && table.reservation?.customerName ? (
+                                  <span className="inline-flex rounded-full border border-violet-200 bg-violet-50 px-2 py-0.5 text-[10px] font-semibold text-violet-800">
+                                    {table.reservation.customerName}
+                                  </span>
+                                ) : null}
                               </div>
                             </td>
 
@@ -1388,6 +1501,158 @@ export function TablesWorkspace({ tenantName, tenantSlug }: Props) {
                 placeholder="Customer id"
                 className="h-11 w-full rounded-xl border border-[#ddd4c1] bg-white px-3 text-sm"
               />
+              {nStatus(editForm.status) === "RESERVED" ? (
+                <div className="space-y-3 rounded-[24px] border border-[#e8decd] bg-[linear-gradient(160deg,#fffaf2_0%,#fff7ea_100%)] p-4">
+                  <div>
+                    <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">
+                      Reservation Details
+                    </p>
+                    <h5 className="mt-1 text-base font-semibold text-slate-900">
+                      Guest and booking info
+                    </h5>
+                  </div>
+                  <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                    <input
+                      value={editForm.reservationCustomerName}
+                      onChange={(event) =>
+                        setEditForm((prev) => ({
+                          ...prev,
+                          reservationCustomerName: event.target.value,
+                        }))
+                      }
+                      placeholder="Customer name"
+                      className="h-11 w-full rounded-xl border border-[#ddd4c1] bg-white px-3 text-sm outline-none ring-amber-200 focus:ring-2"
+                    />
+                    <input
+                      value={editForm.reservationCustomerPhone}
+                      onChange={(event) =>
+                        setEditForm((prev) => ({
+                          ...prev,
+                          reservationCustomerPhone: event.target.value,
+                        }))
+                      }
+                      placeholder="Customer phone"
+                      className="h-11 w-full rounded-xl border border-[#ddd4c1] bg-white px-3 text-sm outline-none ring-amber-200 focus:ring-2"
+                    />
+                    <input
+                      type="number"
+                      min={1}
+                      value={editForm.reservationPartySize}
+                      onChange={(event) =>
+                        setEditForm((prev) => ({
+                          ...prev,
+                          reservationPartySize: norm(
+                            Number(event.target.value),
+                            1,
+                          ),
+                        }))
+                      }
+                      placeholder="Party size"
+                      className="h-11 w-full rounded-xl border border-[#ddd4c1] bg-white px-3 text-sm outline-none ring-amber-200 focus:ring-2"
+                    />
+                    <input
+                      type="datetime-local"
+                      value={editForm.reservationReservedFor}
+                      onChange={(event) =>
+                        setEditForm((prev) => ({
+                          ...prev,
+                          reservationReservedFor: event.target.value,
+                        }))
+                      }
+                      className="h-11 w-full rounded-xl border border-[#ddd4c1] bg-white px-3 text-sm outline-none ring-amber-200 focus:ring-2"
+                    />
+                  </div>
+                  <textarea
+                    value={editForm.reservationNote}
+                    onChange={(event) =>
+                      setEditForm((prev) => ({
+                        ...prev,
+                        reservationNote: event.target.value,
+                      }))
+                    }
+                    rows={3}
+                    placeholder="Reservation note: birthday, corner table, special request..."
+                    className="w-full rounded-xl border border-[#ddd4c1] bg-white px-3 py-2.5 text-sm outline-none ring-amber-200 focus:ring-2"
+                  />
+                  <div className="rounded-2xl border border-[#e6d9c3] bg-white p-3">
+                    <label className="inline-flex items-center gap-2 text-sm font-medium text-slate-700">
+                      <input
+                        type="checkbox"
+                        checked={editForm.advanceRequired}
+                        onChange={(event) =>
+                          setEditForm((prev) => ({
+                            ...prev,
+                            advanceRequired: event.target.checked,
+                          }))
+                        }
+                        className="h-4 w-4 rounded border-slate-300 text-amber-500"
+                      />
+                      Advance payment required
+                    </label>
+                    {editForm.advanceRequired ? (
+                      <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
+                        <input
+                          type="number"
+                          min={0}
+                          value={editForm.advanceAmount}
+                          onChange={(event) =>
+                            setEditForm((prev) => ({
+                              ...prev,
+                              advanceAmount: Math.max(
+                                0,
+                                Number(event.target.value) || 0,
+                              ),
+                            }))
+                          }
+                          placeholder="Advance amount"
+                          className="h-11 w-full rounded-xl border border-[#ddd4c1] bg-white px-3 text-sm outline-none ring-amber-200 focus:ring-2"
+                        />
+                        <input
+                          type="number"
+                          min={0}
+                          value={editForm.advancePaidAmount}
+                          onChange={(event) =>
+                            setEditForm((prev) => ({
+                              ...prev,
+                              advancePaidAmount: Math.max(
+                                0,
+                                Number(event.target.value) || 0,
+                              ),
+                            }))
+                          }
+                          placeholder="Paid amount"
+                          className="h-11 w-full rounded-xl border border-[#ddd4c1] bg-white px-3 text-sm outline-none ring-amber-200 focus:ring-2"
+                        />
+                        <select
+                          value={editForm.advanceMethod}
+                          onChange={(event) =>
+                            setEditForm((prev) => ({
+                              ...prev,
+                              advanceMethod: event.target.value,
+                            }))
+                          }
+                          className="h-11 w-full rounded-xl border border-[#ddd4c1] bg-white px-3 text-sm"
+                        >
+                          <option value="CASH">Cash</option>
+                          <option value="UPI">UPI</option>
+                          <option value="CARD">Card</option>
+                        </select>
+                        <input
+                          value={editForm.advanceReference}
+                          onChange={(event) =>
+                            setEditForm((prev) => ({
+                              ...prev,
+                              advanceReference: event.target.value,
+                            }))
+                          }
+                          placeholder="Payment reference"
+                          className="h-11 w-full rounded-xl border border-[#ddd4c1] bg-white px-3 text-sm outline-none ring-amber-200 focus:ring-2"
+                        />
+                      </div>
+                    ) : null}
+                  </div>
+                </div>
+              ) : null}
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <label className="inline-flex h-11 items-center gap-2 rounded-xl border border-[#ddd4c1] bg-white px-3 text-sm text-slate-700">
                   <input

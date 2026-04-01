@@ -16,12 +16,20 @@ import {
   useRemoveOrderItemMutation,
   useUpdateOrderMutation,
 } from "@/store/api/ordersApi";
-import { useCreateInvoiceMutation, useGetInvoicesQuery } from "@/store/api/invoicesApi";
+import {
+  useCreateInvoiceMutation,
+  useGetInvoicesQuery,
+} from "@/store/api/invoicesApi";
 import { useGetTablesQuery } from "@/store/api/tablesApi";
 import { useGetMenuAggregateQuery } from "@/store/api/menuApi";
 import { useAppSelector } from "@/store/hooks";
 import { selectAuthToken } from "@/store/slices/authSlice";
-import type { KitchenQueueItem, OrderItem, OrderRecord, OrderStatus } from "@/store/types/orders";
+import type {
+  KitchenQueueItem,
+  OrderItem,
+  OrderRecord,
+  OrderStatus,
+} from "@/store/types/orders";
 import type { TableRecord } from "@/store/types/tables";
 import type { MenuItemRecord, MenuVariantRecord } from "@/store/types/menu";
 
@@ -31,8 +39,10 @@ type RoleKey = "owner" | "manager" | "waiter" | "kitchen";
 function normalizeRole(raw?: string): RoleKey {
   const r = (raw || "").toLowerCase().trim();
   if (r.includes("owner") || r.includes("admin")) return "owner";
-  if (r.includes("waiter") || r.includes("server") || r.includes("captain")) return "waiter";
-  if (r.includes("kitchen") || r.includes("chef") || r.includes("cook")) return "kitchen";
+  if (r.includes("waiter") || r.includes("server") || r.includes("captain"))
+    return "waiter";
+  if (r.includes("kitchen") || r.includes("chef") || r.includes("cook"))
+    return "kitchen";
   return "manager";
 }
 
@@ -63,6 +73,16 @@ type OrderCartSummaryEntry = {
   note?: string;
 };
 
+type OptionalCustomerDetails = {
+  customerName: string;
+  customerPhone: string;
+};
+
+type PendingOrderDraft = {
+  cart: CartEntry[];
+  tableNote: string;
+};
+
 // ─── Status helpers ───────────────────────────────────────────────────────────
 const STATUS_LABELS: Record<string, string> = {
   PLACED: "Placed",
@@ -77,7 +97,8 @@ function statusBadgeClass(status: string): string {
   const s = (status || "").toUpperCase();
   if (s === "PLACED") return "bg-amber-100 text-amber-800 border-amber-300";
   if (s === "IN_PROGRESS") return "bg-red-100 text-red-800 border-red-300";
-  if (s === "READY") return "bg-emerald-100 text-emerald-800 border-emerald-300";
+  if (s === "READY")
+    return "bg-emerald-100 text-emerald-800 border-emerald-300";
   if (s === "SERVED") return "bg-blue-100 text-blue-800 border-blue-300";
   if (s === "CANCELLED") return "bg-slate-100 text-slate-500 border-slate-300";
   return "bg-slate-100 text-slate-600 border-slate-300";
@@ -87,7 +108,8 @@ function tableStatusClass(status?: string): string {
   const s = (status || "AVAILABLE").toUpperCase();
   if (s === "OCCUPIED") return "border-amber-300 bg-amber-50 text-amber-800";
   if (s === "RESERVED") return "border-blue-300 bg-blue-50 text-blue-800";
-  if (s === "AVAILABLE") return "border-emerald-300 bg-emerald-50 text-emerald-800";
+  if (s === "AVAILABLE")
+    return "border-emerald-300 bg-emerald-50 text-emerald-800";
   return "border-slate-300 bg-slate-100 text-slate-700";
 }
 
@@ -99,9 +121,7 @@ function fmtCurrency(n?: number): string {
 function timeAgo(value?: string | number): string {
   if (value == null) return "";
   const timestamp =
-    typeof value === "number"
-      ? value
-      : new Date(value).getTime();
+    typeof value === "number" ? value : new Date(value).getTime();
   if (!Number.isFinite(timestamp)) return "";
   const diff = Math.floor((Date.now() - timestamp) / 60000);
   if (diff < 1) return "just now";
@@ -124,7 +144,9 @@ function canGenerateInvoiceForStatus(status?: string): boolean {
 }
 
 function isOrderActiveForTable(status?: string): boolean {
-  return ["PLACED", "IN_PROGRESS", "READY", "SERVED"].includes(normalizeStatus(status));
+  return ["PLACED", "IN_PROGRESS", "READY", "SERVED"].includes(
+    normalizeStatus(status),
+  );
 }
 
 type OrderItemDelta = {
@@ -143,7 +165,9 @@ type OrderAppendSignal = {
   byItemKey: Record<string, OrderItemDelta>;
 };
 
-function orderItemKey(item: Pick<OrderItem, "itemId" | "variantId" | "lineId">): string {
+function orderItemKey(
+  item: Pick<OrderItem, "itemId" | "variantId" | "lineId">,
+): string {
   if (item.lineId) return `line::${item.lineId}`;
   return `${item.itemId}::${item.variantId || "base"}`;
 }
@@ -156,11 +180,16 @@ function itemStatusLabel(status?: string): string {
 
 function itemStatusClass(status?: string): string {
   const normalized = normalizeStatus(status);
-  if (!normalized || normalized === "PLACED") return "border-amber-200 bg-amber-50 text-amber-700";
-  if (normalized === "IN_PROGRESS") return "border-rose-200 bg-rose-50 text-rose-700";
-  if (normalized === "READY") return "border-emerald-200 bg-emerald-50 text-emerald-700";
-  if (normalized === "SERVED") return "border-blue-200 bg-blue-50 text-blue-700";
-  if (normalized === "CANCELLED") return "border-slate-200 bg-slate-100 text-slate-500";
+  if (!normalized || normalized === "PLACED")
+    return "border-amber-200 bg-amber-50 text-amber-700";
+  if (normalized === "IN_PROGRESS")
+    return "border-rose-200 bg-rose-50 text-rose-700";
+  if (normalized === "READY")
+    return "border-emerald-200 bg-emerald-50 text-emerald-700";
+  if (normalized === "SERVED")
+    return "border-blue-200 bg-blue-50 text-blue-700";
+  if (normalized === "CANCELLED")
+    return "border-slate-200 bg-slate-100 text-slate-500";
   return "border-slate-200 bg-slate-100 text-slate-600";
 }
 
@@ -181,7 +210,10 @@ function nextServiceItemStatus(status?: string): OrderStatus | undefined {
   return normalizeStatus(status) === "READY" ? "SERVED" : undefined;
 }
 
-function nextOrderItemStatus(status?: string, role?: RoleKey): OrderStatus | undefined {
+function nextOrderItemStatus(
+  status?: string,
+  role?: RoleKey,
+): OrderStatus | undefined {
   if (role === "waiter") return nextServiceItemStatus(status);
 
   const normalized = normalizeStatus(status);
@@ -198,7 +230,11 @@ function orderItemActionLabel(nextStatus?: OrderStatus): string {
   return "Update";
 }
 
-function orderItemActionKey(orderId: string, lineId?: string, nextStatus?: OrderStatus): string {
+function orderItemActionKey(
+  orderId: string,
+  lineId?: string,
+  nextStatus?: OrderStatus,
+): string {
   return `${orderId}:${lineId || "missing"}:${nextStatus || "none"}`;
 }
 
@@ -207,7 +243,9 @@ function orderBatchActionKey(orderId: string, nextStatus: OrderStatus): string {
 }
 
 function activeOrderItems(order: OrderRecord): OrderItem[] {
-  return (order.items || []).filter((item) => normalizeStatus(item.status) !== "CANCELLED");
+  return (order.items || []).filter(
+    (item) => normalizeStatus(item.status) !== "CANCELLED",
+  );
 }
 
 function correctionQty(item: OrderItem, value?: number): number {
@@ -217,7 +255,9 @@ function correctionQty(item: OrderItem, value?: number): number {
 }
 
 function canCorrectOrderItemStatus(status?: string): boolean {
-  return ["PLACED", "IN_PROGRESS", "READY", "SERVED"].includes(normalizeStatus(status));
+  return ["PLACED", "IN_PROGRESS", "READY", "SERVED"].includes(
+    normalizeStatus(status),
+  );
 }
 
 function getServeableReadyItems(order: OrderRecord): OrderItem[] {
@@ -227,20 +267,65 @@ function getServeableReadyItems(order: OrderRecord): OrderItem[] {
 }
 
 function availableMenuVariants(item: MenuItemRecord): MenuVariantRecord[] {
-  const available = (item.variants || []).filter((variant) => variant.isAvailable);
+  const available = (item.variants || []).filter(
+    (variant) => variant.isAvailable,
+  );
   return available.length ? available : item.variants || [];
 }
 
-function orderCustomerLabel(order: Pick<OrderRecord, "customerName" | "customerPhone">): string | null {
+function orderCustomerLabel(
+  order: Pick<OrderRecord, "customerName" | "customerPhone">,
+): string | null {
   if (!order.customerName && !order.customerPhone) return null;
-  if (order.customerName && order.customerPhone) return `${order.customerName} | ${order.customerPhone}`;
+  if (order.customerName && order.customerPhone)
+    return `${order.customerName} | ${order.customerPhone}`;
   return order.customerName || order.customerPhone || null;
 }
 
-function kitchenCustomerLabel(item: Pick<KitchenQueueItem, "customerName" | "customerPhone">): string | null {
+function kitchenCustomerLabel(
+  item: Pick<KitchenQueueItem, "customerName" | "customerPhone">,
+): string | null {
   if (!item.customerName && !item.customerPhone) return null;
-  if (item.customerName && item.customerPhone) return `${item.customerName} | ${item.customerPhone}`;
+  if (item.customerName && item.customerPhone)
+    return `${item.customerName} | ${item.customerPhone}`;
   return item.customerName || item.customerPhone || null;
+}
+
+function kitchenDisplayNote(item: Pick<KitchenQueueItem, "note" | "orderNote">): string | null {
+  return item.note || item.orderNote || null;
+}
+
+function normalizePhoneInput(value: string): string {
+  return value.replace(/[^\d+]/g, "");
+}
+
+function validateOptionalCustomer(details: OptionalCustomerDetails): string | null {
+  const customerName = details.customerName.trim();
+  const customerPhone = normalizePhoneInput(details.customerPhone.trim());
+
+  if (!customerName && !customerPhone) return null;
+  if (!customerName || !customerPhone)
+    return "Customer name and phone dono saath me do, ya dono blank chhodo.";
+
+  const digitCount = customerPhone.replace(/\D/g, "").length;
+  if (digitCount < 7 || digitCount > 15)
+    return "Customer phone me 7 se 15 digits hone chahiye.";
+
+  return null;
+}
+
+function mergeOrdersById(
+  current: OrderRecord[],
+  incoming: OrderRecord[],
+): OrderRecord[] {
+  const map = new Map<string, OrderRecord>();
+  current.forEach((order) => map.set(order.id, order));
+  incoming.forEach((order) => map.set(order.id, order));
+  return Array.from(map.values()).sort((left, right) => {
+    const a = new Date(left.updatedAt || left.createdAt || 0).getTime();
+    const b = new Date(right.updatedAt || right.createdAt || 0).getTime();
+    return b - a;
+  });
 }
 
 function toTimestamp(value?: string): number | null {
@@ -249,7 +334,9 @@ function toTimestamp(value?: string): number | null {
   return Number.isFinite(timestamp) ? timestamp : null;
 }
 
-function buildAppendSignals(orders: OrderRecord[]): Record<string, OrderAppendSignal> {
+function buildAppendSignals(
+  orders: OrderRecord[],
+): Record<string, OrderAppendSignal> {
   const signals: Record<string, OrderAppendSignal> = {};
 
   for (const order of orders) {
@@ -262,7 +349,8 @@ function buildAppendSignals(orders: OrderRecord[]): Record<string, OrderAppendSi
     for (const item of order.items || []) {
       const key = orderItemKey(item);
       const itemTimestamp = toTimestamp(item.createdAt || item.updatedAt);
-      if (itemTimestamp && itemTimestamp > latestItemTimestamp) latestItemTimestamp = itemTimestamp;
+      if (itemTimestamp && itemTimestamp > latestItemTimestamp)
+        latestItemTimestamp = itemTimestamp;
 
       const isLikelyLaterItem =
         orderCreatedAt != null &&
@@ -286,14 +374,20 @@ function buildAppendSignals(orders: OrderRecord[]): Record<string, OrderAppendSi
 
     if (!appendItems.length) continue;
 
-    const byItemKey = appendItems.reduce<Record<string, OrderItemDelta>>((accumulator, item) => {
-      accumulator[item.key] = item;
-      return accumulator;
-    }, {});
+    const byItemKey = appendItems.reduce<Record<string, OrderItemDelta>>(
+      (accumulator, item) => {
+        accumulator[item.key] = item;
+        return accumulator;
+      },
+      {},
+    );
 
     signals[order.id] = {
       detectedAt: latestItemTimestamp || orderUpdatedAt || 0,
-      totalAddedQty: appendItems.reduce((sum, item) => sum + item.quantityAdded, 0),
+      totalAddedQty: appendItems.reduce(
+        (sum, item) => sum + item.quantityAdded,
+        0,
+      ),
       items: appendItems,
       byItemKey,
     };
@@ -305,7 +399,13 @@ function buildAppendSignals(orders: OrderRecord[]): Record<string, OrderAppendSi
 // ─── Tiny reusable components ─────────────────────────────────────────────────
 function Spinner() {
   return (
-    <svg className="h-4 w-4 animate-spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+    <svg
+      className="h-4 w-4 animate-spin"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+    >
       <path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83" />
     </svg>
   );
@@ -314,14 +414,18 @@ function Spinner() {
 // ─── Live socket badge ────────────────────────────────────────────────────────
 function LiveBadge({ connected }: { connected: boolean }) {
   return (
-    <span className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[10px] font-semibold ${
-      connected
-        ? "border-emerald-300 bg-emerald-50 text-emerald-700"
-        : "border-slate-200 bg-slate-100 text-slate-400"
-    }`}>
-      <span className={`h-1.5 w-1.5 rounded-full ${
-        connected ? "bg-emerald-500 animate-pulse" : "bg-slate-400"
-      }`} />
+    <span
+      className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[10px] font-semibold ${
+        connected
+          ? "border-emerald-300 bg-emerald-50 text-emerald-700"
+          : "border-slate-200 bg-slate-100 text-slate-400"
+      }`}
+    >
+      <span
+        className={`h-1.5 w-1.5 rounded-full ${
+          connected ? "bg-emerald-500 animate-pulse" : "bg-slate-400"
+        }`}
+      />
       {connected ? "Live" : "Offline"}
     </span>
   );
@@ -347,7 +451,12 @@ function TableGrid({
     const map: Record<string, OrderRecord[]> = {};
     for (const order of sortOrdersByLatest(orders)) {
       const tableId = order.table?.id || order.tableId;
-      if (!tableId || invoicedOrderIds.has(order.id) || !isOrderActiveForTable(order.status)) continue;
+      if (
+        !tableId ||
+        invoicedOrderIds.has(order.id) ||
+        !isOrderActiveForTable(order.status)
+      )
+        continue;
       if (!map[tableId]) map[tableId] = [];
       map[tableId].push(order);
     }
@@ -356,16 +465,24 @@ function TableGrid({
 
   return (
     <div>
-      <p className="mb-3 text-xs text-slate-500">Tap a table to create a new order or continue any running order</p>
+      <p className="mb-3 text-xs text-slate-500">
+        Tap a table to create a new order or continue any running order
+      </p>
       <div className="grid grid-cols-3 gap-2.5 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-7">
         {tables.map((table) => {
           const tableOrders = activeOrdersByTable[table.id] || [];
           const latestOrder = tableOrders[0];
           const hasOrder = tableOrders.length > 0;
           const billingLocked = issuedInvoiceTableIds.has(table.id);
-          const readyCount = tableOrders.filter((order) => canGenerateInvoiceForStatus(order.status)).length;
-          const qrCount = tableOrders.filter((order) => normalizeStatus(order.source) === "QR").length;
-          const appendSignal = latestOrder ? appendSignals[latestOrder.id] : undefined;
+          const readyCount = tableOrders.filter((order) =>
+            canGenerateInvoiceForStatus(order.status),
+          ).length;
+          const qrCount = tableOrders.filter(
+            (order) => normalizeStatus(order.source) === "QR",
+          ).length;
+          const appendSignal = latestOrder
+            ? appendSignals[latestOrder.id]
+            : undefined;
           const visualStatus = hasOrder ? "OCCUPIED" : table.status;
           return (
             <div
@@ -381,7 +498,9 @@ function TableGrid({
                 className="flex flex-1 flex-col items-center justify-center gap-0.5 rounded-t-[calc(1rem-2px)] px-1 transition active:scale-95 hover:scale-[1.03] disabled:cursor-not-allowed disabled:opacity-70"
               >
                 <span className="text-base font-bold">T{table.number}</span>
-                <span className="text-[10px] opacity-70">{table.capacity}p</span>
+                <span className="text-[10px] opacity-70">
+                  {table.capacity}p
+                </span>
                 {billingLocked ? (
                   <span className="rounded-full bg-slate-900 px-1.5 py-0.5 text-[9px] font-bold text-white">
                     Billing
@@ -411,7 +530,9 @@ function TableGrid({
               ) : hasOrder ? (
                 <div className="px-1 pb-1">
                   <span className="block w-full rounded-full border border-slate-200 bg-white px-1.5 py-0.5 text-[9px] font-bold text-slate-600">
-                    {readyCount > 0 ? `${readyCount} ready` : STATUS_LABELS[latestOrder?.status || ""] || "Running"}
+                    {readyCount > 0
+                      ? `${readyCount} ready`
+                      : STATUS_LABELS[latestOrder?.status || ""] || "Running"}
                     {qrCount > 0 ? ` | ${qrCount} QR` : ""}
                   </span>
                 </div>
@@ -449,7 +570,9 @@ function MenuBrowser({
   existingOrder?: OrderRecord;
   composeMode: "append-latest" | "append-specific" | "force-new";
   selectedOrderId?: string | null;
-  onComposeModeChange: (mode: "append-latest" | "append-specific" | "force-new") => void;
+  onComposeModeChange: (
+    mode: "append-latest" | "append-specific" | "force-new",
+  ) => void;
   onSelectedOrderIdChange: (orderId: string) => void;
   servingItemKey?: string | null;
   onServeExistingOrderItem: (order: OrderRecord, item: OrderItem) => void;
@@ -457,13 +580,17 @@ function MenuBrowser({
   onBack: () => void;
   onConfirm: (cart: CartEntry[], tableNote: string) => void;
 }) {
-  const { data: menuData, isLoading: menuLoading } = useGetMenuAggregateQuery({ isAvailable: true });
+  const { data: menuData, isLoading: menuLoading } = useGetMenuAggregateQuery({
+    isAvailable: true,
+  });
   const [activeCat, setActiveCat] = useState<string | null>(null);
   const [cart, setCart] = useState<CartEntry[]>([]);
   const [search, setSearch] = useState("");
   const [tableNote, setTableNote] = useState("");
   const [cartOpen, setCartOpen] = useState(false);
-  const [selectedVariants, setSelectedVariants] = useState<Record<string, string | undefined>>({});
+  const [selectedVariants, setSelectedVariants] = useState<
+    Record<string, string | undefined>
+  >({});
   const searchRef = useRef<HTMLInputElement>(null);
 
   const categories = useMemo(() => menuData?.categories || [], [menuData]);
@@ -481,29 +608,40 @@ function MenuBrowser({
 
   const displayedItems = useMemo(() => {
     const bySearch = search.trim()
-      ? allItems.filter((i) => i.name.toLowerCase().includes(search.toLowerCase().trim()))
+      ? allItems.filter((i) =>
+          i.name.toLowerCase().includes(search.toLowerCase().trim()),
+        )
       : allItems;
 
     if (!activeCat || search.trim()) return bySearch;
     return bySearch.filter((i) => {
       for (const cat of categories) {
-        if (cat.id === activeCat) return cat.items.some((ci) => ci.id === i.id) || cat.children?.some((s) => s.items.some((si) => si.id === i.id));
+        if (cat.id === activeCat)
+          return (
+            cat.items.some((ci) => ci.id === i.id) ||
+            cat.children?.some((s) => s.items.some((si) => si.id === i.id))
+          );
         for (const sub of cat.children || []) {
-          if (sub.id === activeCat) return sub.items.some((si) => si.id === i.id);
+          if (sub.id === activeCat)
+            return sub.items.some((si) => si.id === i.id);
         }
       }
       return false;
     });
   }, [allItems, activeCat, search, categories]);
 
-  const cartTotal = useMemo(() => cart.reduce((s, e) => s + e.unitPrice * e.quantity, 0), [cart]);
+  const cartTotal = useMemo(
+    () => cart.reduce((s, e) => s + e.unitPrice * e.quantity, 0),
+    [cart],
+  );
   const readyExistingItems = useMemo(
     () => (existingOrder ? getServeableReadyItems(existingOrder) : []),
     [existingOrder],
   );
   const existingOrderTotal = useMemo(() => {
     if (!existingOrder) return 0;
-    if (typeof existingOrder.grandTotal === "number") return existingOrder.grandTotal;
+    if (typeof existingOrder.grandTotal === "number")
+      return existingOrder.grandTotal;
     return activeOrderItems(existingOrder).reduce(
       (sum, item) => sum + (item.lineTotal ?? item.unitPrice * item.quantity),
       0,
@@ -559,18 +697,30 @@ function MenuBrowser({
   }, [cart, existingOrder]);
   const summaryTotal = existingOrderTotal + cartTotal;
   const summaryCount = useMemo(
-    () => summaryEntries.reduce((sum, entry) => sum + entry.existingQuantity + entry.addedQuantity, 0),
+    () =>
+      summaryEntries.reduce(
+        (sum, entry) => sum + entry.existingQuantity + entry.addedQuantity,
+        0,
+      ),
     [summaryEntries],
   );
 
   function getQty(itemId: string, variantId?: string): number {
-    return cart.find((e) => e.itemId === itemId && e.variantId === variantId)?.quantity ?? 0;
+    return (
+      cart.find((e) => e.itemId === itemId && e.variantId === variantId)
+        ?.quantity ?? 0
+    );
   }
 
-  function resolveSelectedVariant(item: MenuItemRecord): MenuVariantRecord | undefined {
+  function resolveSelectedVariant(
+    item: MenuItemRecord,
+  ): MenuVariantRecord | undefined {
     const variants = availableMenuVariants(item);
     if (!variants.length) return undefined;
-    return variants.find((variant) => variant.id === selectedVariants[item.id]) || variants[0];
+    return (
+      variants.find((variant) => variant.id === selectedVariants[item.id]) ||
+      variants[0]
+    );
   }
 
   function setItemVariant(itemId: string, variantId?: string) {
@@ -586,9 +736,13 @@ function MenuBrowser({
     const variantId = variant?.id;
     const price = variant?.price ?? item.price ?? 0;
     setCart((prev) => {
-      const idx = prev.findIndex((e) => e.itemId === item.id && e.variantId === variantId);
+      const idx = prev.findIndex(
+        (e) => e.itemId === item.id && e.variantId === variantId,
+      );
       if (idx >= 0) {
-        return prev.map((e, i) => (i === idx ? { ...e, quantity: e.quantity + 1 } : e));
+        return prev.map((e, i) =>
+          i === idx ? { ...e, quantity: e.quantity + 1 } : e,
+        );
       }
       return [
         ...prev,
@@ -616,18 +770,24 @@ function MenuBrowser({
 
   function removeItem(itemId: string, variantId?: string) {
     setCart((prev) => {
-      const idx = prev.findIndex((e) => e.itemId === itemId && e.variantId === variantId);
+      const idx = prev.findIndex(
+        (e) => e.itemId === itemId && e.variantId === variantId,
+      );
       if (idx < 0) return prev;
       const entry = prev[idx];
       if (entry.quantity <= 1) return prev.filter((_, i) => i !== idx);
-      return prev.map((e, i) => (i === idx ? { ...e, quantity: e.quantity - 1 } : e));
+      return prev.map((e, i) =>
+        i === idx ? { ...e, quantity: e.quantity - 1 } : e,
+      );
     });
   }
 
   function addFromExisting(orderItem: OrderRecord["items"][number]) {
     setCart((prev) => {
       const idx = prev.findIndex(
-        (entry) => entry.itemId === orderItem.itemId && entry.variantId === orderItem.variantId,
+        (entry) =>
+          entry.itemId === orderItem.itemId &&
+          entry.variantId === orderItem.variantId,
       );
       if (idx >= 0) {
         return prev.map((entry, i) =>
@@ -648,10 +808,14 @@ function MenuBrowser({
     });
   }
 
-  function extraQtyForExisting(orderItem: OrderRecord["items"][number]): number {
+  function extraQtyForExisting(
+    orderItem: OrderRecord["items"][number],
+  ): number {
     return (
       cart.find(
-        (entry) => entry.itemId === orderItem.itemId && entry.variantId === orderItem.variantId,
+        (entry) =>
+          entry.itemId === orderItem.itemId &&
+          entry.variantId === orderItem.variantId,
       )?.quantity ?? 0
     );
   }
@@ -660,13 +824,25 @@ function MenuBrowser({
     <div className="flex h-full flex-col">
       {/* Header */}
       <div className="flex items-center gap-2 border-b border-slate-200 px-1 pb-3">
-        <button type="button" onClick={onBack} className="rounded-lg border border-slate-200 bg-white p-2 text-slate-600 hover:bg-slate-50">
-          <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2.5">
+        <button
+          type="button"
+          onClick={onBack}
+          className="rounded-lg border border-slate-200 bg-white p-2 text-slate-600 hover:bg-slate-50"
+        >
+          <svg
+            viewBox="0 0 24 24"
+            className="h-4 w-4"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2.5"
+          >
             <path d="M19 12H5M12 5l-7 7 7 7" />
           </svg>
         </button>
         <div className="min-w-0 flex-1">
-          <p className="text-base font-bold">Table {table.number} — {table.name}</p>
+          <p className="text-base font-bold">
+            Table {table.number} — {table.name}
+          </p>
           <p className="text-xs text-slate-500">
             {tableOrders.length === 0
               ? "No running order on this table"
@@ -679,7 +855,12 @@ function MenuBrowser({
           onClick={() => setCartOpen(true)}
           className="relative flex items-center gap-1.5 rounded-xl border border-amber-300 bg-amber-50 px-3 py-2 text-sm font-semibold text-amber-800 md:hidden"
         >
-          🛒 {summaryCount > 0 && <span className="absolute -right-1.5 -top-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-amber-500 text-[10px] font-bold text-white">{summaryCount}</span>}
+          🛒{" "}
+          {summaryCount > 0 && (
+            <span className="absolute -right-1.5 -top-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-amber-500 text-[10px] font-bold text-white">
+              {summaryCount}
+            </span>
+          )}
           {fmtCurrency(summaryTotal)}
         </button>
       </div>
@@ -691,8 +872,12 @@ function MenuBrowser({
             <div className="mb-2 rounded-xl border border-slate-200 bg-white p-2.5">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <div>
-                  <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Order target</p>
-                  <p className="mt-0.5 text-xs text-slate-600">Choose where new items should go</p>
+                  <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                    Order target
+                  </p>
+                  <p className="mt-0.5 text-xs text-slate-600">
+                    Choose where new items should go
+                  </p>
                 </div>
                 <div className="flex flex-wrap gap-1.5">
                   <button
@@ -743,7 +928,9 @@ function MenuBrowser({
                           : "border-slate-200 bg-slate-50 text-slate-700"
                       }`}
                     >
-                      {(order.orderNumber ? `#${order.orderNumber}` : `Order ${order.id.slice(-4)}`)}
+                      {order.orderNumber
+                        ? `#${order.orderNumber}`
+                        : `Order ${order.id.slice(-4)}`}
                       {` • ${STATUS_LABELS[normalizeStatus(order.status)] || order.status}`}
                       {order.customerName ? ` • ${order.customerName}` : ""}
                     </button>
@@ -762,10 +949,14 @@ function MenuBrowser({
                   <button
                     type="button"
                     onClick={() => onServeReadyItems(existingOrder)}
-                    disabled={servingItemKey === orderBatchActionKey(existingOrder.id, "SERVED")}
+                    disabled={
+                      servingItemKey ===
+                      orderBatchActionKey(existingOrder.id, "SERVED")
+                    }
                     className="rounded-full border border-emerald-300 bg-emerald-100 px-2.5 py-1 text-[10px] font-bold text-emerald-900 disabled:opacity-50"
                   >
-                    {servingItemKey === orderBatchActionKey(existingOrder.id, "SERVED")
+                    {servingItemKey ===
+                    orderBatchActionKey(existingOrder.id, "SERVED")
                       ? "Serving..."
                       : readyExistingItems.length === 1
                         ? "Serve Ready Item"
@@ -776,9 +967,15 @@ function MenuBrowser({
               <div className="space-y-1.5">
                 {existingOrder.items.map((orderItem, index) => {
                   const extra = extraQtyForExisting(orderItem);
-                  const itemNextStatus = nextServiceItemStatus(orderItem.status);
+                  const itemNextStatus = nextServiceItemStatus(
+                    orderItem.status,
+                  );
                   const itemActionKey = orderItem.lineId
-                    ? orderItemActionKey(existingOrder.id, orderItem.lineId, itemNextStatus)
+                    ? orderItemActionKey(
+                        existingOrder.id,
+                        orderItem.lineId,
+                        itemNextStatus,
+                      )
                     : null;
                   return (
                     <div
@@ -788,14 +985,18 @@ function MenuBrowser({
                       <div className="min-w-0">
                         <p className="truncate text-xs font-semibold text-slate-800">
                           {orderItem.name}
-                          {orderItem.variantName ? ` (${orderItem.variantName})` : ""}
+                          {orderItem.variantName
+                            ? ` (${orderItem.variantName})`
+                            : ""}
                         </p>
                         <p className="flex flex-wrap items-center gap-1.5 text-[10px] text-slate-500">
                           <span>
                             Current: {orderItem.quantity}
                             {extra > 0 ? `  |  Adding: +${extra}` : ""}
                           </span>
-                          <span className={`rounded-full border px-1.5 py-0.5 font-semibold ${itemStatusClass(orderItem.status)}`}>
+                          <span
+                            className={`rounded-full border px-1.5 py-0.5 font-semibold ${itemStatusClass(orderItem.status)}`}
+                          >
                             {itemStatusLabel(orderItem.status)}
                           </span>
                         </p>
@@ -804,7 +1005,9 @@ function MenuBrowser({
                         {existingOrder && orderItem.lineId && itemNextStatus ? (
                           <button
                             type="button"
-                            onClick={() => onServeExistingOrderItem(existingOrder, orderItem)}
+                            onClick={() =>
+                              onServeExistingOrderItem(existingOrder, orderItem)
+                            }
                             disabled={servingItemKey === itemActionKey}
                             className="rounded-md border border-emerald-300 bg-emerald-50 px-2 py-1 text-[10px] font-bold text-emerald-800 disabled:opacity-50"
                           >
@@ -828,8 +1031,15 @@ function MenuBrowser({
 
           {/* Search */}
           <div className="relative mb-2">
-            <svg viewBox="0 0 24 24" className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" fill="none" stroke="currentColor" strokeWidth="2">
-              <circle cx="11" cy="11" r="7" /><path d="m21 21-4.35-4.35" />
+            <svg
+              viewBox="0 0 24 24"
+              className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+            >
+              <circle cx="11" cy="11" r="7" />
+              <path d="m21 21-4.35-4.35" />
             </svg>
             <input
               ref={searchRef}
@@ -871,7 +1081,9 @@ function MenuBrowser({
           ) : (
             <div className="no-scrollbar -mx-1 flex-1 overflow-y-auto pb-2">
               {displayedItems.length === 0 ? (
-                <div className="py-12 text-center text-sm text-slate-500">No items found</div>
+                <div className="py-12 text-center text-sm text-slate-500">
+                  No items found
+                </div>
               ) : (
                 <div className="grid grid-cols-1 gap-3 px-1 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
                   {displayedItems.map((item) => {
@@ -887,9 +1099,15 @@ function MenuBrowser({
                       >
                         <div className="flex items-start justify-between gap-2">
                           <div className="min-w-0">
-                            <p className="text-sm font-semibold leading-snug text-slate-900 line-clamp-2">{item.name}</p>
-                            <p className="mt-1 text-xs font-semibold text-amber-700">{fmtCurrency(price)}</p>
-                            <p className="mt-1 text-[11px] text-slate-500">{item.catName}</p>
+                            <p className="text-sm font-semibold leading-snug text-slate-900 line-clamp-2">
+                              {item.name}
+                            </p>
+                            <p className="mt-1 text-xs font-semibold text-amber-700">
+                              {fmtCurrency(price)}
+                            </p>
+                            <p className="mt-1 text-[11px] text-slate-500">
+                              {item.catName}
+                            </p>
                           </div>
                           {qty > 0 ? (
                             <span className="rounded-full border border-amber-300 bg-amber-100 px-2 py-0.5 text-[10px] font-bold text-amber-900">
@@ -900,7 +1118,9 @@ function MenuBrowser({
                         {variants.length > 0 ? (
                           <div className="mt-3 space-y-2">
                             <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
-                              {variants.length > 1 ? "Choose variant" : "Variant"}
+                              {variants.length > 1
+                                ? "Choose variant"
+                                : "Variant"}
                             </p>
                             <div className="flex flex-wrap gap-1.5">
                               {variants.map((variant) => {
@@ -910,14 +1130,17 @@ function MenuBrowser({
                                   <button
                                     key={variant.id}
                                     type="button"
-                                    onClick={() => setItemVariant(item.id, variant.id)}
+                                    onClick={() =>
+                                      setItemVariant(item.id, variant.id)
+                                    }
                                     className={`rounded-full border px-2.5 py-1 text-[11px] font-semibold transition ${
                                       active
                                         ? "border-amber-400 bg-amber-100 text-amber-900"
                                         : "border-slate-200 bg-white text-slate-600"
                                     }`}
                                   >
-                                    {variant.name} | {fmtCurrency(variant.price)}
+                                    {variant.name} |{" "}
+                                    {fmtCurrency(variant.price)}
                                     {variantQty > 0 ? ` (${variantQty})` : ""}
                                   </button>
                                 );
@@ -927,8 +1150,12 @@ function MenuBrowser({
                         ) : null}
                         <div className="mt-3 flex items-center justify-between gap-2 border-t border-slate-100 pt-3">
                           <div className="min-w-0">
-                            <p className="text-[11px] font-semibold text-slate-500">Selected</p>
-                            <p className="truncate text-xs text-slate-700">{selectedVariant?.name || "Regular"}</p>
+                            <p className="text-[11px] font-semibold text-slate-500">
+                              Selected
+                            </p>
+                            <p className="truncate text-xs text-slate-700">
+                              {selectedVariant?.name || "Regular"}
+                            </p>
                           </div>
                           {qty === 0 ? (
                             <button
@@ -947,7 +1174,9 @@ function MenuBrowser({
                               >
                                 −
                               </button>
-                              <span className="text-sm font-bold text-amber-700">{qty}</span>
+                              <span className="text-sm font-bold text-amber-700">
+                                {qty}
+                              </span>
                               <button
                                 type="button"
                                 onClick={() => addItem(item, variantId)}
@@ -976,21 +1205,38 @@ function MenuBrowser({
           <div className="no-scrollbar flex-1 overflow-y-auto px-3 py-2">
             {existingOrder && existingOrder.items.length > 0 ? (
               <div className="mb-3 space-y-2 border-b border-slate-100 pb-3">
-                <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Current order</p>
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                  Current order
+                </p>
                 {summaryEntries
                   .filter((entry) => entry.existingQuantity > 0)
                   .map((entry) => (
-                    <div key={`existing-${entry.key}`} className="flex items-start justify-between gap-2">
+                    <div
+                      key={`existing-${entry.key}`}
+                      className="flex items-start justify-between gap-2"
+                    >
                       <div className="min-w-0 flex-1">
-                        <p className="line-clamp-1 text-xs font-medium text-slate-800">{entry.name}</p>
-                        {entry.variantName ? <p className="text-[10px] text-slate-400">{entry.variantName}</p> : null}
+                        <p className="line-clamp-1 text-xs font-medium text-slate-800">
+                          {entry.name}
+                        </p>
+                        {entry.variantName ? (
+                          <p className="text-[10px] text-slate-400">
+                            {entry.variantName}
+                          </p>
+                        ) : null}
                         <p className="text-[10px] text-slate-500">
-                          {fmtCurrency(entry.unitPrice)} x {entry.existingQuantity}
-                          {entry.addedQuantity > 0 ? ` | Adding +${entry.addedQuantity}` : ""}
+                          {fmtCurrency(entry.unitPrice)} x{" "}
+                          {entry.existingQuantity}
+                          {entry.addedQuantity > 0
+                            ? ` | Adding +${entry.addedQuantity}`
+                            : ""}
                         </p>
                       </div>
                       <span className="text-xs font-semibold text-slate-600">
-                        {fmtCurrency(entry.unitPrice * (entry.existingQuantity + entry.addedQuantity))}
+                        {fmtCurrency(
+                          entry.unitPrice *
+                            (entry.existingQuantity + entry.addedQuantity),
+                        )}
                       </span>
                     </div>
                   ))}
@@ -998,41 +1244,87 @@ function MenuBrowser({
             ) : null}
             {existingOrder && existingOrder.items.length > 0 ? (
               <div className="mb-4 max-h-48 space-y-3 overflow-y-auto rounded-2xl border border-slate-200 bg-slate-50 p-3">
-                <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Current order</p>
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                  Current order
+                </p>
                 {summaryEntries
                   .filter((entry) => entry.existingQuantity > 0)
                   .map((entry) => (
-                    <div key={`mobile-existing-${entry.key}`} className="flex items-start justify-between gap-3">
+                    <div
+                      key={`mobile-existing-${entry.key}`}
+                      className="flex items-start justify-between gap-3"
+                    >
                       <div className="min-w-0 flex-1">
-                        <p className="truncate text-sm font-medium text-slate-800">{entry.name}</p>
-                        {entry.variantName ? <p className="text-[11px] text-slate-400">{entry.variantName}</p> : null}
+                        <p className="truncate text-sm font-medium text-slate-800">
+                          {entry.name}
+                        </p>
+                        {entry.variantName ? (
+                          <p className="text-[11px] text-slate-400">
+                            {entry.variantName}
+                          </p>
+                        ) : null}
                         <p className="text-xs text-slate-500">
-                          {fmtCurrency(entry.unitPrice)} x {entry.existingQuantity}
-                          {entry.addedQuantity > 0 ? ` | Adding +${entry.addedQuantity}` : ""}
+                          {fmtCurrency(entry.unitPrice)} x{" "}
+                          {entry.existingQuantity}
+                          {entry.addedQuantity > 0
+                            ? ` | Adding +${entry.addedQuantity}`
+                            : ""}
                         </p>
                       </div>
                       <span className="text-sm font-semibold text-slate-700">
-                        {fmtCurrency(entry.unitPrice * (entry.existingQuantity + entry.addedQuantity))}
+                        {fmtCurrency(
+                          entry.unitPrice *
+                            (entry.existingQuantity + entry.addedQuantity),
+                        )}
                       </span>
                     </div>
                   ))}
               </div>
             ) : null}
             {cart.length === 0 ? (
-              <p className="py-6 text-center text-xs text-slate-400">{existingOrder ? "No new items added yet" : "Tap items to add"}</p>
+              <p className="py-6 text-center text-xs text-slate-400">
+                {existingOrder ? "No new items added yet" : "Tap items to add"}
+              </p>
             ) : (
               <div className="space-y-2">
                 {cart.map((entry) => (
-                  <div key={`${entry.itemId}-${entry.variantId}`} className="flex items-start gap-2">
+                  <div
+                    key={`${entry.itemId}-${entry.variantId}`}
+                    className="flex items-start gap-2"
+                  >
                     <div className="min-w-0 flex-1">
-                      <p className="text-xs font-medium text-slate-800 line-clamp-1">{entry.name}</p>
-                      {entry.variantName && <p className="text-[10px] text-slate-400">{entry.variantName}</p>}
-                      <p className="text-xs text-slate-500">{fmtCurrency(entry.unitPrice)} × {entry.quantity}</p>
+                      <p className="text-xs font-medium text-slate-800 line-clamp-1">
+                        {entry.name}
+                      </p>
+                      {entry.variantName && (
+                        <p className="text-[10px] text-slate-400">
+                          {entry.variantName}
+                        </p>
+                      )}
+                      <p className="text-xs text-slate-500">
+                        {fmtCurrency(entry.unitPrice)} × {entry.quantity}
+                      </p>
                     </div>
                     <div className="flex items-center gap-1">
-                      <button onClick={() => removeItem(entry.itemId, entry.variantId)} className="flex h-6 w-6 items-center justify-center rounded-md border border-slate-200 text-xs text-slate-600">−</button>
-                      <span className="text-xs font-bold w-4 text-center">{entry.quantity}</span>
-                      <button onClick={() => incrementCartEntry(entry.itemId, entry.variantId)} className="flex h-6 w-6 items-center justify-center rounded-md bg-amber-500 text-xs text-white">+</button>
+                      <button
+                        onClick={() =>
+                          removeItem(entry.itemId, entry.variantId)
+                        }
+                        className="flex h-6 w-6 items-center justify-center rounded-md border border-slate-200 text-xs text-slate-600"
+                      >
+                        −
+                      </button>
+                      <span className="text-xs font-bold w-4 text-center">
+                        {entry.quantity}
+                      </span>
+                      <button
+                        onClick={() =>
+                          incrementCartEntry(entry.itemId, entry.variantId)
+                        }
+                        className="flex h-6 w-6 items-center justify-center rounded-md bg-amber-500 text-xs text-white"
+                      >
+                        +
+                      </button>
                     </div>
                   </div>
                 ))}
@@ -1048,7 +1340,9 @@ function MenuBrowser({
             />
             <div className="flex items-center justify-between text-sm font-bold">
               <span>Total</span>
-              <span className="text-amber-700">{fmtCurrency(summaryTotal)}</span>
+              <span className="text-amber-700">
+                {fmtCurrency(summaryTotal)}
+              </span>
             </div>
             <button
               type="button"
@@ -1064,7 +1358,10 @@ function MenuBrowser({
 
       {/* Mobile cart drawer */}
       {cartOpen && (
-        <div className="fixed inset-0 z-50 flex flex-col md:hidden" onClick={() => setCartOpen(false)}>
+        <div
+          className="fixed inset-0 z-50 flex flex-col md:hidden"
+          onClick={() => setCartOpen(false)}
+        >
           <div className="flex-1 bg-black/40" />
           <div
             className="rounded-t-3xl bg-white px-4 pb-6 pt-4 shadow-2xl"
@@ -1072,22 +1369,55 @@ function MenuBrowser({
           >
             <div className="mb-4 flex items-center justify-between">
               <p className="text-base font-bold">Cart — Table {table.number}</p>
-              <button onClick={() => setCartOpen(false)} className="text-slate-400">✕</button>
+              <button
+                onClick={() => setCartOpen(false)}
+                className="text-slate-400"
+              >
+                ✕
+              </button>
             </div>
             {cart.length === 0 ? (
-              <p className="py-8 text-center text-sm text-slate-400">{existingOrder ? "No new items added yet" : "Nothing in cart yet"}</p>
+              <p className="py-8 text-center text-sm text-slate-400">
+                {existingOrder
+                  ? "No new items added yet"
+                  : "Nothing in cart yet"}
+              </p>
             ) : (
               <div className="max-h-64 space-y-3 overflow-y-auto">
                 {cart.map((entry) => (
-                  <div key={`${entry.itemId}-${entry.variantId}`} className="flex items-center gap-3">
+                  <div
+                    key={`${entry.itemId}-${entry.variantId}`}
+                    className="flex items-center gap-3"
+                  >
                     <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium truncate">{entry.name}</p>
-                      <p className="text-xs text-slate-500">{fmtCurrency(entry.unitPrice)} × {entry.quantity} = {fmtCurrency(entry.unitPrice * entry.quantity)}</p>
+                      <p className="text-sm font-medium truncate">
+                        {entry.name}
+                      </p>
+                      <p className="text-xs text-slate-500">
+                        {fmtCurrency(entry.unitPrice)} × {entry.quantity} ={" "}
+                        {fmtCurrency(entry.unitPrice * entry.quantity)}
+                      </p>
                     </div>
                     <div className="flex items-center gap-2">
-                      <button onClick={() => removeItem(entry.itemId, entry.variantId)} className="h-7 w-7 rounded-lg border border-slate-200 text-sm font-bold">−</button>
-                      <span className="w-4 text-center text-sm font-bold">{entry.quantity}</span>
-                      <button onClick={() => incrementCartEntry(entry.itemId, entry.variantId)} className="h-7 w-7 rounded-lg bg-amber-500 text-sm font-bold text-white">+</button>
+                      <button
+                        onClick={() =>
+                          removeItem(entry.itemId, entry.variantId)
+                        }
+                        className="h-7 w-7 rounded-lg border border-slate-200 text-sm font-bold"
+                      >
+                        −
+                      </button>
+                      <span className="w-4 text-center text-sm font-bold">
+                        {entry.quantity}
+                      </span>
+                      <button
+                        onClick={() =>
+                          incrementCartEntry(entry.itemId, entry.variantId)
+                        }
+                        className="h-7 w-7 rounded-lg bg-amber-500 text-sm font-bold text-white"
+                      >
+                        +
+                      </button>
                     </div>
                   </div>
                 ))}
@@ -1101,12 +1431,17 @@ function MenuBrowser({
             />
             <div className="mt-3 flex items-center justify-between font-bold">
               <span>Total</span>
-              <span className="text-amber-700">{fmtCurrency(summaryTotal)}</span>
+              <span className="text-amber-700">
+                {fmtCurrency(summaryTotal)}
+              </span>
             </div>
             <button
               type="button"
               disabled={cart.length === 0}
-              onClick={() => { setCartOpen(false); onConfirm(cart, tableNote); }}
+              onClick={() => {
+                setCartOpen(false);
+                onConfirm(cart, tableNote);
+              }}
               className="mt-3 w-full rounded-2xl bg-amber-500 py-3.5 text-base font-bold text-white shadow-lg shadow-amber-200 disabled:opacity-40"
             >
               {composeMode === "force-new" ? "Create New Order" : "Add Items"}
@@ -1160,48 +1495,112 @@ function WaiterActionBoard({
   correctingLineKey?: string | null;
   correctionQuantities: Record<string, number>;
   onCorrectionQuantityChange: (lineKey: string, quantity: number) => void;
-  onRemovePlacedItem: (order: OrderRecord, item: OrderItem, quantity: number) => void;
+  onRemovePlacedItem: (
+    order: OrderRecord,
+    item: OrderItem,
+    quantity: number,
+  ) => void;
   onCancelPlacedItem: (order: OrderRecord, item: OrderItem) => void;
-  onMovePlacedItem: (order: OrderRecord, item: OrderItem, target: MoveTargetSelection, quantity: number) => void;
+  onMovePlacedItem: (
+    order: OrderRecord,
+    item: OrderItem,
+    target: MoveTargetSelection,
+    quantity: number,
+  ) => void;
   className?: string;
 }) {
-  const readyCount = orders.filter((order) => normalizeStatus(order.status) === "READY").length;
-  const billingCount = orders.filter((order) => canGenerateInvoiceForStatus(order.status)).length;
+  const readyCount = orders.filter(
+    (order) => normalizeStatus(order.status) === "READY",
+  ).length;
+  const billingCount = orders.filter((order) =>
+    canGenerateInvoiceForStatus(order.status),
+  ).length;
   const kitchenCount = orders.filter((order) =>
     ["PLACED", "IN_PROGRESS"].includes(normalizeStatus(order.status)),
   ).length;
 
   return (
-    <div className={`${className || "mt-4"} space-y-3`}>
-      <div className="grid gap-2 sm:grid-cols-3">
-        <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-3">
-          <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-emerald-800">Ready To Serve</p>
-          <p className="mt-1 text-2xl font-bold text-emerald-950">{readyCount}</p>
-        </div>
-        <div className="rounded-2xl border border-amber-200 bg-amber-50 p-3">
-          <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-amber-800">Pending Invoice</p>
-          <p className="mt-1 text-2xl font-bold text-amber-950">{billingCount}</p>
-        </div>
-        <div className="rounded-2xl border border-rose-200 bg-rose-50 p-3">
-          <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-rose-800">Kitchen Running</p>
-          <p className="mt-1 text-2xl font-bold text-rose-950">{kitchenCount}</p>
-        </div>
-      </div>
+    <div className={`${className || "mt-4"} space-y-2.5`}>
+     <div className="flex gap-1.5">
 
-      <div className="rounded-[26px] border border-slate-200 bg-white p-4">
-        <div className="mb-3 flex items-center justify-between gap-2">
+  {/* Ready to Serve */}
+  <div className="flex flex-1 flex-col gap-1.5 rounded-2xl border border-emerald-200 bg-emerald-50 p-2.5 min-w-0">
+    <div className="flex items-center gap-1.5">
+      <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-emerald-100">
+        <svg className="h-3.5 w-3.5" viewBox="0 0 16 16" fill="none" stroke="#16a34a" strokeWidth="2.5">
+          <polyline points="2,9 6,13 14,3" />
+        </svg>
+      </div>
+      <p className="truncate text-[clamp(9px,2.2vw,11px)] font-medium text-emerald-700">
+        Ready
+      </p>
+    </div>
+    <p className="text-[clamp(20px,5vw,26px)] font-bold leading-none text-emerald-950 text-center">
+      {readyCount}
+    </p>
+  </div>
+
+  {/* Pending Invoice */}
+  <div className="flex flex-1 flex-col gap-1.5 rounded-2xl border border-amber-200 bg-amber-50 p-2.5 min-w-0">
+    <div className="flex items-center gap-1.5">
+      <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-amber-100">
+        <svg className="h-3.5 w-3.5" viewBox="0 0 16 16" fill="none" stroke="#d97706" strokeWidth="2">
+          <rect x="2" y="4" width="12" height="9" rx="1.5" />
+          <path d="M5 4V3a1 1 0 011-1h4a1 1 0 011 1v1" />
+          <path d="M6 8h4M8 8v2" />
+        </svg>
+      </div>
+      <p className="truncate text-[clamp(9px,2.2vw,11px)] font-medium text-amber-700">
+        Invoice
+      </p>
+    </div>
+    <p className="text-[clamp(20px,5vw,26px)] font-bold leading-none text-amber-950   text-center">
+      {billingCount}
+    </p>
+  </div>
+
+  {/* Kitchen Running */}
+  <div className="flex flex-1 flex-col gap-1.5 rounded-2xl border border-rose-200 bg-rose-50 p-2.5 min-w-0">
+    <div className="flex items-center gap-1.5">
+      <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-rose-100">
+        <svg className="h-3.5 w-3.5" viewBox="0 0 16 16" fill="none" stroke="#e11d48" strokeWidth="2">
+          <path d="M8 2C6 2 4 3.5 4 5.5c0 1.5 1 2.5 2 3v1h4v-1c1-.5 2-1.5 2-3C12 3.5 10 2 8 2z" />
+          <path d="M6 12h4M7 14h2" />
+        </svg>
+      </div>
+      <p className="truncate text-[clamp(9px,2.2vw,11px)] font-medium text-rose-700">
+        Kitchen
+      </p>
+    </div>
+    <p className="text-[clamp(20px,5vw,26px)] font-bold leading-none text-rose-950  text-center">
+      {kitchenCount}
+    </p>
+  </div>
+
+</div>
+
+      <div className="rounded-[28px] border border-slate-200/80 bg-gradient-to-b from-white via-slate-50/60 to-white p-3 shadow-[0_12px_34px_rgba(15,23,42,0.06)] sm:p-4">
+        <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <p className="text-base font-bold text-slate-900">Waiter Action Board</p>
-            <p className="text-xs text-slate-500">Kitchen READY ko waiter yahin se SERVED karega, aur invoice bhi yahin se nikal sakta hai.</p>
+            <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-slate-400">
+              Live Service Queue
+            </p>
+            <p className="text-base font-bold text-slate-900">
+              Waiter Action Board
+            </p>
+            {/* <p className="text-xs text-slate-500">
+              Kitchen READY ko waiter yahin se SERVED karega, aur invoice bhi
+              yahin se nikal sakta hai.
+            </p> */}
           </div>
-          <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-[11px] font-semibold text-slate-600">
+          <span className="w-fit rounded-full border border-slate-200 bg-white px-3 py-1 text-[11px] font-semibold text-slate-700 shadow-sm">
             {orders.length} orders
           </span>
         </div>
 
         <div className="space-y-2">
           {orders.length === 0 ? (
-            <div className="rounded-2xl border border-dashed border-slate-300 py-8 text-center text-sm text-slate-500">
+            <div className="rounded-[22px] border border-dashed border-slate-300 bg-white/80 py-8 text-center text-sm text-slate-500">
               No waiter actions pending.
             </div>
           ) : (
@@ -1216,27 +1615,35 @@ function WaiterActionBoard({
               const customerLabel = orderCustomerLabel(order);
 
               return (
-                <div key={order.id} className="rounded-2xl border border-slate-200 bg-slate-50 p-3">
-                  <div className="flex flex-wrap items-start justify-between gap-3">
-                    <div>
+                <div
+                  key={order.id}
+                  className="rounded-[22px] border border-slate-200/80 bg-white p-3 shadow-[0_8px_22px_rgba(15,23,42,0.05)]"
+                >
+                  <div className="flex flex-wrap items-start justify-between gap-2.5">
+                    <div className="min-w-0 flex-1">
                       <div className="flex flex-wrap items-center gap-2">
-                        <span className="rounded-full bg-slate-900 px-2.5 py-1 text-[10px] font-semibold text-white">
+                        <span className="rounded-full bg-slate-900 px-2.5 py-1 text-[10px] font-semibold text-white shadow-sm">
                           T{order.table?.number ?? "?"}
                         </span>
-                        <span className={`rounded-full border px-2.5 py-1 text-[10px] font-semibold ${statusBadgeClass(order.status)}`}>
+                        <span
+                          className={`rounded-full border px-2.5 py-1 text-[10px] font-semibold ${statusBadgeClass(order.status)}`}
+                        >
                           {STATUS_LABELS[order.status] || order.status}
                         </span>
                       </div>
-                      <p className="mt-2 text-sm font-semibold text-slate-900">
-                        {order.table?.name || `Table ${order.table?.number ?? "-"}`}
+                      <p className="mt-1.5 text-sm font-semibold text-slate-900">
+                        {order.table?.name ||
+                          `Table ${order.table?.number ?? "-"}`}
                       </p>
                       {customerLabel ? (
                         <p className="mt-1 inline-flex rounded-full border border-sky-200 bg-sky-50 px-2 py-0.5 text-[10px] font-semibold text-sky-800">
                           Customer order: {customerLabel}
                         </p>
                       ) : null}
-                      <p className="mt-1 text-xs text-slate-500">
-                        {order.items.length} item(s) | {fmtCurrency(order.grandTotal ?? order.subTotal)} | {timeAgo(order.updatedAt || order.createdAt)}
+                      <p className="mt-1 text-[11px] text-slate-500">
+                        {order.items.length} item(s) |{" "}
+                        {fmtCurrency(order.grandTotal ?? order.subTotal)} |{" "}
+                        {timeAgo(order.updatedAt || order.createdAt)}
                       </p>
                       {appendSignal ? (
                         <p className="mt-1 inline-flex rounded-full border border-amber-300 bg-amber-100 px-2 py-0.5 text-[10px] font-semibold text-amber-900">
@@ -1244,17 +1651,18 @@ function WaiterActionBoard({
                         </p>
                       ) : null}
                     </div>
-                    <div className="grid gap-2 sm:min-w-[180px]">
+                    <div className="grid w-full gap-2 sm:w-[190px]">
                       {readyItems.length > 0 ? (
                         <button
                           type="button"
                           disabled={servingItemKey === batchServeKey}
                           onClick={() => onMarkReadyItemsServed(order)}
-                          className="rounded-xl bg-emerald-600 px-3 py-2 text-xs font-bold text-white disabled:opacity-50"
+                          className="rounded-2xl bg-emerald-600 px-3 py-2.5 text-xs font-bold text-white shadow-sm transition hover:bg-emerald-700 disabled:opacity-50"
                         >
                           {servingItemKey === batchServeKey
                             ? "Serving..."
-                            : readyItems.length === openItemCount && openItemCount > 1
+                            : readyItems.length === openItemCount &&
+                                openItemCount > 1
                               ? `Serve All (${readyItems.length})`
                               : readyItems.length === 1
                                 ? "Serve Ready Item"
@@ -1265,9 +1673,11 @@ function WaiterActionBoard({
                           type="button"
                           disabled={servingOrderId === order.id}
                           onClick={() => onMarkServed(order)}
-                          className="rounded-xl bg-emerald-600 px-3 py-2 text-xs font-bold text-white disabled:opacity-50"
+                          className="rounded-2xl bg-emerald-600 px-3 py-2.5 text-xs font-bold text-white shadow-sm transition hover:bg-emerald-700 disabled:opacity-50"
                         >
-                          {servingOrderId === order.id ? "Serving..." : "Mark Served"}
+                          {servingOrderId === order.id
+                            ? "Serving..."
+                            : "Mark Served"}
                         </button>
                       ) : null}
                       {canInvoice ? (
@@ -1275,153 +1685,338 @@ function WaiterActionBoard({
                           type="button"
                           disabled={creatingInvoiceOrderId === order.id}
                           onClick={() => onCreateInvoice(order)}
-                          className="rounded-xl border border-amber-300 bg-amber-50 px-3 py-2 text-xs font-bold text-amber-800 disabled:opacity-50"
+                          className="rounded-2xl border border-amber-300 bg-amber-50 px-3 py-2.5 text-xs font-bold text-amber-900 transition hover:bg-amber-100 disabled:opacity-50"
                         >
-                          {creatingInvoiceOrderId === order.id ? "Generating..." : "Generate Invoice"}
+                          {creatingInvoiceOrderId === order.id
+                            ? "Generating..."
+                            : "Generate Invoice"}
                         </button>
                       ) : (
-                        <div className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs text-slate-500">
-                          {status === "PLACED" ? "Waiting for kitchen to start" : "Kitchen cooking in progress"}
+                        <div className="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-xs text-slate-500">
+                          {status === "PLACED"
+                            ? "Waiting for kitchen to start"
+                            : "Kitchen cooking in progress"}
                         </div>
                       )}
                     </div>
                   </div>
-                  <div className="mt-3 space-y-1.5 rounded-xl border border-slate-200 bg-white p-2.5">
+                  <div className="mt-2.5 space-y-1.5 rounded-2xl bg-slate-50/90 p-1.5">
                     {order.items.map((item, index) => {
-                      const delta = appendSignal?.byItemKey[orderItemKey(item)]?.quantityAdded ?? 0;
+                      const delta =
+                        appendSignal?.byItemKey[orderItemKey(item)]
+                          ?.quantityAdded ?? 0;
                       const itemNextStatus = nextServiceItemStatus(item.status);
                       const itemActionKey = item.lineId
-                        ? orderItemActionKey(order.id, item.lineId, itemNextStatus)
+                        ? orderItemActionKey(
+                            order.id,
+                            item.lineId,
+                            itemNextStatus,
+                          )
                         : null;
-                      const correctionKey = item.lineId ? `${order.id}:${item.lineId}` : null;
-                      const correctionValue = correctionQty(item, correctionKey ? correctionQuantities[correctionKey] : undefined);
-                      const canCorrectItem = Boolean(item.lineId) && canCorrectOrderItemStatus(item.status);
+                      const correctionKey = item.lineId
+                        ? `${order.id}:${item.lineId}`
+                        : null;
+                      const correctionValue = correctionQty(
+                        item,
+                        correctionKey
+                          ? correctionQuantities[correctionKey]
+                          : undefined,
+                      );
+                      const canCorrectItem =
+                        Boolean(item.lineId) &&
+                        canCorrectOrderItemStatus(item.status);
                       const moveTargets = allOrders.filter(
                         (candidate) =>
                           candidate.id !== order.id &&
-                          (candidate.table?.id || candidate.tableId) === (order.table?.id || order.tableId) &&
-                          ["PLACED", "IN_PROGRESS", "READY", "SERVED"].includes(normalizeStatus(candidate.status)),
+                          (candidate.table?.id || candidate.tableId) ===
+                            (order.table?.id || order.tableId) &&
+                          ["PLACED", "IN_PROGRESS", "READY", "SERVED"].includes(
+                            normalizeStatus(candidate.status),
+                          ),
                       );
-                      const tableTargets = tables.filter((table) => table.id !== (order.table?.id || order.tableId));
+                      const tableTargets = tables.filter(
+                        (table) =>
+                          table.id !== (order.table?.id || order.tableId),
+                      );
                       return (
+                        
+                        // <div
+                        //   key={`${item.itemId}-${item.variantId || "base"}-${index}`}
+                        //   className="rounded-xl border border-slate-100 bg-slate-50 p-2.5 text-xs"
+                        // >
+                        //   <div className="flex flex-wrap items-start justify-between gap-2">
+                        //     <div className="min-w-0">
+                        //       <p className="font-medium text-slate-800">
+                        //         {item.quantity}x {item.name}
+                        //         {item.variantName
+                        //           ? ` (${item.variantName})`
+                        //           : ""}
+                        //       </p>
+
+                        //       {item.note ? (
+                        //         <p className="text-[11px] italic text-amber-700">
+                        //           {item.note}
+                        //         </p>
+                        //       ) : null}
+                        //     </div>
+                        //     <div className="flex shrink-0 items-center gap-1">
+                        //       {delta > 0 ? (
+                        //         <span className="rounded-full border border-amber-300 bg-amber-100 px-2 py-0.5 text-[10px] font-semibold text-amber-900">
+                        //           +{delta} new
+                        //         </span>
+                        //       ) : null}
+                        //       <span
+                        //         className={`rounded-full border px-2 py-0.5 text-[10px] font-semibold ${itemStatusClass(item.status)}`}
+                        //       >
+                        //         {itemStatusLabel(item.status)}
+                        //       </span>
+                        //       {canCorrectItem ? (
+                        //         <>
+                        //           {moveTargets.length > 0 ? (
+                        //             <select
+                        //               defaultValue=""
+                        //               disabled={
+                        //                 correctingLineKey === correctionKey
+                        //               }
+                        //               onChange={(event) => {
+                        //                 const targetOrderId =
+                        //                   event.target.value;
+                        //                 if (!targetOrderId) return;
+                        //                 onMovePlacedItem(
+                        //                   order,
+                        //                   item,
+                        //                   { targetOrderId },
+                        //                   correctionValue,
+                        //                 );
+                        //                 event.currentTarget.value = "";
+                        //               }}
+                        //               className="rounded-full border border-slate-200 bg-white px-2 py-0.5 text-[10px] font-semibold text-slate-600 disabled:opacity-50"
+                        //             >
+                        //               <option value="">Exchange</option>
+                        //               {moveTargets.map((candidate) => (
+                        //                 <option
+                        //                   key={candidate.id}
+                        //                   value={candidate.id}
+                        //                 >
+                        //                   #
+                        //                   {candidate.orderNumber ||
+                        //                     candidate.id.slice(-4)}
+                        //                 </option>
+                        //               ))}
+                        //             </select>
+                        //           ) : null}
+                        //           {tableTargets.length > 0 ? (
+                        //             <select
+                        //               defaultValue=""
+                        //               disabled={
+                        //                 correctingLineKey === correctionKey
+                        //               }
+                        //               onChange={(event) => {
+                        //                 const targetTableId =
+                        //                   event.target.value;
+                        //                 if (!targetTableId) return;
+                        //                 onMovePlacedItem(
+                        //                   order,
+                        //                   item,
+                        //                   { targetTableId },
+                        //                   correctionValue,
+                        //                 );
+                        //                 event.currentTarget.value = "";
+                        //               }}
+                        //               className="rounded-full border border-slate-200 bg-white px-2 py-0.5 text-[10px] font-semibold text-slate-600 disabled:opacity-50"
+                        //             >
+                        //               <option value="">Exchange Table</option>
+                        //               {tableTargets.map((table) => (
+                        //                 <option key={table.id} value={table.id}>
+                        //                   T{table.number}
+                        //                 </option>
+                        //               ))}
+                        //             </select>
+                        //           ) : null}
+                        //           <button
+                        //             type="button"
+                        //             onClick={() =>
+                        //               onRemovePlacedItem(
+                        //                 order,
+                        //                 item,
+                        //                 correctionValue,
+                        //               )
+                        //             }
+                        //             disabled={
+                        //               correctingLineKey === correctionKey
+                        //             }
+                        //             className="rounded-full border border-rose-200 bg-rose-50 px-2 py-0.5 text-[10px] font-bold text-rose-700 disabled:opacity-50"
+                        //           >
+                        //             {item.quantity > 1
+                        //               ? `Reduce ${correctionValue}`
+                        //               : "Remove Item"}
+                              
+                        //           </button>
+                        //           <button
+                        //             type="button"
+                        //             title="Cancel Item"
+                        //             onClick={() =>
+                        //               onCancelPlacedItem(order, item)
+                        //             }
+                        //             disabled={
+                        //               correctingLineKey === correctionKey
+                        //             }
+                        //             className="rounded-full border border-slate-200 bg-slate-100 px-2 py-0.5 text-[10px] font-bold text-slate-700 disabled:opacity-50"
+                        //           >
+                        //             {/* Cancel Item */}
+                        //             <svg
+                        //               viewBox="0 0 16 16"
+                        //               className="h-3 w-3"
+                        //               fill="none"
+                        //               stroke="currentColor"
+                        //               strokeWidth="2.5"
+                        //             >
+                        //               <path d="M3 3l10 10M13 3L3 13" />
+                        //             </svg>
+                        //           </button>
+                        //         </>
+                        //       ) : null}
+                        //       {item.lineId && itemNextStatus ? (
+                        //         <button
+                        //           type="button"
+                        //           onClick={() => onMarkItemServed(order, item)}
+                        //           disabled={servingItemKey === itemActionKey}
+                        //           className="rounded-full border border-emerald-300 bg-emerald-50 px-2 py-0.5 text-[10px] font-bold text-emerald-800 disabled:opacity-50"
+                        //         >
+                        //           {servingItemKey === itemActionKey
+                        //             ? "..."
+                        //             : "Serve"}
+                        //         </button>
+                        //       ) : null}
+                        //     </div>
+                        //   </div>
+                        // </div>
                         <div
-                          key={`${item.itemId}-${item.variantId || "base"}-${index}`}
-                          className="rounded-xl border border-slate-100 bg-slate-50 p-2.5 text-xs"
-                        >
-                          <div className="flex flex-wrap items-start justify-between gap-2">
-                            <div className="min-w-0">
-                              <p className="font-medium text-slate-800">
-                                {item.quantity}x {item.name}
-                                {item.variantName ? ` (${item.variantName})` : ""}
-                              </p>
-                              <p className="mt-1 text-[11px] font-medium text-slate-500">
-                                Status: {itemStatusLabel(item.status)}
-                              </p>
-                              {item.note ? <p className="text-[11px] italic text-amber-700">{item.note}</p> : null}
-                            </div>
-                            <div className="flex shrink-0 items-center gap-1">
-                            {delta > 0 ? (
-                              <span className="rounded-full border border-amber-300 bg-amber-100 px-2 py-0.5 text-[10px] font-semibold text-amber-900">
-                                +{delta} new
-                              </span>
-                            ) : null}
-                            <span className={`rounded-full border px-2 py-0.5 text-[10px] font-semibold ${itemStatusClass(item.status)}`}>
-                              {itemStatusLabel(item.status)}
-                            </span>
-                            {canCorrectItem ? (
-                              <>
-                                {item.quantity > 1 ? (
-                                  <select
-                                    value={String(correctionValue)}
-                                    disabled={correctingLineKey === correctionKey}
-                                    onChange={(event) =>
-                                      onCorrectionQuantityChange(correctionKey as string, Number(event.target.value) || 1)
-                                    }
-                                    className="rounded-full border border-slate-200 bg-white px-2 py-0.5 text-[10px] font-semibold text-slate-600 disabled:opacity-50"
-                                  >
-                                    {Array.from({ length: item.quantity }, (_, idx) => idx + 1).map((qty) => (
-                                      <option key={qty} value={qty}>
-                                        Qty {qty}
-                                      </option>
-                                    ))}
-                                  </select>
-                                ) : null}
-                                {moveTargets.length > 0 ? (
-                                  <select
-                                    defaultValue=""
-                                    disabled={correctingLineKey === correctionKey}
-                                    onChange={(event) => {
-                                      const targetOrderId = event.target.value;
-                                      if (!targetOrderId) return;
-                                      onMovePlacedItem(order, item, { targetOrderId }, correctionValue);
-                                      event.currentTarget.value = "";
-                                    }}
-                                    className="rounded-full border border-slate-200 bg-white px-2 py-0.5 text-[10px] font-semibold text-slate-600 disabled:opacity-50"
-                                  >
-                                    <option value="">Exchange</option>
-                                    {moveTargets.map((candidate) => (
-                                      <option key={candidate.id} value={candidate.id}>
-                                        #{candidate.orderNumber || candidate.id.slice(-4)}
-                                      </option>
-                                    ))}
-                                  </select>
-                                ) : null}
-                                {tableTargets.length > 0 ? (
-                                  <select
-                                    defaultValue=""
-                                    disabled={correctingLineKey === correctionKey}
-                                    onChange={(event) => {
-                                      const targetTableId = event.target.value;
-                                      if (!targetTableId) return;
-                                      onMovePlacedItem(order, item, { targetTableId }, correctionValue);
-                                      event.currentTarget.value = "";
-                                    }}
-                                    className="rounded-full border border-slate-200 bg-white px-2 py-0.5 text-[10px] font-semibold text-slate-600 disabled:opacity-50"
-                                  >
-                                    <option value="">Exchange Table</option>
-                                    {tableTargets.map((table) => (
-                                      <option key={table.id} value={table.id}>
-                                        T{table.number}
-                                      </option>
-                                    ))}
-                                  </select>
-                                ) : null}
-                                <button
-                                  type="button"
-                                  onClick={() => onRemovePlacedItem(order, item, correctionValue)}
-                                  disabled={correctingLineKey === correctionKey}
-                                  className="rounded-full border border-rose-200 bg-rose-50 px-2 py-0.5 text-[10px] font-bold text-rose-700 disabled:opacity-50"
-                                >
-                                  {item.quantity > 1 ? `Reduce ${correctionValue}` : "Remove Item"}
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={() => onCancelPlacedItem(order, item)}
-                                  disabled={correctingLineKey === correctionKey}
-                                  className="rounded-full border border-slate-200 bg-slate-100 px-2 py-0.5 text-[10px] font-bold text-slate-700 disabled:opacity-50"
-                                >
-                                  Cancel Item
-                                </button>
-                              </>
-                            ) : null}
-                            {item.lineId && itemNextStatus ? (
-                              <button
-                                type="button"
-                                onClick={() => onMarkItemServed(order, item)}
-                                disabled={servingItemKey === itemActionKey}
-                                className="rounded-full border border-emerald-300 bg-emerald-50 px-2 py-0.5 text-[10px] font-bold text-emerald-800 disabled:opacity-50"
-                              >
-                                {servingItemKey === itemActionKey ? "..." : "Serve"}
-                              </button>
-                            ) : null}
-                          </div>
-                          </div>
-                          {canCorrectItem ? (
-                            <p className="mt-2 text-[11px] text-slate-500">
-                              `Exchange` = dusre order me bhejo, `Reduce/Remove` = qty ghatao ya hatao, `Cancel Item` = is line ko cancelled mark karo.
-                            </p>
-                          ) : null}
-                        </div>
+  key={`${item.itemId}-${item.variantId || "base"}-${index}`}
+  className="overflow-hidden rounded-[18px] border border-slate-200/80 bg-white shadow-[0_4px_14px_rgba(15,23,42,0.04)]"
+>
+  {/* Main row */}
+  <div className="flex flex-wrap items-center gap-2 px-2.5 py-2 sm:flex-nowrap">
+    <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-slate-100 text-[12px] font-semibold text-slate-700">
+      ×{item.quantity}
+    </div>
+    <div className="min-w-0 flex-1">
+      <p className="truncate text-[13px] font-semibold text-slate-800">
+        {item.name}
+        {item.variantName ? (
+          <span className="ml-1 font-normal text-slate-400">({item.variantName})</span>
+        ) : null}
+      </p>
+      <p className="mt-0.5 text-[11px] text-slate-400">
+        {fmtCurrency(item.lineTotal ?? item.unitPrice * item.quantity)}
+      </p>
+    </div>
+    <div className="flex w-full flex-wrap items-center gap-1 sm:w-auto sm:justify-end">
+      {delta > 0 ? (
+        <span className="rounded-full border border-amber-300 bg-amber-100 px-2 py-0.5 text-[10px] font-semibold text-amber-800">
+          +{delta} new
+        </span>
+      ) : null}
+      <span className={`rounded-full border px-2 py-0.5 text-[10px] font-semibold ${itemStatusClass(item.status)}`}>
+        {itemStatusLabel(item.status)}
+      </span>
+    </div>
+  </div>
+
+  {/* Note */}
+  {item.note ? (
+    <p className="border-t border-amber-100 bg-amber-50/80 px-2.5 py-1.5 text-[11px] text-amber-800">
+      {item.note}
+    </p>
+  ) : null}
+
+  {/* Actions */}
+  {(canCorrectItem || (item.lineId && itemNextStatus)) ? (
+    <div className="grid border-t border-slate-100 bg-slate-50/70 sm:flex">
+
+      {item.lineId && itemNextStatus ? (
+        <button
+          type="button"
+          onClick={() => onMarkItemServed(order, item)}
+          disabled={servingItemKey === itemActionKey}
+          className="flex min-h-10 min-w-0 flex-1 items-center justify-center gap-1 bg-emerald-50 px-3 py-2 text-[11px] font-semibold text-emerald-700 transition hover:bg-emerald-100 disabled:opacity-40"
+        >
+          <svg viewBox="0 0 16 16" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="2.5">
+            <polyline points="2,9 6,13 14,3" />
+          </svg>
+          {servingItemKey === itemActionKey ? "..." : "Serve"}
+        </button>
+      ) : null}
+
+      {canCorrectItem ? (
+        <>
+          {tableTargets.length > 0 ? (
+            <select
+              defaultValue=""
+              disabled={correctingLineKey === correctionKey}
+              onChange={(e) => {
+                const v = e.target.value;
+                if (!v) return;
+                onMovePlacedItem(order, item, { targetTableId: v }, correctionValue);
+                e.currentTarget.value = "";
+              }}
+              className="min-h-10 min-w-0 border-t border-slate-100 bg-sky-50 px-3 py-2 text-center text-[11px] font-semibold text-sky-700 disabled:opacity-40 sm:flex-1 sm:border-l sm:border-t-0"
+            >
+              <option value="">Move table</option>
+              {tableTargets.map((t) => (
+                <option key={t.id} value={t.id}>T{t.number}</option>
+              ))}
+            </select>
+          ) : null}
+
+          {moveTargets.length > 0 ? (
+            <select
+              defaultValue=""
+              disabled={correctingLineKey === correctionKey}
+              onChange={(e) => {
+                const v = e.target.value;
+                if (!v) return;
+                onMovePlacedItem(order, item, { targetOrderId: v }, correctionValue);
+                e.currentTarget.value = "";
+              }}
+              className="min-h-10 min-w-0 border-t border-slate-100 bg-sky-50 px-3 py-2 text-center text-[11px] font-semibold text-sky-700 disabled:opacity-40 sm:flex-1 sm:border-l sm:border-t-0"
+            >
+              <option value="">Move order</option>
+              {moveTargets.map((c) => (
+                <option key={c.id} value={c.id}>#{c.orderNumber || c.id.slice(-4)}</option>
+              ))}
+            </select>
+          ) : null}
+
+          <button
+            type="button"
+            onClick={() => onRemovePlacedItem(order, item, correctionValue)}
+            disabled={correctingLineKey === correctionKey}
+            className="flex min-h-10 min-w-0 items-center justify-center gap-1 border-t border-slate-100 bg-rose-50 px-3 py-2 text-[11px] font-semibold text-rose-700 disabled:opacity-40 sm:flex-1 sm:border-l sm:border-t-0"
+          >
+            <svg viewBox="0 0 16 16" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="2.5">
+              <path d="M4 8h8" />
+            </svg>
+            {item.quantity > 1 ? "Reduce" : "Remove"}
+          </button>
+
+          <button
+            type="button"
+            title="Cancel item"
+            onClick={() => onCancelPlacedItem(order, item)}
+            disabled={correctingLineKey === correctionKey}
+            className="flex min-h-10 items-center justify-center border-t border-slate-100 bg-slate-50 px-3 py-2 text-slate-400 disabled:opacity-40 sm:border-l sm:border-t-0"
+          >
+            <svg viewBox="0 0 16 16" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="2.5">
+              <path d="M4 4l8 8M12 4L4 12" />
+            </svg>
+          </button>
+        </>
+      ) : null}
+
+    </div>
+  ) : null}
+</div>
                       );
                     })}
                   </div>
@@ -1441,29 +2036,56 @@ type WaiterViewProps = {
   mode?: "board" | "live-board" | "select-table" | "select-items";
 };
 
-function WaiterView({ onOrderPlaced, initialTableId, mode = "board" }: WaiterViewProps) {
+function WaiterView({
+  onOrderPlaced,
+  initialTableId,
+  mode = "board",
+}: WaiterViewProps) {
   const router = useRouter();
   const token = useAppSelector(selectAuthToken);
-  const { data: tablesData, refetch: refetchTables } = useGetTablesQuery({ isActive: true });
-  const { data: ordersData, refetch: refetchOrders } = useGetOrdersQuery({ status: ["PLACED", "IN_PROGRESS", "READY", "SERVED"] });
-  const { data: invoicesData, refetch: refetchInvoices } = useGetInvoicesQuery();
+  const { data: tablesData, refetch: refetchTables } = useGetTablesQuery({
+    isActive: true,
+  });
+  const { data: ordersData, refetch: refetchOrders } = useGetOrdersQuery({
+    status: ["PLACED", "IN_PROGRESS", "READY", "SERVED"],
+    limit: 100,
+  });
+  console.log("Waiter orders data:", ordersData);
+  const { data: invoicesData, refetch: refetchInvoices } =
+    useGetInvoicesQuery({ limit: 100 });
   const [createOrder, { isLoading: isCreating }] = useCreateOrderMutation();
   const [updateOrder] = useUpdateOrderMutation();
   const [removeOrderItem] = useRemoveOrderItemMutation();
   const [cancelOrderItem] = useCancelOrderItemMutation();
   const [moveOrderItem] = useMoveOrderItemMutation();
-  const [createInvoice, { isLoading: isCreatingInvoice }] = useCreateInvoiceMutation();
+  const [createInvoice, { isLoading: isCreatingInvoice }] =
+    useCreateInvoiceMutation();
   const [socketConnected, setSocketConnected] = useState(false);
-  const [creatingInvoiceOrderId, setCreatingInvoiceOrderId] = useState<string | null>(null);
+  const [creatingInvoiceOrderId, setCreatingInvoiceOrderId] = useState<
+    string | null
+  >(null);
   const [servingOrderId, setServingOrderId] = useState<string | null>(null);
   const [servingItemKey, setServingItemKey] = useState<string | null>(null);
-  const [correctingLineKey, setCorrectingLineKey] = useState<string | null>(null);
-  const [correctionQuantities, setCorrectionQuantities] = useState<Record<string, number>>({});
+  const [correctingLineKey, setCorrectingLineKey] = useState<string | null>(
+    null,
+  );
+  const [correctionQuantities, setCorrectionQuantities] = useState<
+    Record<string, number>
+  >({});
   const [step, setStep] = useState<WaiterStep>("tables");
   const [selectedTable, setSelectedTable] = useState<TableRecord | null>(null);
   const [, setExistingOrder] = useState<OrderRecord | undefined>(undefined);
   const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
-  const [composeMode, setComposeMode] = useState<WaiterComposerMode>("force-new");
+  const [pendingOrderDraft, setPendingOrderDraft] =
+    useState<PendingOrderDraft | null>(null);
+  const [showCustomerCapture, setShowCustomerCapture] = useState(false);
+  const [orderCustomerDetails, setOrderCustomerDetails] =
+    useState<OptionalCustomerDetails>({
+      customerName: "",
+      customerPhone: "",
+    });
+  const [composeMode, setComposeMode] =
+    useState<WaiterComposerMode>("force-new");
   const autoSelectedTableRef = useRef<string | null>(null);
   const routeDrivenMenu = mode === "select-items";
   const routeDrivenTableSelection = mode === "select-table";
@@ -1478,7 +2100,8 @@ function WaiterView({ onOrderPlaced, initialTableId, mode = "board" }: WaiterVie
     onEvent: (event) => {
       if (event.type === "created") {
         const table = event.order?.table;
-        const label = table?.name || (table?.number ? `Table ${table.number}` : "a table");
+        const label =
+          table?.name || (table?.number ? `Table ${table.number}` : "a table");
         showInfo(`New order - ${label}`);
         refetchOrders();
         refetchInvoices();
@@ -1486,7 +2109,8 @@ function WaiterView({ onOrderPlaced, initialTableId, mode = "board" }: WaiterVie
       } else if (event.type === "updated") {
         const status = (event.order?.status || "").toUpperCase();
         const table = event.order?.table;
-        const label = table?.name || (table?.number ? `Table ${table.number}` : "a table");
+        const label =
+          table?.name || (table?.number ? `Table ${table.number}` : "a table");
         if (status === "READY") showSuccess(`${label} ready for serve`);
         else if (status === "SERVED") showSuccess(`${label} served by waiter`);
         else if (status === "IN_PROGRESS") showInfo(`${label} cooking started`);
@@ -1503,10 +2127,19 @@ function WaiterView({ onOrderPlaced, initialTableId, mode = "board" }: WaiterVie
     },
   });
 
-  const tables = useMemo(() => (tablesData?.items || []).slice().sort((a, b) => a.number - b.number), [tablesData]);
-  const orders = useMemo(() => sortOrdersByLatest(ordersData?.items || []), [ordersData]);
+  const tables = useMemo(
+    () => (tablesData?.items || []).slice().sort((a, b) => a.number - b.number),
+    [tablesData],
+  );
+  const orders = useMemo(
+    () => sortOrdersByLatest(ordersData?.items || []),
+    [ordersData],
+  );
   const invoices = useMemo(() => invoicesData?.items || [], [invoicesData]);
-  const invoicedOrderIds = useMemo(() => new Set(invoices.map((invoice) => invoice.orderId).filter(Boolean)), [invoices]);
+  const invoicedOrderIds = useMemo(
+    () => new Set(invoices.map((invoice) => invoice.orderId).filter(Boolean)),
+    [invoices],
+  );
   const issuedInvoiceTableIds = useMemo(
     () =>
       new Set(
@@ -1521,7 +2154,9 @@ function WaiterView({ onOrderPlaced, initialTableId, mode = "board" }: WaiterVie
     () =>
       orders.filter((order) => {
         if (invoicedOrderIds.has(order.id)) return false;
-        return ["PLACED", "IN_PROGRESS", "READY", "SERVED"].includes(normalizeStatus(order.status));
+        return ["PLACED", "IN_PROGRESS", "READY", "SERVED"].includes(
+          normalizeStatus(order.status),
+        );
       }),
     [invoicedOrderIds, orders],
   );
@@ -1543,7 +2178,10 @@ function WaiterView({ onOrderPlaced, initialTableId, mode = "board" }: WaiterVie
     const tableOrders = selectedTableOrders || [];
     if (!tableOrders.length || composeMode === "force-new") return undefined;
     if (composeMode === "append-specific") {
-      return tableOrders.find((order) => order.id === selectedOrderId) || tableOrders[0];
+      return (
+        tableOrders.find((order) => order.id === selectedOrderId) ||
+        tableOrders[0]
+      );
     }
     return tableOrders[0];
   }, [composeMode, selectedOrderId, selectedTableOrders]);
@@ -1572,7 +2210,10 @@ function WaiterView({ onOrderPlaced, initialTableId, mode = "board" }: WaiterVie
       setSelectedOrderId(null);
       return;
     }
-    if (!selectedOrderId || !tableOrders.some((order) => order.id === selectedOrderId)) {
+    if (
+      !selectedOrderId ||
+      !tableOrders.some((order) => order.id === selectedOrderId)
+    ) {
       setSelectedOrderId(tableOrders[0].id);
     }
     if (tableOrders.length === 1) {
@@ -1582,7 +2223,9 @@ function WaiterView({ onOrderPlaced, initialTableId, mode = "board" }: WaiterVie
 
   function handleSelectTable(table: TableRecord) {
     if (routeDrivenTableSelection) {
-      router.push(`/dashboard/orders/items?tableId=${encodeURIComponent(table.id)}`);
+      router.push(
+        `/dashboard/orders/items?tableId=${encodeURIComponent(table.id)}`,
+      );
       return;
     }
     setSelectedTable(table);
@@ -1594,7 +2237,10 @@ function WaiterView({ onOrderPlaced, initialTableId, mode = "board" }: WaiterVie
     try {
       setCreatingInvoiceOrderId(order.id);
       const response = await createInvoice({ orderId: order.id }).unwrap();
-      showSuccess(response.message || `Invoice created for Table ${order.table?.number || ""}`);
+      showSuccess(
+        response.message ||
+          `Invoice created for Table ${order.table?.number || ""}`,
+      );
       refetchOrders();
       refetchInvoices();
       refetchTables();
@@ -1608,8 +2254,13 @@ function WaiterView({ onOrderPlaced, initialTableId, mode = "board" }: WaiterVie
   async function handleMarkServed(order: OrderRecord) {
     try {
       setServingOrderId(order.id);
-      await updateOrder({ orderId: order.id, payload: { status: "SERVED" } }).unwrap();
-      showSuccess(`${order.table?.name || `Table ${order.table?.number}`} served`);
+      await updateOrder({
+        orderId: order.id,
+        payload: { status: "SERVED" },
+      }).unwrap();
+      showSuccess(
+        `${order.table?.name || `Table ${order.table?.number}`} served`,
+      );
       refetchOrders();
       refetchTables();
     } catch (error) {
@@ -1653,8 +2304,13 @@ function WaiterView({ onOrderPlaced, initialTableId, mode = "board" }: WaiterVie
         orderId: order.id,
         payload: {
           itemStatusUpdates: readyItems
-            .filter((item): item is OrderItem & { lineId: string } => Boolean(item.lineId))
-            .map((item) => ({ lineId: item.lineId, status: "SERVED" as OrderStatus })),
+            .filter((item): item is OrderItem & { lineId: string } =>
+              Boolean(item.lineId),
+            )
+            .map((item) => ({
+              lineId: item.lineId,
+              status: "SERVED" as OrderStatus,
+            })),
         },
       }).unwrap();
       showSuccess(
@@ -1675,7 +2331,11 @@ function WaiterView({ onOrderPlaced, initialTableId, mode = "board" }: WaiterVie
     setCorrectionQuantities((current) => ({ ...current, [lineKey]: quantity }));
   }
 
-  async function handleRemovePlacedItem(order: OrderRecord, item: OrderItem, quantity: number) {
+  async function handleRemovePlacedItem(
+    order: OrderRecord,
+    item: OrderItem,
+    quantity: number,
+  ) {
     if (!item.lineId) return;
     const nextQuantity = correctionQty(item, quantity);
     try {
@@ -1683,9 +2343,14 @@ function WaiterView({ onOrderPlaced, initialTableId, mode = "board" }: WaiterVie
       await removeOrderItem({
         orderId: order.id,
         lineId: item.lineId,
-        payload: nextQuantity < item.quantity ? { quantity: nextQuantity } : undefined,
+        payload:
+          nextQuantity < item.quantity ? { quantity: nextQuantity } : undefined,
       }).unwrap();
-      showSuccess(nextQuantity < item.quantity ? `${nextQuantity} qty removed from ${item.name}` : `${item.name} removed`);
+      showSuccess(
+        nextQuantity < item.quantity
+          ? `${nextQuantity} qty removed from ${item.name}`
+          : `${item.name} removed`,
+      );
       refetchOrders();
       refetchTables();
     } catch (error) {
@@ -1699,7 +2364,10 @@ function WaiterView({ onOrderPlaced, initialTableId, mode = "board" }: WaiterVie
     if (!item.lineId) return;
     try {
       setCorrectingLineKey(`${order.id}:${item.lineId}`);
-      await cancelOrderItem({ orderId: order.id, lineId: item.lineId }).unwrap();
+      await cancelOrderItem({
+        orderId: order.id,
+        lineId: item.lineId,
+      }).unwrap();
       showSuccess(`${item.name} cancelled`);
       refetchOrders();
       refetchTables();
@@ -1710,8 +2378,14 @@ function WaiterView({ onOrderPlaced, initialTableId, mode = "board" }: WaiterVie
     }
   }
 
-  async function handleMovePlacedItem(order: OrderRecord, item: OrderItem, target: MoveTargetSelection, quantity: number) {
-    if (!item.lineId || (!target.targetOrderId && !target.targetTableId)) return;
+  async function handleMovePlacedItem(
+    order: OrderRecord,
+    item: OrderItem,
+    target: MoveTargetSelection,
+    quantity: number,
+  ) {
+    if (!item.lineId || (!target.targetOrderId && !target.targetTableId))
+      return;
     const nextQuantity = correctionQty(item, quantity);
     try {
       setCorrectingLineKey(`${order.id}:${item.lineId}`);
@@ -1737,23 +2411,45 @@ function WaiterView({ onOrderPlaced, initialTableId, mode = "board" }: WaiterVie
     }
   }
 
-  const handleConfirm = useCallback(
-    async (cart: CartEntry[], tableNote: string) => {
+  const placeOrderDraft = useCallback(
+    async (
+      draft: PendingOrderDraft,
+      skipCustomer: boolean,
+      customerDetails: OptionalCustomerDetails,
+    ) => {
       if (!selectedTable) return;
+
+      const nextCustomer = skipCustomer
+        ? { customerName: "", customerPhone: "" }
+        : {
+            customerName: customerDetails.customerName.trim(),
+            customerPhone: normalizePhoneInput(
+              customerDetails.customerPhone.trim(),
+            ),
+          };
+
+      const validationError = validateOptionalCustomer(nextCustomer);
+      if (validationError) {
+        showError(validationError);
+        return;
+      }
+
       setStep("placing");
       try {
-        const items = cart.map((e) => ({
-          itemId: e.itemId,
-          ...(e.variantId ? { variantId: e.variantId } : {}),
-          quantity: e.quantity,
-          ...(e.note ? { note: e.note } : {}),
+        const items = draft.cart.map((entry) => ({
+          itemId: entry.itemId,
+          ...(entry.variantId ? { variantId: entry.variantId } : {}),
+          quantity: entry.quantity,
+          ...(entry.note ? { note: entry.note } : {}),
           optionIds: [],
         }));
 
-        // API_REFERENCE.md: incremental add should use POST /orders.
         const payload = {
           tableId: selectedTable.id,
-          ...(tableNote ? { note: tableNote } : {}),
+          ...(draft.tableNote ? { note: draft.tableNote } : {}),
+          ...(nextCustomer.customerName && nextCustomer.customerPhone
+            ? nextCustomer
+            : {}),
           items,
           ...(composeMode === "force-new"
             ? { forceNew: true }
@@ -1761,7 +2457,10 @@ function WaiterView({ onOrderPlaced, initialTableId, mode = "board" }: WaiterVie
               ? { appendToOrderId: currentExistingOrder.id }
               : {}),
         };
+
         await createOrder(payload).unwrap();
+        setShowCustomerCapture(false);
+        setPendingOrderDraft(null);
         showSuccess(
           composeMode === "force-new"
             ? "New order created successfully!"
@@ -1778,32 +2477,85 @@ function WaiterView({ onOrderPlaced, initialTableId, mode = "board" }: WaiterVie
         setExistingOrder(undefined);
         setSelectedOrderId(null);
         setComposeMode("force-new");
-      } catch (e) {
-        showError(getErrorMessage(e));
-        setStep("menu");
+      } catch (error) {
+      showError(getErrorMessage(error));
+      setStep("menu");
       }
     },
-    [composeMode, createOrder, currentExistingOrder, onOrderPlaced, refetchInvoices, refetchOrders, refetchTables, selectedTable],
+    [
+      composeMode,
+      createOrder,
+      currentExistingOrder,
+      onOrderPlaced,
+      refetchInvoices,
+      refetchOrders,
+      refetchTables,
+      selectedTable,
+    ],
+  );
+
+  const handlePlacePendingOrder = useCallback(
+    async (skipCustomer: boolean) => {
+      if (!pendingOrderDraft) return;
+      await placeOrderDraft(
+        pendingOrderDraft,
+        skipCustomer,
+        orderCustomerDetails,
+      );
+    },
+    [orderCustomerDetails, pendingOrderDraft, placeOrderDraft],
+  );
+
+  const handleConfirm = useCallback(
+    async (cart: CartEntry[], tableNote: string) => {
+      const isAppendingToExistingOrder =
+        composeMode !== "force-new" && Boolean(currentExistingOrder?.id);
+      const draft = { cart, tableNote };
+      const customerDetails = {
+        customerName: currentExistingOrder?.customerName || "",
+        customerPhone: currentExistingOrder?.customerPhone || "",
+      };
+
+      if (isAppendingToExistingOrder) {
+        void placeOrderDraft(draft, false, customerDetails);
+        return;
+      }
+
+      setPendingOrderDraft(draft);
+      setOrderCustomerDetails(customerDetails);
+      setShowCustomerCapture(true);
+    },
+    [composeMode, currentExistingOrder, placeOrderDraft],
   );
 
   return (
     <div className="flex h-full flex-col">
       <WaiterLiveHeader connected={socketConnected} />
       {/* Step indicator */}
-      {mode === "board" ? <div className="mb-4 flex items-center gap-2">
-        {(["tables", "menu"] as const).map((s, i) => (
-          <div key={s} className="flex items-center gap-2">
-            <div className={`flex h-7 w-7 items-center justify-center rounded-full text-xs font-bold ${step === s || (step === "placing" && s === "menu") ? "bg-amber-500 text-white" : step === "menu" && s === "tables" ? "bg-emerald-500 text-white" : "bg-slate-200 text-slate-500"}`}>
-              {step === "menu" && s === "tables" ? "✓" : i + 1}
+      {mode === "board" ? (
+        <div className="mb-4 flex items-center gap-2">
+          {(["tables", "menu"] as const).map((s, i) => (
+            <div key={s} className="flex items-center gap-2">
+              <div
+                className={`flex h-7 w-7 items-center justify-center rounded-full text-xs font-bold ${step === s || (step === "placing" && s === "menu") ? "bg-amber-500 text-white" : step === "menu" && s === "tables" ? "bg-emerald-500 text-white" : "bg-slate-200 text-slate-500"}`}
+              >
+                {step === "menu" && s === "tables" ? "✓" : i + 1}
+              </div>
+              <span
+                className={`text-xs font-medium ${step === s ? "text-slate-900" : "text-slate-400"}`}
+              >
+                {s === "tables" ? "Pick Table" : "Select Items"}
+              </span>
+              {i < 1 && <div className="h-px w-4 bg-slate-300" />}
             </div>
-            <span className={`text-xs font-medium ${step === s ? "text-slate-900" : "text-slate-400"}`}>{s === "tables" ? "Pick Table" : "Select Items"}</span>
-            {i < 1 && <div className="h-px w-4 bg-slate-300" />}
-          </div>
-        ))}
-      </div> : null}
+          ))}
+        </div>
+      ) : null}
 
       {step === "tables" && !routeDrivenMenu && (
-        <div className={`grid gap-4 ${mode === "board" ? "xl:grid-cols-[minmax(0,1.15fr)_minmax(0,0.85fr)] xl:items-start" : ""}`}>
+        <div
+          className={`grid gap-4 ${mode === "board" ? "xl:grid-cols-[minmax(0,1.15fr)_minmax(0,0.85fr)] xl:items-start" : ""}`}
+        >
           {!waiterLiveOnly ? (
             <TableGrid
               tables={tables}
@@ -1819,8 +2571,13 @@ function WaiterView({ onOrderPlaced, initialTableId, mode = "board" }: WaiterVie
               {waiterLiveOnly ? (
                 <div className="flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-slate-200 bg-white p-4">
                   <div>
-                    <p className="text-sm font-semibold text-slate-900">Waiter Live Orders</p>
-                    <p className="text-xs text-slate-500">Serve ready items yahin se karo. New order ke liye table selection alag page me hai.</p>
+                    <p className="text-sm font-semibold text-slate-900">
+                      Waiter Live Orders
+                    </p>
+                    <p className="text-xs text-slate-500">
+                      Serve ready items yahin se karo. New order ke liye table
+                      selection alag page me hai.
+                    </p>
                   </div>
                   <button
                     type="button"
@@ -1831,26 +2588,26 @@ function WaiterView({ onOrderPlaced, initialTableId, mode = "board" }: WaiterVie
                   </button>
                 </div>
               ) : null}
-            <WaiterActionBoard
-              orders={waiterActionOrders}
-              allOrders={orders}
-              tables={tables}
-              appendSignals={appendSignals}
-              servingOrderId={servingOrderId}
-              servingItemKey={servingItemKey}
-              creatingInvoiceOrderId={creatingInvoiceOrderId}
-              onMarkServed={handleMarkServed}
-              onMarkItemServed={handleMarkItemServed}
-              onMarkReadyItemsServed={handleMarkReadyItemsServed}
-              onCreateInvoice={handleCreateInvoice}
-              correctingLineKey={correctingLineKey}
-              correctionQuantities={correctionQuantities}
-              onCorrectionQuantityChange={handleCorrectionQuantityChange}
-              onRemovePlacedItem={handleRemovePlacedItem}
-              onCancelPlacedItem={handleCancelPlacedItem}
-              onMovePlacedItem={handleMovePlacedItem}
-              className="mt-0"
-            />
+              <WaiterActionBoard
+                orders={waiterActionOrders}
+                allOrders={orders}
+                tables={tables}
+                appendSignals={appendSignals}
+                servingOrderId={servingOrderId}
+                servingItemKey={servingItemKey}
+                creatingInvoiceOrderId={creatingInvoiceOrderId}
+                onMarkServed={handleMarkServed}
+                onMarkItemServed={handleMarkItemServed}
+                onMarkReadyItemsServed={handleMarkReadyItemsServed}
+                onCreateInvoice={handleCreateInvoice}
+                correctingLineKey={correctingLineKey}
+                correctionQuantities={correctionQuantities}
+                onCorrectionQuantityChange={handleCorrectionQuantityChange}
+                onRemovePlacedItem={handleRemovePlacedItem}
+                onCancelPlacedItem={handleCancelPlacedItem}
+                onMovePlacedItem={handleMovePlacedItem}
+                className="mt-0"
+              />
             </div>
           ) : null}
         </div>
@@ -1862,7 +2619,11 @@ function WaiterView({ onOrderPlaced, initialTableId, mode = "board" }: WaiterVie
             <div className="absolute inset-0 z-10 flex items-center justify-center rounded-2xl bg-white/80 backdrop-blur">
               <div className="flex flex-col items-center gap-3 text-slate-600">
                 <Spinner />
-                <p className="text-sm font-medium">{isCreating || isCreatingInvoice ? "Placing order..." : "Done!"}</p>
+                <p className="text-sm font-medium">
+                  {isCreating || isCreatingInvoice
+                    ? "Placing order..."
+                    : "Done!"}
+                </p>
               </div>
             </div>
           )}
@@ -1895,8 +2656,12 @@ function WaiterView({ onOrderPlaced, initialTableId, mode = "board" }: WaiterVie
       )}
       {routeDrivenMenu && !selectedTable ? (
         <div className="rounded-2xl border border-dashed border-slate-300 bg-white p-8 text-center">
-          <p className="text-sm font-semibold text-slate-900">Table not selected</p>
-          <p className="mt-1 text-xs text-slate-500">Pehle table choose karo, phir items add karo.</p>
+          <p className="text-sm font-semibold text-slate-900">
+            Table not selected
+          </p>
+          <p className="mt-1 text-xs text-slate-500">
+            Pehle table choose karo, phir items add karo.
+          </p>
           <button
             type="button"
             onClick={() => router.push("/dashboard/orders/new")}
@@ -1906,6 +2671,84 @@ function WaiterView({ onOrderPlaced, initialTableId, mode = "board" }: WaiterVie
           </button>
         </div>
       ) : null}
+
+      {showCustomerCapture ? (
+        <div className="fixed inset-0 z-[70] flex items-end justify-center bg-slate-900/55 p-0 sm:items-center sm:p-4">
+          <button
+            type="button"
+            className="absolute inset-0"
+            onClick={() => {
+              setShowCustomerCapture(false);
+              setPendingOrderDraft(null);
+            }}
+            aria-label="Close customer details"
+          />
+          <div className="relative z-10 w-full rounded-t-3xl border border-[#e4d6bf] bg-[#fffaf2] p-5 shadow-2xl sm:max-w-lg sm:rounded-3xl">
+            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+              Optional Customer
+            </p>
+            <h3 className="mt-1 text-lg font-semibold text-slate-900">
+              Add customer details before placing order
+            </h3>
+            <p className="mt-1 text-sm text-slate-600">
+              Name aur phone optional hain. `Skip` se bina customer ke order place
+              hoga, `Proceed` se customer info ke saath.
+            </p>
+
+            <div className="mt-4 grid gap-3">
+              <label className="text-sm text-slate-700">
+                <span className="mb-1 block text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">
+                  Customer Name
+                </span>
+                <input
+                  value={orderCustomerDetails.customerName}
+                  onChange={(event) =>
+                    setOrderCustomerDetails((current) => ({
+                      ...current,
+                      customerName: event.target.value,
+                    }))
+                  }
+                  placeholder="Optional guest name"
+                  className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm outline-none ring-amber-200 focus:ring-2"
+                />
+              </label>
+              <label className="text-sm text-slate-700">
+                <span className="mb-1 block text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">
+                  Customer Phone
+                </span>
+                <input
+                  value={orderCustomerDetails.customerPhone}
+                  onChange={(event) =>
+                    setOrderCustomerDetails((current) => ({
+                      ...current,
+                      customerPhone: normalizePhoneInput(event.target.value),
+                    }))
+                  }
+                  placeholder="Optional WhatsApp / phone number"
+                  className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm outline-none ring-amber-200 focus:ring-2"
+                />
+              </label>
+            </div>
+
+            <div className="mt-5 flex flex-wrap justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => handlePlacePendingOrder(true)}
+                className="rounded-2xl border border-slate-300 bg-white px-4 py-3 text-sm font-semibold text-slate-700"
+              >
+                Skip
+              </button>
+              <button
+                type="button"
+                onClick={() => handlePlacePendingOrder(false)}
+                className="rounded-2xl bg-slate-900 px-4 py-3 text-sm font-semibold text-white"
+              >
+                Proceed And Place Order
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -1913,8 +2756,10 @@ function WaiterView({ onOrderPlaced, initialTableId, mode = "board" }: WaiterVie
 // ─── Waiter Live Header bar ───────────────────────────────────────────────────
 function WaiterLiveHeader({ connected }: { connected: boolean }) {
   return (
-    <div className="mb-3 flex items-center justify-between">
-      <p className="text-xs text-slate-500">Notifications &amp; sound enabled</p>
+    <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+      <p className="text-xs text-slate-500">
+        Notifications &amp; sound enabled
+      </p>
       <LiveBadge connected={connected} />
     </div>
   );
@@ -1941,7 +2786,11 @@ function OrderCard({
   order: OrderRecord;
   role: RoleKey;
   onStatusChange: (orderId: string, status: OrderStatus) => void;
-  onItemStatusChange: (order: OrderRecord, item: OrderItem, status: OrderStatus) => void;
+  onItemStatusChange: (
+    order: OrderRecord,
+    item: OrderItem,
+    status: OrderStatus,
+  ) => void;
   onBatchServeReady: (order: OrderRecord) => void;
   onDelete: (orderId: string) => void;
   updatingItemKey?: string | null;
@@ -1960,9 +2809,20 @@ function OrderCard({
   const batchServeKey = orderBatchActionKey(order.id, "SERVED");
   const showExpanded = expanded || hasMixedItemStatuses;
 
-
   return (
-    <div className={`rounded-2xl border bg-white transition ${compact ? "p-3" : "p-4"}`} style={{ borderColor: order.status === "PLACED" ? "#fcd34d" : order.status === "IN_PROGRESS" ? "#fca5a5" : order.status === "READY" ? "#6ee7b7" : "#e2e8f0" }}>
+    <div
+      className={`rounded-2xl border bg-white transition ${compact ? "p-3" : "p-4"}`}
+      style={{
+        borderColor:
+          order.status === "PLACED"
+            ? "#fcd34d"
+            : order.status === "IN_PROGRESS"
+              ? "#fca5a5"
+              : order.status === "READY"
+                ? "#6ee7b7"
+                : "#e2e8f0",
+      }}
+    >
       <div className="flex items-start gap-3">
         {/* Table badge */}
         <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-slate-100 text-sm font-bold text-slate-700">
@@ -1970,8 +2830,12 @@ function OrderCard({
         </div>
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-1.5">
-            <p className="text-sm font-bold text-slate-900">{order.table?.name || `Table ${order.table?.number}`}</p>
-            <span className={`rounded-full border px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide ${statusBadgeClass(order.status)}`}>
+            <p className="text-sm font-bold text-slate-900">
+              {order.table?.name || `Table ${order.table?.number}`}
+            </p>
+            <span
+              className={`rounded-full border px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide ${statusBadgeClass(order.status)}`}
+            >
               {STATUS_LABELS[order.status] || order.status}
             </span>
             {hasMixedItemStatuses ? (
@@ -1980,12 +2844,28 @@ function OrderCard({
               </span>
             ) : null}
           </div>
-          <p className="mt-0.5 text-xs text-slate-500">{order.items.length} item{order.items.length !== 1 ? "s" : ""} · {fmtCurrency(order.grandTotal ?? order.subTotal)} · {timeAgo(order.createdAt)}</p>
-          {order.note && <p className="mt-0.5 text-xs italic text-slate-400">{`"${order.note}"`}</p>}
+          <p className="mt-0.5 text-xs text-slate-500">
+            {order.items.length} item{order.items.length !== 1 ? "s" : ""} ·{" "}
+            {fmtCurrency(order.grandTotal ?? order.subTotal)} ·{" "}
+            {timeAgo(order.createdAt)}
+          </p>
+          {order.note && (
+            <p className="mt-0.5 text-xs italic text-slate-400">{`"${order.note}"`}</p>
+          )}
         </div>
         {/* Expand */}
-        <button type="button" onClick={() => setExpanded((v) => !v)} className="shrink-0 text-slate-400 hover:text-slate-700">
-          <svg viewBox="0 0 24 24" className={`h-4 w-4 transition-transform ${showExpanded ? "rotate-180" : ""}`} fill="none" stroke="currentColor" strokeWidth="2">
+        <button
+          type="button"
+          onClick={() => setExpanded((v) => !v)}
+          className="shrink-0 text-slate-400 hover:text-slate-700"
+        >
+          <svg
+            viewBox="0 0 24 24"
+            className={`h-4 w-4 transition-transform ${showExpanded ? "rotate-180" : ""}`}
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+          >
             <path d="M6 9l6 6 6-6" />
           </svg>
         </button>
@@ -1996,8 +2876,13 @@ function OrderCard({
         <div className="mt-3 space-y-1 border-t border-slate-100 pt-3">
           {order.items.map((item, i) => (
             <div key={i} className="flex justify-between text-xs">
-              <span className="text-slate-700">{item.quantity}× {item.name}{item.variantName ? ` (${item.variantName})` : ""}</span>
-              <span className="text-slate-500">{fmtCurrency(item.lineTotal ?? item.unitPrice * item.quantity)}</span>
+              <span className="text-slate-700">
+                {item.quantity}× {item.name}
+                {item.variantName ? ` (${item.variantName})` : ""}
+              </span>
+              <span className="text-slate-500">
+                {fmtCurrency(item.lineTotal ?? item.unitPrice * item.quantity)}
+              </span>
             </div>
           ))}
           {order.grandTotal != null && (
@@ -2010,28 +2895,30 @@ function OrderCard({
       )}
 
       {/* Actions */}
-      {(canEdit || canDelete) && order.status !== "SERVED" && order.status !== "CANCELLED" && (
-        <div className="mt-3 flex gap-2">
-          {nextStatus && (
-            <button
-              type="button"
-              onClick={() => onStatusChange(order.id, nextStatus)}
-              className="flex-1 rounded-xl bg-amber-500 py-2 text-xs font-bold text-white shadow-sm shadow-amber-200 active:scale-95 transition"
-            >
-              Mark {STATUS_LABELS[nextStatus] || nextStatus}
-            </button>
-          )}
-          {canDelete && (
-            <button
-              type="button"
-              onClick={() => onDelete(order.id)}
-              className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-bold text-rose-700 active:scale-95 transition"
-            >
-              Delete
-            </button>
-          )}
-        </div>
-      )}
+      {(canEdit || canDelete) &&
+        order.status !== "SERVED" &&
+        order.status !== "CANCELLED" && (
+          <div className="mt-3 flex gap-2">
+            {nextStatus && (
+              <button
+                type="button"
+                onClick={() => onStatusChange(order.id, nextStatus)}
+                className="flex-1 rounded-xl bg-amber-500 py-2 text-xs font-bold text-white shadow-sm shadow-amber-200 active:scale-95 transition"
+              >
+                Mark {STATUS_LABELS[nextStatus] || nextStatus}
+              </button>
+            )}
+            {canDelete && (
+              <button
+                type="button"
+                onClick={() => onDelete(order.id)}
+                className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-bold text-rose-700 active:scale-95 transition"
+              >
+                Delete
+              </button>
+            )}
+          </div>
+        )}
     </div>
   );
 }
@@ -2061,15 +2948,28 @@ function SmartOrderCard({
   tables: TableRecord[];
   role: RoleKey;
   onStatusChange: (orderId: string, status: OrderStatus) => void;
-  onItemStatusChange: (order: OrderRecord, item: OrderItem, status: OrderStatus) => void;
+  onItemStatusChange: (
+    order: OrderRecord,
+    item: OrderItem,
+    status: OrderStatus,
+  ) => void;
   onBatchServeReady: (order: OrderRecord) => void;
   onDelete: (orderId: string) => void;
   correctionQuantities: Record<string, number>;
   correctingLineKey?: string | null;
   onCorrectionQuantityChange: (lineKey: string, quantity: number) => void;
-  onRemovePlacedItem: (order: OrderRecord, item: OrderItem, quantity: number) => void;
+  onRemovePlacedItem: (
+    order: OrderRecord,
+    item: OrderItem,
+    quantity: number,
+  ) => void;
   onCancelPlacedItem: (order: OrderRecord, item: OrderItem) => void;
-  onMovePlacedItem: (order: OrderRecord, item: OrderItem, target: MoveTargetSelection, quantity: number) => void;
+  onMovePlacedItem: (
+    order: OrderRecord,
+    item: OrderItem,
+    target: MoveTargetSelection,
+    quantity: number,
+  ) => void;
   updatingItemKey?: string | null;
   compact?: boolean;
 }) {
@@ -2082,24 +2982,43 @@ function SmartOrderCard({
     .filter(Boolean);
   const hasMixedItemStatuses = new Set(itemStatuses).size > 1;
   const hasEditableItems = activeOrderItems(order).some(
-    (item) => Boolean(item.lineId) && canCorrectOrderItemStatus(item.status),
+    (item) =>
+      Boolean(item.lineId) &&
+      canCorrectOrderItemStatus(item.status) &&
+      order.status !== "CANCELLED" &&
+      order.status !== "COMPLETED",
   );
   const readyItems = getServeableReadyItems(order);
   const batchServeKey = orderBatchActionKey(order.id, "SERVED");
   const showExpanded = expanded || hasMixedItemStatuses || hasEditableItems;
   const customerLabel = orderCustomerLabel(order);
 
-
   return (
-    <div className={`rounded-2xl border bg-white transition ${compact ? "p-3" : "p-4"}`} style={{ borderColor: order.status === "PLACED" ? "#fcd34d" : order.status === "IN_PROGRESS" ? "#fca5a5" : order.status === "READY" ? "#6ee7b7" : "#e2e8f0" }}>
+    <div
+      className={`rounded-2xl border bg-white transition ${compact ? "p-3" : "p-4"}`}
+      style={{
+        borderColor:
+          order.status === "PLACED"
+            ? "#fcd34d"
+            : order.status === "IN_PROGRESS"
+              ? "#fca5a5"
+              : order.status === "READY"
+                ? "#6ee7b7"
+                : "#e2e8f0",
+      }}
+    >
       <div className="flex items-start gap-3">
         <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-slate-100 text-sm font-bold text-slate-700">
           T{order.table?.number ?? "?"}
         </div>
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-1.5">
-            <p className="text-sm font-bold text-slate-900">{order.table?.name || `Table ${order.table?.number}`}</p>
-            <span className={`rounded-full border px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide ${statusBadgeClass(order.status)}`}>
+            <p className="text-sm font-bold text-slate-900">
+              {order.table?.name || `Table ${order.table?.number}`}
+            </p>
+            <span
+              className={`rounded-full border px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide ${statusBadgeClass(order.status)}`}
+            >
               {STATUS_LABELS[order.status] || order.status}
             </span>
             {hasMixedItemStatuses ? (
@@ -2113,16 +3032,32 @@ function SmartOrderCard({
               </span>
             ) : null}
           </div>
-          <p className="mt-0.5 text-xs text-slate-500">{order.items.length} item{order.items.length !== 1 ? "s" : ""} | {fmtCurrency(order.grandTotal ?? order.subTotal)} | {timeAgo(order.createdAt)}</p>
+          <p className="mt-0.5 text-xs text-slate-500">
+            {order.items.length} item{order.items.length !== 1 ? "s" : ""} |{" "}
+            {fmtCurrency(order.grandTotal ?? order.subTotal)} |{" "}
+            {timeAgo(order.createdAt)}
+          </p>
           {customerLabel ? (
             <p className="mt-1 inline-flex rounded-full border border-sky-200 bg-sky-50 px-2 py-0.5 text-[10px] font-semibold text-sky-800">
               Customer order: {customerLabel}
             </p>
           ) : null}
-          {order.note && <p className="mt-0.5 text-xs italic text-slate-400">{`\"${order.note}\"`}</p>}
+          {order.note && (
+            <p className="mt-0.5 text-xs italic text-slate-400">{`\"${order.note}\"`}</p>
+          )}
         </div>
-        <button type="button" onClick={() => setExpanded((value) => !value)} className="shrink-0 text-slate-400 hover:text-slate-700">
-          <svg viewBox="0 0 24 24" className={`h-4 w-4 transition-transform ${showExpanded ? "rotate-180" : ""}`} fill="none" stroke="currentColor" strokeWidth="2">
+        <button
+          type="button"
+          onClick={() => setExpanded((value) => !value)}
+          className="shrink-0 text-slate-400 hover:text-slate-700"
+        >
+          <svg
+            viewBox="0 0 24 24"
+            className={`h-4 w-4 transition-transform ${showExpanded ? "rotate-180" : ""}`}
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+          >
             <path d="M6 9l6 6 6-6" />
           </svg>
         </button>
@@ -2130,139 +3065,312 @@ function SmartOrderCard({
 
       {showExpanded && (
         <div className="mt-3 space-y-1 border-t border-slate-100 pt-3">
-          {hasEditableItems ? (
-            <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] font-semibold text-amber-800">
-              Item correction: `PLACED`, `IN_PROGRESS`, `READY`, `SERVED` items ke liye niche correction options available hain.
-            </div>
-          ) : null}
           {order.items.map((item, index) => {
-            const itemNextStatus = canEdit ? nextOrderItemStatus(item.status, role) : undefined;
+            const itemNextStatus = canEdit
+              ? nextOrderItemStatus(item.status, role)
+              : undefined;
             const itemActionKey = item.lineId
               ? orderItemActionKey(order.id, item.lineId, itemNextStatus)
               : null;
-            const correctionKey = item.lineId ? `${order.id}:${item.lineId}` : null;
-            const correctionValue = correctionQty(item, correctionKey ? correctionQuantities[correctionKey] : undefined);
-            const canCorrectItem = Boolean(item.lineId) && canCorrectOrderItemStatus(item.status);
+            const correctionKey = item.lineId
+              ? `${order.id}:${item.lineId}`
+              : null;
+            const correctionValue = correctionQty(
+              item,
+              correctionKey ? correctionQuantities[correctionKey] : undefined,
+            );
+            const canCorrectItem =
+              Boolean(item.lineId) &&
+              canCorrectOrderItemStatus(item.status) &&
+              order.status !== "COMPLETED";
             const moveTargets = allOrders.filter(
               (candidate) =>
                 candidate.id !== order.id &&
-                (candidate.table?.id || candidate.tableId) === (order.table?.id || order.tableId) &&
-                ["PLACED", "IN_PROGRESS", "READY", "SERVED"].includes(normalizeStatus(candidate.status)),
+                (candidate.table?.id || candidate.tableId) ===
+                  (order.table?.id || order.tableId) &&
+                ["PLACED", "IN_PROGRESS", "READY", "SERVED"].includes(
+                  normalizeStatus(candidate.status),
+                ),
             );
-            const tableTargets = tables.filter((table) => table.id !== (order.table?.id || order.tableId));
+            const tableTargets = tables.filter(
+              (table) => table.id !== (order.table?.id || order.tableId),
+            );
 
             return (
-              <div key={`${item.itemId}-${item.variantId || "base"}-${index}`} className="space-y-2 rounded-xl border border-slate-100 bg-slate-50/70 p-2.5 text-xs">
+              <div
+                key={`${item.itemId}-${item.variantId || "base"}-${index}`}
+                className="space-y-2 rounded-xl border border-slate-100 bg-slate-50/70 p-2.5 text-xs"
+              >
                 <div className="flex flex-wrap items-start justify-between gap-2">
-                <div className="min-w-0 flex-1">
-                  <div className="flex flex-wrap items-center gap-1.5">
-                    <span className="text-slate-700">
-                      {item.quantity}x {item.name}
-                      {item.variantName ? ` (${item.variantName})` : ""}
-                    </span>
-                    <span className={`rounded-full border px-2 py-0.5 text-[10px] font-semibold ${itemStatusClass(item.status)}`}>
-                      {itemStatusLabel(item.status)}
-                    </span>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      <span className="text-slate-700">
+                        {item.quantity}x {item.name}
+                        {item.variantName ? ` (${item.variantName})` : ""}
+                      </span>
+                      <span
+                        className={`rounded-full border px-2 py-0.5 text-[10px] font-semibold ${itemStatusClass(item.status)}`}
+                      >
+                        {itemStatusLabel(item.status)}
+                      </span>
+                    </div>
+
+                    {item.note ? (
+                      <p className="mt-0.5 italic text-amber-700">
+                        {item.note}
+                      </p>
+                    ) : null}
                   </div>
-                  <p className="mt-1 text-[11px] font-medium text-slate-500">
-                    Status: {itemStatusLabel(item.status)}
-                  </p>
-                  {item.note ? <p className="mt-0.5 italic text-amber-700">{item.note}</p> : null}
-                </div>
-                <div className="flex shrink-0 items-center gap-2">
-                  <span className="text-slate-500">{fmtCurrency(item.lineTotal ?? item.unitPrice * item.quantity)}</span>
-                  {canEdit && item.lineId && itemNextStatus ? (
-                    <button
-                      type="button"
-                      onClick={() => onItemStatusChange(order, item, itemNextStatus)}
-                      disabled={updatingItemKey === itemActionKey}
-                      className={`rounded-lg border px-2.5 py-1 text-[11px] font-semibold disabled:opacity-50 ${
-                        itemNextStatus === "SERVED"
-                          ? "border-emerald-300 bg-emerald-50 text-emerald-800"
-                          : "border-slate-300 bg-slate-100 text-slate-700"
-                      }`}
-                    >
-                      {updatingItemKey === itemActionKey ? "Updating..." : orderItemActionLabel(itemNextStatus)}
-                    </button>
-                  ) : null}
-                </div>
+                  <div className="flex shrink-0 items-center gap-2">
+                    <span className="text-slate-500">
+                      {fmtCurrency(
+                        item.lineTotal ?? item.unitPrice * item.quantity,
+                      )}
+                    </span>
+                    {canEdit && item.lineId && itemNextStatus ? (
+                      <button
+                        type="button"
+                        onClick={() =>
+                          onItemStatusChange(order, item, itemNextStatus)
+                        }
+                        disabled={updatingItemKey === itemActionKey}
+                        className={`rounded-lg border px-2.5 py-1 text-[11px] font-semibold disabled:opacity-50 ${
+                          itemNextStatus === "SERVED"
+                            ? "border-emerald-300 bg-emerald-50 text-emerald-800"
+                            : "border-slate-300 bg-slate-100 text-slate-700"
+                        }`}
+                      >
+                        {updatingItemKey === itemActionKey
+                          ? "Updating..."
+                          : orderItemActionLabel(itemNextStatus)}
+                      </button>
+                    ) : null}
+                  </div>
                 </div>
                 {canCorrectItem ? (
-                  <div className="flex flex-wrap items-center gap-2">
-                    {item.quantity > 1 ? (
-                      <select
-                        value={String(correctionValue)}
-                        disabled={correctingLineKey === correctionKey}
-                        onChange={(event) =>
-                          onCorrectionQuantityChange(correctionKey as string, Number(event.target.value) || 1)
-                        }
-                        className="rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-semibold text-slate-700 disabled:opacity-50"
-                      >
-                        {Array.from({ length: item.quantity }, (_, idx) => idx + 1).map((qty) => (
-                          <option key={qty} value={qty}>
-                            Qty {qty}
-                          </option>
-                        ))}
-                      </select>
-                    ) : null}
-                    {moveTargets.length > 0 ? (
+                  <div className="flex items-center gap-1.5">
+                    {/* Exchange order */}
+                    {moveTargets.length > 0 && (
                       <select
                         defaultValue=""
                         disabled={correctingLineKey === correctionKey}
-                        onChange={(event) => {
-                          const targetOrderId = event.target.value;
-                          if (!targetOrderId) return;
-                          onMovePlacedItem(order, item, { targetOrderId }, correctionValue);
-                          event.currentTarget.value = "";
+                        onChange={(e) => {
+                          if (!e.target.value) return;
+                          onMovePlacedItem(
+                            order,
+                            item,
+                            { targetOrderId: e.target.value },
+                            correctionValue,
+                          );
+                          e.currentTarget.value = "";
                         }}
-                        className="rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-semibold text-slate-700 disabled:opacity-50"
+                        title="Move to another order"
+                        className="h-6 rounded-md border border-slate-200 bg-white px-1.5 text-[10px] font-medium text-slate-600 disabled:opacity-40"
                       >
-                        <option value="">Exchange</option>
-                        {moveTargets.map((candidate) => (
-                          <option key={candidate.id} value={candidate.id}>
-                            {candidate.orderNumber ? `#${candidate.orderNumber}` : candidate.id.slice(-4)}
+                        <option value="">↔ Order</option>
+                        {moveTargets.map((c) => (
+                          <option key={c.id} value={c.id}>
+                            #{c.orderNumber || c.id.slice(-4)}
                           </option>
                         ))}
                       </select>
-                    ) : null}
-                    {tableTargets.length > 0 ? (
+                    )}
+
+                    {/* Exchange table */}
+                    {tableTargets.length > 0 && (
                       <select
                         defaultValue=""
                         disabled={correctingLineKey === correctionKey}
-                        onChange={(event) => {
-                          const targetTableId = event.target.value;
-                          if (!targetTableId) return;
-                          onMovePlacedItem(order, item, { targetTableId }, correctionValue);
-                          event.currentTarget.value = "";
+                        onChange={(e) => {
+                          if (!e.target.value) return;
+                          onMovePlacedItem(
+                            order,
+                            item,
+                            { targetTableId: e.target.value },
+                            correctionValue,
+                          );
+                          e.currentTarget.value = "";
                         }}
-                        className="rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-semibold text-slate-700 disabled:opacity-50"
+                        title="Move to another table"
+                        className="h-6 rounded-md border border-slate-200 bg-white px-1.5 text-[10px] font-medium text-slate-600 disabled:opacity-40"
                       >
-                        <option value="">Exchange Table</option>
-                        {tableTargets.map((table) => (
-                          <option key={table.id} value={table.id}>
-                            T{table.number}
+                        <option value="">⇄ Table</option>
+                        {tableTargets.map((t) => (
+                          <option key={t.id} value={t.id}>
+                            T{t.number}
                           </option>
                         ))}
                       </select>
-                    ) : null}
+                    )}
+
+                    {/* Divider */}
+                    <div className="h-4 w-px bg-slate-200" />
+
+                    {/* Reduce / Remove */}
                     <button
                       type="button"
-                      onClick={() => onRemovePlacedItem(order, item, correctionValue)}
+                      title={
+                        item.quantity > 1
+                          ? `Reduce by ${correctionValue}`
+                          : "Remove item"
+                      }
+                      onClick={() =>
+                        onRemovePlacedItem(order, item, correctionValue)
+                      }
                       disabled={correctingLineKey === correctionKey}
-                      className="rounded-lg border border-rose-200 bg-rose-50 px-2.5 py-1 text-[11px] font-semibold text-rose-700 disabled:opacity-50"
+                      className="flex h-6 w-6 items-center justify-center rounded-md border border-rose-200 bg-rose-50 text-rose-600 hover:bg-rose-100 disabled:opacity-40"
                     >
-                      {item.quantity > 1 ? `Reduce ${correctionValue}` : "Remove Item"}
+                      {item.quantity > 1 ? (
+                        <svg
+                          viewBox="0 0 16 16"
+                          className="h-3 w-3"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="2.5"
+                        >
+                          <path d="M3 8h10" />
+                        </svg>
+                      ) : (
+                        <svg
+                          viewBox="0 0 16 16"
+                          className="h-3 w-3"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="1.8"
+                        >
+                          <path d="M3 4h10M6 4V3h4v1M5 4v8a1 1 0 001 1h4a1 1 0 001-1V4" />
+                        </svg>
+                      )}
                     </button>
+
+                    {/* Cancel */}
                     <button
                       type="button"
+                      title="Cancel item"
                       onClick={() => onCancelPlacedItem(order, item)}
                       disabled={correctingLineKey === correctionKey}
-                      className="rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-semibold text-slate-700 disabled:opacity-50"
+                      className="flex h-6 w-6 items-center justify-center rounded-md border border-slate-200 bg-white text-slate-400 hover:bg-slate-100 disabled:opacity-40"
                     >
-                      Cancel Item
+                      <svg
+                        viewBox="0 0 16 16"
+                        className="h-3 w-3"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="2.5"
+                      >
+                        <path d="M3 3l10 10M13 3L3 13" />
+                      </svg>
                     </button>
                   </div>
-                ) : null}
+                ) : // <div className="flex flex-wrap items-center gap-2">
+                //   {moveTargets.length > 0 ? (
+                //     <select
+                //       defaultValue=""
+                //       disabled={correctingLineKey === correctionKey}
+                //       onChange={(event) => {
+                //         const targetOrderId = event.target.value;
+                //         if (!targetOrderId) return;
+                //         onMovePlacedItem(
+                //           order,
+                //           item,
+                //           { targetOrderId },
+                //           correctionValue,
+                //         );
+                //         event.currentTarget.value = "";
+                //       }}
+                //       className="rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-semibold text-slate-700 disabled:opacity-50"
+                //     >
+                //       <option value="">Exchange</option>
+                //       {moveTargets.map((candidate) => (
+                //         <option key={candidate.id} value={candidate.id}>
+                //           {candidate.orderNumber
+                //             ? `#${candidate.orderNumber}`
+                //             : candidate.id.slice(-4)}
+                //         </option>
+                //       ))}
+                //     </select>
+                //   ) : null}
+                //   {tableTargets.length > 0 ? (
+                //     <select
+                //       defaultValue=""
+                //       disabled={correctingLineKey === correctionKey}
+                //       onChange={(event) => {
+                //         const targetTableId = event.target.value;
+                //         if (!targetTableId) return;
+                //         onMovePlacedItem(
+                //           order,
+                //           item,
+                //           { targetTableId },
+                //           correctionValue,
+                //         );
+                //         event.currentTarget.value = "";
+                //       }}
+                //       className="rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-semibold text-slate-700 disabled:opacity-50"
+                //     >
+                //       <option value="">Exchange Table</option>
+                //       {tableTargets.map((table) => (
+                //         <option key={table.id} value={table.id}>
+                //           T{table.number}
+                //         </option>
+                //       ))}
+                //     </select>
+                //   ) : null}
+                //   <button
+                //     type="button"
+                //     title={
+                //       item.quantity > 1
+                //         ? `Reduce qty (${correctionValue})`
+                //         : "Remove item"
+                //     }
+                //     onClick={() =>
+                //       onRemovePlacedItem(order, item, correctionValue)
+                //     }
+                //     disabled={correctingLineKey === correctionKey}
+                //     className="flex h-6 w-6 items-center justify-center rounded-md border border-rose-200 bg-rose-50 text-rose-600 hover:bg-rose-100 disabled:opacity-40"
+                //   >
+                //     {item.quantity > 1 ? (
+                //       <svg
+                //         viewBox="0 0 16 16"
+                //         className="h-3 w-3"
+                //         fill="none"
+                //         stroke="currentColor"
+                //         strokeWidth="2.5"
+                //       >
+                //         <path d="M3 8h10" />
+                //       </svg>
+                //     ) : (
+                //       <svg
+                //         viewBox="0 0 16 16"
+                //         className="h-3 w-3"
+                //         fill="none"
+                //         stroke="currentColor"
+                //         strokeWidth="1.8"
+                //       >
+                //         <path d="M3 4h10M6 4V3h4v1M5 4v8a1 1 0 001 1h4a1 1 0 001-1V4" />
+                //       </svg>
+                //     )}
+                //   </button>
+
+                //   {/* Cancel */}
+                //   <button
+                //     type="button"
+                //     title="Cancel item"
+                //     onClick={() => onCancelPlacedItem(order, item)}
+                //     disabled={correctingLineKey === correctionKey}
+                //     className="flex h-6 w-6 items-center justify-center rounded-md border border-slate-200 bg-white text-slate-500 hover:bg-slate-100 disabled:opacity-40"
+                //   >
+                //     <svg
+                //       viewBox="0 0 16 16"
+                //       className="h-3 w-3"
+                //       fill="none"
+                //       stroke="currentColor"
+                //       strokeWidth="2.5"
+                //     >
+                //       <path d="M3 3l10 10M13 3L3 13" />
+                //     </svg>
+                //   </button>
+                // </div>
+                null}
               </div>
             );
           })}
@@ -2275,42 +3383,44 @@ function SmartOrderCard({
         </div>
       )}
 
-      {(canEdit || canDelete) && order.status !== "SERVED" && order.status !== "CANCELLED" && (
-        <div className="mt-3 flex gap-2">
-          {readyItems.length > 0 ? (
-            <button
-              type="button"
-              onClick={() => onBatchServeReady(order)}
-              disabled={updatingItemKey === batchServeKey}
-              className="flex-1 rounded-xl bg-emerald-600 py-2 text-xs font-bold text-white shadow-sm shadow-emerald-200 transition active:scale-95 disabled:opacity-50"
-            >
-              {updatingItemKey === batchServeKey
-                ? "Serving..."
-                : readyItems.length === 1
-                  ? "Serve Ready Item"
-                  : `Serve Ready (${readyItems.length})`}
-            </button>
-          ) : null}
-          {!hasMixedItemStatuses && nextStatus ? (
-            <button
-              type="button"
-              onClick={() => onStatusChange(order.id, nextStatus)}
-              className="flex-1 rounded-xl bg-amber-500 py-2 text-xs font-bold text-white shadow-sm shadow-amber-200 transition active:scale-95"
-            >
-              Mark {STATUS_LABELS[nextStatus] || nextStatus}
-            </button>
-          ) : null}
-          {canDelete ? (
-            <button
-              type="button"
-              onClick={() => onDelete(order.id)}
-              className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-bold text-rose-700 transition active:scale-95"
-            >
-              Delete
-            </button>
-          ) : null}
-        </div>
-      )}
+      {(canEdit || canDelete) &&
+        order.status !== "COMPLETED" &&
+        order.status !== "CANCELLED" && (
+          <div className="mt-3 flex gap-2">
+            {readyItems.length > 0 ? (
+              <button
+                type="button"
+                onClick={() => onBatchServeReady(order)}
+                disabled={updatingItemKey === batchServeKey}
+                className="flex-1 rounded-xl bg-emerald-600 py-2 text-xs font-bold text-white shadow-sm shadow-emerald-200 transition active:scale-95 disabled:opacity-50"
+              >
+                {updatingItemKey === batchServeKey
+                  ? "Serving..."
+                  : readyItems.length === 1
+                    ? "Serve Ready Item"
+                    : `Serve Ready (${readyItems.length})`}
+              </button>
+            ) : null}
+            {!hasMixedItemStatuses && nextStatus ? (
+              <button
+                type="button"
+                onClick={() => onStatusChange(order.id, nextStatus)}
+                className="flex-1 rounded-xl bg-amber-500 py-2 text-xs font-bold text-white shadow-sm shadow-amber-200 transition active:scale-95"
+              >
+                Mark {STATUS_LABELS[nextStatus] || nextStatus}
+              </button>
+            ) : null}
+            {canDelete ? (
+              <button
+                type="button"
+                onClick={() => onDelete(order.id)}
+                className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-bold text-rose-700 transition active:scale-95"
+              >
+                Delete
+              </button>
+            ) : null}
+          </div>
+        )}
     </div>
   );
 }
@@ -2319,11 +3429,18 @@ function ManagerView({ role }: { role: RoleKey }) {
   const router = useRouter();
   const confirm = useConfirm();
   const token = useAppSelector(selectAuthToken);
+  const loadMoreRef = useRef<HTMLDivElement | null>(null);
   const [statusFilter, setStatusFilter] = useState<string>("active");
+  const [ordersPage, setOrdersPage] = useState(1);
+  const [ordersFeed, setOrdersFeed] = useState<OrderRecord[]>([]);
   const [socketConnected, setSocketConnected] = useState(false);
   const [updatingItemKey, setUpdatingItemKey] = useState<string | null>(null);
-  const [correctingLineKey, setCorrectingLineKey] = useState<string | null>(null);
-  const [correctionQuantities, setCorrectionQuantities] = useState<Record<string, number>>({});
+  const [correctingLineKey, setCorrectingLineKey] = useState<string | null>(
+    null,
+  );
+  const [correctionQuantities, setCorrectionQuantities] = useState<
+    Record<string, number>
+  >({});
   const [updateOrder] = useUpdateOrderMutation();
   const [deleteOrder] = useDeleteOrderMutation();
   const [removeOrderItem] = useRemoveOrderItemMutation();
@@ -2333,13 +3450,21 @@ function ManagerView({ role }: { role: RoleKey }) {
 
   const queryStatus = useMemo(() => {
     if (statusFilter === "active") return ["PLACED", "IN_PROGRESS", "READY"];
-    if (statusFilter === "done") return ["SERVED", "COMPLETED", "CANCELLED"];
+    if (statusFilter === "done") return ["SERVED", "CANCELLED"];
     return undefined;
   }, [statusFilter]);
 
-  const { data: ordersData, isFetching, refetch } = useGetOrdersQuery(
-    queryStatus ? { status: queryStatus } : undefined,
-    { pollingInterval: 30000 },
+  const {
+    data: ordersData,
+    isFetching,
+    refetch,
+  } = useGetOrdersQuery(
+    queryStatus
+      ? { status: queryStatus, page: ordersPage, limit: 100 }
+      : { page: ordersPage, limit: 100 },
+    {
+    pollingInterval: 30000,
+    },
   );
 
   // ── Socket ────────────────────────────────────────────────────────────────
@@ -2351,24 +3476,66 @@ function ManagerView({ role }: { role: RoleKey }) {
     onEvent: (event) => {
       if (event.type === "created") {
         const table = event.order?.table;
-        const label = table?.name || (table?.number ? `Table ${table.number}` : "a table");
+        const label =
+          table?.name || (table?.number ? `Table ${table.number}` : "a table");
         showInfo(`New order - ${label}`);
+        setOrdersPage(1);
+        setOrdersFeed([]);
         refetch();
       } else if (event.type === "updated") {
         const status = (event.order?.status || "").toUpperCase();
         const table = event.order?.table;
-        const label = table?.name || (table?.number ? `Table ${table.number}` : "a table");
+        const label =
+          table?.name || (table?.number ? `Table ${table.number}` : "a table");
         if (status === "READY") showSuccess(`${label} ready for serve`);
         else if (status === "IN_PROGRESS") showInfo(`${label} cooking started`);
         else showInfo(`${label} order updated`);
+        setOrdersPage(1);
+        setOrdersFeed([]);
         refetch();
       } else {
+        setOrdersPage(1);
+        setOrdersFeed([]);
         refetch();
       }
     },
   });
 
-  const orders = useMemo(() => ordersData?.items || [], [ordersData]);
+  useEffect(() => {
+    setOrdersPage(1);
+    setOrdersFeed([]);
+  }, [statusFilter]);
+
+  useEffect(() => {
+    if (!ordersData?.items) return;
+    setOrdersFeed((current) =>
+      ordersPage === 1
+        ? sortOrdersByLatest(ordersData.items)
+        : mergeOrdersById(current, ordersData.items),
+    );
+  }, [ordersData, ordersPage]);
+
+  const hasMoreOrders =
+    (ordersData?.pagination.totalPages ?? 1) > ordersPage;
+
+  useEffect(() => {
+    const node = loadMoreRef.current;
+    if (!node || !hasMoreOrders) return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const entry = entries[0];
+        if (!entry?.isIntersecting || isFetching) return;
+        setOrdersPage((current) => current + 1);
+      },
+      { rootMargin: "320px 0px" },
+    );
+
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [hasMoreOrders, isFetching]);
+
+  const orders = useMemo(() => ordersFeed, [ordersFeed]);
 
   async function handleStatusChange(orderId: string, status: OrderStatus) {
     try {
@@ -2379,7 +3546,11 @@ function ManagerView({ role }: { role: RoleKey }) {
     }
   }
 
-  async function handleItemStatusChange(order: OrderRecord, item: OrderItem, status: OrderStatus) {
+  async function handleItemStatusChange(
+    order: OrderRecord,
+    item: OrderItem,
+    status: OrderStatus,
+  ) {
     if (!item.lineId) return;
     const actionKey = orderItemActionKey(order.id, item.lineId, status);
 
@@ -2409,8 +3580,13 @@ function ManagerView({ role }: { role: RoleKey }) {
         orderId: order.id,
         payload: {
           itemStatusUpdates: readyItems
-            .filter((item): item is OrderItem & { lineId: string } => Boolean(item.lineId))
-            .map((item) => ({ lineId: item.lineId, status: "SERVED" as OrderStatus })),
+            .filter((item): item is OrderItem & { lineId: string } =>
+              Boolean(item.lineId),
+            )
+            .map((item) => ({
+              lineId: item.lineId,
+              status: "SERVED" as OrderStatus,
+            })),
         },
       }).unwrap();
       showSuccess(
@@ -2429,7 +3605,11 @@ function ManagerView({ role }: { role: RoleKey }) {
     setCorrectionQuantities((current) => ({ ...current, [lineKey]: quantity }));
   }
 
-  async function handleRemovePlacedItem(order: OrderRecord, item: OrderItem, quantity: number) {
+  async function handleRemovePlacedItem(
+    order: OrderRecord,
+    item: OrderItem,
+    quantity: number,
+  ) {
     if (!item.lineId) return;
     const nextQuantity = correctionQty(item, quantity);
     try {
@@ -2437,9 +3617,14 @@ function ManagerView({ role }: { role: RoleKey }) {
       await removeOrderItem({
         orderId: order.id,
         lineId: item.lineId,
-        payload: nextQuantity < item.quantity ? { quantity: nextQuantity } : undefined,
+        payload:
+          nextQuantity < item.quantity ? { quantity: nextQuantity } : undefined,
       }).unwrap();
-      showSuccess(nextQuantity < item.quantity ? `${nextQuantity} qty removed from ${item.name}` : `${item.name} removed`);
+      showSuccess(
+        nextQuantity < item.quantity
+          ? `${nextQuantity} qty removed from ${item.name}`
+          : `${item.name} removed`,
+      );
       refetch();
     } catch (error) {
       showError(getErrorMessage(error));
@@ -2452,7 +3637,10 @@ function ManagerView({ role }: { role: RoleKey }) {
     if (!item.lineId) return;
     try {
       setCorrectingLineKey(`${order.id}:${item.lineId}`);
-      await cancelOrderItem({ orderId: order.id, lineId: item.lineId }).unwrap();
+      await cancelOrderItem({
+        orderId: order.id,
+        lineId: item.lineId,
+      }).unwrap();
       showSuccess(`${item.name} cancelled`);
       refetch();
     } catch (error) {
@@ -2462,8 +3650,14 @@ function ManagerView({ role }: { role: RoleKey }) {
     }
   }
 
-  async function handleMovePlacedItem(order: OrderRecord, item: OrderItem, target: MoveTargetSelection, quantity: number) {
-    if (!item.lineId || (!target.targetOrderId && !target.targetTableId)) return;
+  async function handleMovePlacedItem(
+    order: OrderRecord,
+    item: OrderItem,
+    target: MoveTargetSelection,
+    quantity: number,
+  ) {
+    if (!item.lineId || (!target.targetOrderId && !target.targetTableId))
+      return;
     const nextQuantity = correctionQty(item, quantity);
     try {
       setCorrectingLineKey(`${order.id}:${item.lineId}`);
@@ -2475,7 +3669,11 @@ function ManagerView({ role }: { role: RoleKey }) {
           ...(nextQuantity < item.quantity ? { quantity: nextQuantity } : {}),
         },
       }).unwrap();
-      showSuccess(nextQuantity < item.quantity ? `${nextQuantity} qty exchanged` : `${item.name} exchanged`);
+      showSuccess(
+        nextQuantity < item.quantity
+          ? `${nextQuantity} qty exchanged`
+          : `${item.name} exchanged`,
+      );
       refetch();
     } catch (error) {
       showError(getErrorMessage(error));
@@ -2503,7 +3701,7 @@ function ManagerView({ role }: { role: RoleKey }) {
 
   const STATUS_TABS = [
     { key: "active", label: "Active" },
-    { key: "done", label: "Completed" },
+    { key: "done", label: "In Process" },
     { key: "all", label: "All" },
   ];
 
@@ -2529,7 +3727,11 @@ function ManagerView({ role }: { role: RoleKey }) {
         <div className="flex gap-2">
           <button
             type="button"
-            onClick={() => refetch()}
+            onClick={() => {
+              setOrdersPage(1);
+              setOrdersFeed([]);
+              refetch();
+            }}
             className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50"
           >
             {isFetching ? <Spinner /> : "↻ Refresh"}
@@ -2554,57 +3756,106 @@ function ManagerView({ role }: { role: RoleKey }) {
           No orders found for this filter.
         </div>
       ) : (
-        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-          {orders.map((order) => (
-            <SmartOrderCard
-              key={order.id}
-              order={order}
-              allOrders={orders}
-              tables={tablesData?.items || []}
-              role={role}
-              onStatusChange={handleStatusChange}
-              onItemStatusChange={handleItemStatusChange}
-              onBatchServeReady={handleBatchServeReady}
-              onDelete={handleDelete}
-              correctionQuantities={correctionQuantities}
-              correctingLineKey={correctingLineKey}
-              onCorrectionQuantityChange={handleCorrectionQuantityChange}
-              onRemovePlacedItem={handleRemovePlacedItem}
-              onCancelPlacedItem={handleCancelPlacedItem}
-              onMovePlacedItem={handleMovePlacedItem}
-              updatingItemKey={updatingItemKey}
-            />
-          ))}
-        </div>
+        <>
+          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+            {orders.map((order) => (
+              <SmartOrderCard
+                key={order.id}
+                order={order}
+                allOrders={orders}
+                tables={tablesData?.items || []}
+                role={role}
+                onStatusChange={handleStatusChange}
+                onItemStatusChange={handleItemStatusChange}
+                onBatchServeReady={handleBatchServeReady}
+                onDelete={handleDelete}
+                correctionQuantities={correctionQuantities}
+                correctingLineKey={correctingLineKey}
+                onCorrectionQuantityChange={handleCorrectionQuantityChange}
+                onRemovePlacedItem={handleRemovePlacedItem}
+                onCancelPlacedItem={handleCancelPlacedItem}
+                onMovePlacedItem={handleMovePlacedItem}
+                updatingItemKey={updatingItemKey}
+              />
+            ))}
+          </div>
+          <div ref={loadMoreRef} className="flex justify-center py-4 text-xs text-slate-500">
+            {hasMoreOrders
+              ? isFetching
+                ? "Loading more orders..."
+                : "Scroll for more orders"
+              : orders.length > 0
+                ? "All orders loaded"
+                : ""}
+          </div>
+        </>
       )}
-
     </div>
   );
 }
 
 // ─── Kitchen View (KOT Kanban) ─────────────────────────────────────────────
-const KOT_COLUMNS: { status: OrderStatus; label: string; color: string; bg: string; border: string }[] = [
-  { status: "PLACED", label: "New Orders", color: "text-amber-800", bg: "bg-amber-50", border: "border-amber-200" },
-  { status: "IN_PROGRESS", label: "Cooking", color: "text-red-800", bg: "bg-red-50", border: "border-red-200" },
-  { status: "READY", label: "Ready to Serve", color: "text-emerald-800", bg: "bg-emerald-50", border: "border-emerald-200" },
+const KOT_COLUMNS: {
+  status: OrderStatus;
+  label: string;
+  color: string;
+  bg: string;
+  border: string;
+}[] = [
+  {
+    status: "PLACED",
+    label: "New Orders",
+    color: "text-amber-800",
+    bg: "bg-amber-50",
+    border: "border-amber-200",
+  },
+  {
+    status: "IN_PROGRESS",
+    label: "Cooking",
+    color: "text-red-800",
+    bg: "bg-red-50",
+    border: "border-red-200",
+  },
+  {
+    status: "READY",
+    label: "Ready to Serve",
+    color: "text-emerald-800",
+    bg: "bg-emerald-50",
+    border: "border-emerald-200",
+  },
 ];
 
 function KitchenView() {
   const token = useAppSelector(selectAuthToken);
-  const { data: kitchenData, isFetching, refetch } = useGetKitchenOrderItemsQuery(
-    { status: ["PLACED", "IN_PROGRESS", "READY"], includeDone: false, limit: 200 },
+  const {
+    data: kitchenData,
+    isFetching,
+    refetch,
+  } = useGetKitchenOrderItemsQuery(
+    {
+      status: ["PLACED", "IN_PROGRESS", "READY"],
+      includeDone: false,
+      limit: 200,
+    },
     { pollingInterval: 30000 },
   );
+  console.log("Kitchen data:", kitchenData);
   const [updateOrder] = useUpdateOrderMutation();
-  const [toast, setToast] = useState<{ msg: string; type: "ok" | "err" | "info" } | null>(null);
+  const [toast, setToast] = useState<{
+    msg: string;
+    type: "ok" | "err" | "info";
+  } | null>(null);
   const [socketConnected, setSocketConnected] = useState(false);
   const [viewMode, setViewMode] = useState<"cards" | "table">("cards");
   const [searchText, setSearchText] = useState("");
-  const [statusFilter, setStatusFilter] = useState<"all" | "PLACED" | "IN_PROGRESS" | "READY">("all");
+  const [statusFilter, setStatusFilter] = useState<
+    "all" | "PLACED" | "IN_PROGRESS" | "READY"
+  >("all");
   const [updatingItemKey, setUpdatingItemKey] = useState<string | null>(null);
 
   const queueItems = useMemo(() => kitchenData?.items || [], [kitchenData]);
 
+ 
   const filteredItems = useMemo(() => {
     const query = searchText.trim().toLowerCase();
 
@@ -2614,15 +3865,23 @@ function KitchenView() {
 
       if (!query) return true;
 
-      const tableLabel = item.tableName || item.table?.name || (item.table?.number ? `Table ${item.table.number}` : "");
+      const tableLabel =
+        item.tableName ||
+        item.table?.name ||
+        (item.table?.number ? `Table ${item.table.number}` : "");
       const content = [
         tableLabel,
         item.table?.number,
         item.orderNumber,
+        item.source,
+        item.orderStatus,
         item.itemId,
         item.name,
         item.variantName,
         item.note,
+        item.orderNote,
+        item.customerName,
+        item.customerPhone,
       ]
         .filter(Boolean)
         .join(" ")
@@ -2633,14 +3892,17 @@ function KitchenView() {
   }, [queueItems, searchText, statusFilter]);
 
   const groupedByStatus = useMemo(() => {
-    const map: Record<string, KitchenQueueItem[]> = { PLACED: [], IN_PROGRESS: [], READY: [] };
+    const map: Record<string, KitchenQueueItem[]> = {
+      PLACED: [],
+      IN_PROGRESS: [],
+      READY: [],
+    };
     for (const item of filteredItems) {
       const status = normalizeStatus(item.kitchenStatus);
       if (map[status]) map[status].push(item);
     }
     return map;
   }, [filteredItems]);
-
   const tableRows = useMemo(
     () =>
       [...filteredItems].sort((left, right) => {
@@ -2652,7 +3914,8 @@ function KitchenView() {
   );
 
   const uniqueOrderCount = useMemo(
-    () => new Set(filteredItems.map((item) => item.orderId).filter(Boolean)).size,
+    () =>
+      new Set(filteredItems.map((item) => item.orderId).filter(Boolean)).size,
     [filteredItems],
   );
 
@@ -2684,14 +3947,18 @@ function KitchenView() {
     onEvent: (event) => {
       if (event.type === "created") {
         const table = event.order?.table;
-        const label = table?.name || (table?.number ? `Table ${table.number}` : "a table");
+        const label =
+          table?.name || (table?.number ? `Table ${table.number}` : "a table");
         setToast({ msg: `New order - ${label}`, type: "info" });
       } else if (event.type === "updated") {
         const status = (event.order?.status || "").toUpperCase();
         const table = event.order?.table;
-        const label = table?.name || (table?.number ? `Table ${table.number}` : "a table");
-        if (status === "IN_PROGRESS") setToast({ msg: `${label} cooking started`, type: "ok" });
-        else if (status === "READY") setToast({ msg: `${label} ready for serve`, type: "ok" });
+        const label =
+          table?.name || (table?.number ? `Table ${table.number}` : "a table");
+        if (status === "IN_PROGRESS")
+          setToast({ msg: `${label} cooking started`, type: "ok" });
+        else if (status === "READY")
+          setToast({ msg: `${label} ready for serve`, type: "ok" });
         else setToast({ msg: `${label} order updated`, type: "info" });
       }
       refetch();
@@ -2709,7 +3976,10 @@ function KitchenView() {
           itemStatusUpdates: [{ lineId: item.lineId, status: next }],
         },
       }).unwrap();
-      setToast({ msg: `${item.name} -> ${STATUS_LABELS[next] || next}`, type: "ok" });
+      setToast({
+        msg: `${item.name} -> ${STATUS_LABELS[next] || next}`,
+        type: "ok",
+      });
       refetch();
     } catch (error) {
       setToast({ msg: getErrorMessage(error), type: "err" });
@@ -2737,8 +4007,12 @@ function KitchenView() {
           <div className="mt-2.5 rounded-xl border border-[#eadfc9] bg-[#fffaf1] p-2.5 sm:mt-3 sm:p-3">
             <div className="flex items-center gap-2">
               <div className="flex shrink-0 flex-col items-center leading-none">
-                <span className="text-lg font-bold text-slate-700">{filteredItems.length}</span>
-                <span className="text-[10px] font-medium text-slate-700">items</span>
+                <span className="text-lg font-bold text-slate-700">
+                  {filteredItems.length}
+                </span>
+                <span className="text-[10px] font-medium text-slate-700">
+                  items
+                </span>
               </div>
               <input
                 value={searchText}
@@ -2767,7 +4041,9 @@ function KitchenView() {
             <div className="mt-2 grid grid-cols-1 gap-2 md:grid-cols-10 md:items-center">
               <div className="md:col-span-7">
                 <div className="flex items-center gap-2 overflow-x-auto whitespace-nowrap no-scrollbar">
-                  <span className="shrink-0 text-[11px] font-semibold uppercase tracking-wide text-slate-500">Status</span>
+                  <span className="shrink-0 text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                    Status
+                  </span>
                   <button
                     type="button"
                     onClick={() => setStatusFilter("all")}
@@ -2830,33 +4106,64 @@ function KitchenView() {
                   className={`rounded-2xl border ${col.border} ${col.bg} p-2 shadow-sm sm:p-2.5`}
                 >
                   <div className="mb-2 flex items-center justify-between">
-                    <p className={`text-[11px] font-semibold uppercase tracking-wide ${col.color}`}>{col.label}</p>
-                    <span className={`rounded-full border px-2 py-0.5 text-[10px] font-bold ${col.color} ${col.bg}`}>
+                    <p
+                      className={`text-[11px] font-semibold uppercase tracking-wide ${col.color}`}
+                    >
+                      {col.label}
+                    </p>
+                    <span
+                      className={`rounded-full border px-2 py-0.5 text-[10px] font-bold ${col.color} ${col.bg}`}
+                    >
                       {groupedByStatus[col.status]?.length ?? 0}
                     </span>
                   </div>
                   <div className="max-h-[60vh] space-y-2 overflow-y-auto pr-1">
                     {groupedByStatus[col.status]?.length === 0 ? (
-                      <div className="rounded-xl border border-dashed border-current/20 py-6 text-center text-xs opacity-60">No items</div>
+                      <div className="rounded-xl border border-dashed border-current/20 py-6 text-center text-xs opacity-60">
+                        No items
+                      </div>
                     ) : (
                       groupedByStatus[col.status].map((item) => {
                         const status = normalizeStatus(item.kitchenStatus);
                         const nextStatus = nextKitchenItemStatus(status);
                         const actionKey = `${item.orderId}:${item.lineId}:${nextStatus || "none"}`;
                         const customerLabel = kitchenCustomerLabel(item);
+                        const displayNote = kitchenDisplayNote(item);
 
                         return (
-                          <div key={`${item.orderId}-${item.lineId}`} className="rounded-xl border border-white/70 bg-white p-3">
+                          <div
+                            key={`${item.orderId}-${item.lineId}`}
+                            className="rounded-xl border border-white/70 bg-white p-3"
+                          >
                             <div className="flex items-start justify-between gap-2">
                               <div className="min-w-0">
-                                <p className="text-xs font-semibold text-slate-900">{tableLabel(item)}</p>
+                                <p className="text-xs font-semibold text-slate-900">
+                                  {tableLabel(item)}
+                                </p>
                                 <p className="text-[10px] text-slate-500">
-                                  {item.orderNumber ? `Order ${item.orderNumber}` : item.orderId.slice(-6)}
+                                  {item.orderNumber
+                                    ? `Order ${item.orderNumber}`
+                                    : item.orderId.slice(-6)}
                                 </p>
                               </div>
-                              <span className={`rounded-full border px-2 py-0.5 text-[10px] font-semibold ${itemStatusClass(status)}`}>
+                              <span
+                                className={`rounded-full border px-2 py-0.5 text-[10px] font-semibold ${itemStatusClass(status)}`}
+                              >
                                 {itemStatusLabel(status)}
                               </span>
+                            </div>
+
+                            <div className="mt-2 flex flex-wrap gap-1.5">
+                              {item.source ? (
+                                <span className="rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[10px] font-semibold text-slate-700">
+                                  {item.source}
+                                </span>
+                              ) : null}
+                              {item.orderStatus ? (
+                                <span className="rounded-full border border-indigo-200 bg-indigo-50 px-2 py-0.5 text-[10px] font-semibold text-indigo-700">
+                                  Order {itemStatusLabel(item.orderStatus)}
+                                </span>
+                              ) : null}
                             </div>
 
                             <p className="mt-2 text-sm font-semibold text-slate-900">
@@ -2868,7 +4175,11 @@ function KitchenView() {
                                 Customer: {customerLabel}
                               </p>
                             ) : null}
-                            {item.note ? <p className="mt-0.5 text-[11px] italic text-amber-700">{item.note}</p> : null}
+                            {displayNote ? (
+                              <p className="mt-0.5 text-[11px] italic text-amber-700">
+                                {displayNote}
+                              </p>
+                            ) : null}
 
                             <div className="mt-2 flex items-center justify-between text-[11px] text-slate-500">
                               <span>Age: {ageLabel(item)}</span>
@@ -2886,7 +4197,9 @@ function KitchenView() {
                                 disabled={updatingItemKey === actionKey}
                                 className={`mt-2 w-full rounded-lg px-2.5 py-1.5 text-[11px] font-bold text-white shadow transition active:scale-95 disabled:opacity-50 ${status === "PLACED" ? "bg-red-500" : "bg-emerald-500"}`}
                               >
-                                {updatingItemKey === actionKey ? "Updating..." : kitchenItemActionLabel(nextStatus)}
+                                {updatingItemKey === actionKey
+                                  ? "Updating..."
+                                  : kitchenItemActionLabel(nextStatus)}
                               </button>
                             ) : null}
                           </div>
@@ -2919,30 +4232,66 @@ function KitchenView() {
                       const nextStatus = nextKitchenItemStatus(status);
                       const actionKey = `${item.orderId}:${item.lineId}:${nextStatus || "none"}`;
                       const customerLabel = kitchenCustomerLabel(item);
+                      const displayNote = kitchenDisplayNote(item);
 
                       return (
-                        <tr key={`${item.orderId}-${item.lineId}`} className="border-t border-slate-100 align-top">
+                        <tr
+                          key={`${item.orderId}-${item.lineId}`}
+                          className="border-t border-slate-100 align-top"
+                        >
                           <td className="px-3 py-2">
-                            <p className="font-semibold text-slate-900">{tableLabel(item)}</p>
-                            <p className="text-slate-500">{item.table?.number ? `T${item.table.number}` : "-"}</p>
+                            <p className="font-semibold text-slate-900">
+                              {tableLabel(item)}
+                            </p>
+                            <p className="text-slate-500">
+                              {item.table?.number
+                                ? `T${item.table.number}`
+                                : "-"}
+                            </p>
                           </td>
-                          <td className="px-3 py-2 text-slate-700">{item.orderNumber || item.orderId.slice(-6)}</td>
+                          <td className="px-3 py-2 text-slate-700">
+                            <p>{item.orderNumber || item.orderId.slice(-6)}</p>
+                            <p className="text-[11px] text-slate-500">
+                              {item.source || "-"}
+                            </p>
+                          </td>
                           <td className="px-3 py-2">
                             <p className="font-medium text-slate-800">
                               {item.name}
                               {item.variantName ? ` (${item.variantName})` : ""}
                             </p>
-                            {customerLabel ? <p className="text-[11px] font-medium text-sky-700">Customer: {customerLabel}</p> : null}
-                            {item.note ? <p className="text-[11px] italic text-amber-700">{item.note}</p> : null}
+                            {customerLabel ? (
+                              <p className="text-[11px] font-medium text-sky-700">
+                                Customer: {customerLabel}
+                              </p>
+                            ) : null}
+                            {displayNote ? (
+                              <p className="text-[11px] italic text-amber-700">
+                                {displayNote}
+                              </p>
+                            ) : null}
+                            {item.orderStatus ? (
+                              <p className="text-[11px] font-medium text-indigo-700">
+                                Order: {itemStatusLabel(item.orderStatus)}
+                              </p>
+                            ) : null}
                           </td>
-                          <td className="px-3 py-2 font-semibold text-slate-700">{item.quantity}</td>
+                          <td className="px-3 py-2 font-semibold text-slate-700">
+                            {item.quantity}
+                          </td>
                           <td className="px-3 py-2">
-                            <span className={`rounded-full border px-2 py-0.5 text-[10px] font-semibold ${itemStatusClass(status)}`}>
+                            <span
+                              className={`rounded-full border px-2 py-0.5 text-[10px] font-semibold ${itemStatusClass(status)}`}
+                            >
                               {itemStatusLabel(status)}
                             </span>
                           </td>
-                          <td className="px-3 py-2 text-slate-500">{ageLabel(item)}</td>
-                          <td className="px-3 py-2 text-slate-600">{item.priorityLabel || "-"}</td>
+                          <td className="px-3 py-2 text-slate-500">
+                            {ageLabel(item)}
+                          </td>
+                          <td className="px-3 py-2 text-slate-600">
+                            {item.priorityLabel || "-"}
+                          </td>
                           <td className="px-3 py-2">
                             {nextStatus ? (
                               <button
@@ -2951,10 +4300,14 @@ function KitchenView() {
                                 disabled={updatingItemKey === actionKey}
                                 className="rounded-lg border border-slate-300 bg-slate-100 px-2.5 py-1 text-[11px] font-semibold text-slate-700 disabled:opacity-50"
                               >
-                                {updatingItemKey === actionKey ? "Updating..." : kitchenItemActionLabel(nextStatus)}
+                                {updatingItemKey === actionKey
+                                  ? "Updating..."
+                                  : kitchenItemActionLabel(nextStatus)}
                               </button>
                             ) : (
-                              <span className="text-[11px] text-slate-400">-</span>
+                              <span className="text-[11px] text-slate-400">
+                                -
+                              </span>
                             )}
                           </td>
                         </tr>
@@ -2985,7 +4338,10 @@ export function OrdersWorkspace({ rawRole }: Props) {
   const routeNewOrder = searchParams.get("new") === "1";
   const routeSelectTablePage = pathname === "/dashboard/orders/new";
   const routeSelectItemsPage = pathname === "/dashboard/orders/items";
-  const [toast, setToast] = useState<{ msg: string; type: "ok" | "err" } | null>(null);
+  const [toast, setToast] = useState<{
+    msg: string;
+    type: "ok" | "err";
+  } | null>(null);
   const isWaiter = role === "waiter";
   const isKitchen = role === "kitchen";
   const splitComposerMode = routeSelectTablePage
@@ -2995,15 +4351,31 @@ export function OrdersWorkspace({ rawRole }: Props) {
       : isWaiter
         ? "live-board"
         : "board";
-  const forceOrderComposer = !isKitchen && (routeNewOrder || Boolean(routeTableId) || routeSelectTablePage || routeSelectItemsPage);
+  const forceOrderComposer =
+    !isKitchen &&
+    (routeNewOrder ||
+      Boolean(routeTableId) ||
+      routeSelectTablePage ||
+      routeSelectItemsPage);
   const showWaiterView = isWaiter || forceOrderComposer;
 
   const handleOrderPlaced = useCallback(() => {
     setToast({ msg: "Order placed!", type: "ok" });
-    if (routeNewOrder || routeTableId || routeSelectTablePage || routeSelectItemsPage) {
+    if (
+      routeNewOrder ||
+      routeTableId ||
+      routeSelectTablePage ||
+      routeSelectItemsPage
+    ) {
       router.push("/dashboard/orders");
     }
-  }, [routeNewOrder, routeSelectItemsPage, routeSelectTablePage, routeTableId, router]);
+  }, [
+    routeNewOrder,
+    routeSelectItemsPage,
+    routeSelectTablePage,
+    routeTableId,
+    router,
+  ]);
 
   useEffect(() => {
     if (!toast) return;
@@ -3017,7 +4389,7 @@ export function OrdersWorkspace({ rawRole }: Props) {
     <div className="h-full">
       {showWaiterView ? (
         <>
-          <div className="mb-4">
+          {/* <div className="mb-4">
             <h2 className="text-lg font-bold text-slate-900">
               {routeSelectTablePage
                 ? "Select Table"
@@ -3025,9 +4397,9 @@ export function OrdersWorkspace({ rawRole }: Props) {
                   ? "Select Items"
                   : isWaiter
                     ? "Waiter Orders"
-                  : forceOrderComposer && !isWaiter
-                    ? "Create / Update Order"
-                    : "Take Order"}
+                    : forceOrderComposer && !isWaiter
+                      ? "Create / Update Order"
+                      : "Take Order"}
             </h2>
             <p className="text-xs text-slate-500">
               {routeSelectTablePage
@@ -3036,11 +4408,11 @@ export function OrdersWorkspace({ rawRole }: Props) {
                   ? "Choose item variants, add them quickly, and place the order."
                   : isWaiter
                     ? "Ready, cooking, aur billing-wale waiter orders ko is page se handle karo."
-                  : routeTableId
-                    ? "Selected table opened. Add items to append in the same active order."
-                    : "Pick a table, add items, and place the order in 3 taps."}
+                    : routeTableId
+                      ? "Selected table opened. Add items to append in the same active order."
+                      : "Pick a table, add items, and place the order in 3 taps."}
             </p>
-          </div>
+          </div> */}
           <WaiterView
             onOrderPlaced={handleOrderPlaced}
             initialTableId={routeTableId}
@@ -3049,18 +4421,12 @@ export function OrdersWorkspace({ rawRole }: Props) {
         </>
       ) : isKitchen ? (
         <>
-          <div className="mb-4">
-            <h2 className="text-lg font-bold text-slate-900">Kitchen Display</h2>
-            <p className="text-xs text-slate-500">Item queue view - tap to update kitchen item status.</p>
-          </div>
+        
           <KitchenView />
         </>
       ) : (
         <>
-          <div className="mb-4">
-            <h2 className="text-lg font-bold text-slate-900">Order Management</h2>
-            <p className="text-xs text-slate-500">View, update and manage all orders.</p>
-          </div>
+         
           <ManagerView role={role} />
         </>
       )}

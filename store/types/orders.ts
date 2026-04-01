@@ -128,6 +128,9 @@ export type KitchenQueueItem = {
   lineId: string;
   orderId: string;
   orderNumber?: string;
+  source?: string;
+  orderStatus?: OrderStatus;
+  orderNote?: string;
   table?: OrderTableRef;
   tableId?: string;
   tableName?: string;
@@ -145,6 +148,7 @@ export type KitchenQueueItem = {
   priorityLabel?: string;
   priorityScore?: number;
   raw?: Record<string, unknown>;
+  item?: Record<string, unknown>;
 };
 
 export type KitchenItemsResponse = {
@@ -164,6 +168,8 @@ export type OrderItemPayload = {
 export type CreateOrderPayload = {
   tableId: string;
   note?: string;
+  customerName?: string;
+  customerPhone?: string;
   items: OrderItemPayload[];
   forceNew?: boolean;
   appendToOrderId?: string;
