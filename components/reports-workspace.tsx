@@ -145,7 +145,10 @@ function DayBarChart({ days, todayDate }: { days: ReportDay[]; todayDate: string
         <YAxis yAxisId="sales" orientation="left" tickFormatter={formatMoneyShort} tick={{ fontSize: 10, fill: "#94a3b8" }} axisLine={false} tickLine={false} width={52} />
         <YAxis yAxisId="count" orientation="right" tick={{ fontSize: 10, fill: "#94a3b8" }} axisLine={false} tickLine={false} width={32} />
         <Tooltip
-          formatter={(value: number, name: string) => name === "Sales" ? [formatMoney(value), name] : [value, name]}
+          formatter={(value, name) => {
+            const numericValue = typeof value === "number" ? value : Number(value ?? 0);
+            return name === "Sales" ? [formatMoney(numericValue), name] : [value, name];
+          }}
           contentStyle={{ fontSize: 12, borderRadius: 12, border: "0.5px solid #e2e8f0", boxShadow: "0 8px 24px rgba(0,0,0,0.08)", padding: "10px 14px" }}
           cursor={{ fill: "rgba(241,245,249,0.7)" }}
         />
@@ -176,7 +179,10 @@ function MonthBarChart({ months }: { months: ReportMonth[] }) {
         <YAxis yAxisId="sales" orientation="left" tickFormatter={formatMoneyShort} tick={{ fontSize: 10, fill: "#94a3b8" }} axisLine={false} tickLine={false} width={52} />
         <YAxis yAxisId="count" orientation="right" tick={{ fontSize: 10, fill: "#94a3b8" }} axisLine={false} tickLine={false} width={32} />
         <Tooltip
-          formatter={(value: number, name: string) => name === "Sales" ? [formatMoney(value), name] : [value, name]}
+          formatter={(value, name) => {
+            const numericValue = typeof value === "number" ? value : Number(value ?? 0);
+            return name === "Sales" ? [formatMoney(numericValue), name] : [value, name];
+          }}
           contentStyle={{ fontSize: 12, borderRadius: 12, border: "0.5px solid #e2e8f0", boxShadow: "0 8px 24px rgba(0,0,0,0.08)", padding: "10px 14px" }}
           cursor={{ fill: "rgba(241,245,249,0.7)" }}
         />

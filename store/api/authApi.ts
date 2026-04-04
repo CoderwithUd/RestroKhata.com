@@ -341,50 +341,62 @@ function parseNumberMap(value: unknown): Record<string, number> {
   return output;
 }
 
+function parseDaySummary(value: unknown): ReportsSummaryPayload["days"][number] | null {
+  const record = asRecord(value);
+  if (!record) return null;
+
+  const date = asString(record.date);
+  if (!date) return null;
+
+  return {
+    date,
+    day: asString(record.day) ?? "",
+    label: asString(record.label) ?? date,
+    orders: asNumber(record.orders) ?? 0,
+    invoices: asNumber(record.invoices) ?? 0,
+    paidInvoices: asNumber(record.paidInvoices) ?? 0,
+    sales: asNumber(record.sales) ?? 0,
+    expenses: asNumber(record.expenses) ?? 0,
+    profit: asNumber(record.profit) ?? 0,
+  };
+}
+
 function parseReportsSummary(data: unknown): ReportsSummaryPayload {
   const root = asRecord(data);
   const range = asRecord(root?.range);
-  const sales = asRecord(root?.sales);
-  const orders = asRecord(root?.orders);
-  const invoices = asRecord(root?.invoices);
-  const expenses = asRecord(root?.expenses);
-  const profitLoss = asRecord(root?.profitLoss);
+  const thisMonth = asRecord(root?.thisMonth);
+  const totals = asRecord(root?.totals);
 
   return {
+    timezone: asString(root?.timezone) ?? "Asia/Kolkata",
     range: {
-      period: asString(range?.period),
-      from: asString(range?.from),
-      to: asString(range?.to),
-      tzOffsetMinutes: asNumber(range?.tzOffsetMinutes),
-      weekStartsOn: asNumber(range?.weekStartsOn),
+      type: asString(range?.type) ?? "unknown",
+      from: asString(range?.from) ?? "",
+      to: asString(range?.to) ?? "",
     },
-    sales: {
-      paidInvoices: asNumber(sales?.paidInvoices) ?? 0,
-      grossSales: asNumber(sales?.grossSales) ?? 0,
-      discountTotal: asNumber(sales?.discountTotal) ?? 0,
-      taxTotal: asNumber(sales?.taxTotal) ?? 0,
-      netSales: asNumber(sales?.netSales) ?? 0,
-      paidTotal: asNumber(sales?.paidTotal) ?? 0,
-      avgTicket: asNumber(sales?.avgTicket) ?? 0,
+    thisMonth: {
+      month: asString(thisMonth?.month) ?? "",
+      label: asString(thisMonth?.label) ?? "",
+      orders: asNumber(thisMonth?.orders) ?? 0,
+      invoices: asNumber(thisMonth?.invoices) ?? 0,
+      paidInvoices: asNumber(thisMonth?.paidInvoices) ?? 0,
+      sales: asNumber(thisMonth?.sales) ?? 0,
+      expenses: asNumber(thisMonth?.expenses) ?? 0,
+      profit: asNumber(thisMonth?.profit) ?? 0,
     },
-    orders: {
-      total: asNumber(orders?.total) ?? 0,
-      byStatus: parseNumberMap(orders?.byStatus),
+    totals: {
+      orders: asNumber(totals?.orders) ?? 0,
+      invoices: asNumber(totals?.invoices) ?? 0,
+      paidInvoices: asNumber(totals?.paidInvoices) ?? 0,
+      sales: asNumber(totals?.sales) ?? 0,
+      expenses: asNumber(totals?.expenses) ?? 0,
+      profit: asNumber(totals?.profit) ?? 0,
     },
-    invoices: {
-      total: asNumber(invoices?.total) ?? 0,
-      byStatus: parseNumberMap(invoices?.byStatus),
-    },
-    expenses: {
-      total: asNumber(expenses?.total) ?? 0,
-      count: asNumber(expenses?.count) ?? 0,
-    },
-    profitLoss: {
-      netResult: asNumber(profitLoss?.netResult) ?? 0,
-      profit: asNumber(profitLoss?.profit) ?? 0,
-      loss: asNumber(profitLoss?.loss) ?? 0,
-      note: asString(profitLoss?.note),
-    },
+    days: asArray(root?.days)
+      .map(parseDaySummary)
+      .filter(
+        (entry): entry is ReportsSummaryPayload["days"][number] => Boolean(entry),
+      ),
   };
 }
 

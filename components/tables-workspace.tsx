@@ -22,7 +22,7 @@ import type {
   TableRecord,
   TableStatus,
 } from "@/store/types/tables";
-import type { Customer } from "@/store/types/customers";
+import type { CustomerRecord } from "@/store/types/customers";
 
 type Props = { tenantName?: string; tenantSlug?: string };
 type Filter = "all" | "active" | "inactive";
@@ -631,7 +631,7 @@ export function TablesWorkspace({ tenantName, tenantSlug }: Props) {
     }
   }
 
-  function handleCustomerSelect(customer: Customer) {
+  function handleCustomerSelect(customer: CustomerRecord) {
     setReservationForm((prev) => ({
       ...prev,
       customerName: customer.name || "",
