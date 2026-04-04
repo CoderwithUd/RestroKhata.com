@@ -12,6 +12,11 @@ import { clearSession, setToken } from "@/store/slices/authSlice";
 
 const refreshCandidates = ["/auth/refresh", "/auth/refresh-token"];
 
+// Track refresh attempts to prevent multiple concurrent refreshes
+let refreshPromise: Promise<boolean> | null = null;
+let lastClearSessionTime = 0;
+const CLEAR_SESSION_COOLDOWN_MS = 1000; // Prevent multiple clears within 1 second
+
 const rawBaseQuery = fetchBaseQuery({
   baseUrl: API_BASE_URL,
   credentials: "include",
@@ -65,6 +70,36 @@ function isPublicMenuPath(pathname: string): boolean {
   return !reserved.has(segments[0]?.toLowerCase() || "");
 }
 
+async function performRefresh(api: any, extraOptions: any): Promise<boolean> {
+  for (const path of refreshCandidates) {
+    const refreshResult = (await rawBaseQuery(buildRefreshRequest(path), api, extraOptions)) as any;
+    const refreshStatus = getStatusCode(refreshResult.error);
+
+    if (!refreshResult.error) {
+      const parsed = parseAuthPayload(refreshResult.data);
+      const nextToken = parsed.token || null;
+      const nextRefreshToken = parsed.refreshToken || null;
+
+      if (nextToken) {
+        api.dispatch(setToken(nextToken));
+        writeStoredSession({
+          token: nextToken,
+          refreshToken: nextRefreshToken ?? undefined,
+        });
+      }
+
+      return true;
+    }
+
+    // Don't retry if we get a real error (not 404)
+    if (refreshStatus !== 404) {
+      break;
+    }
+  }
+
+  return false;
+}
+
 export const baseQueryWithReauth: BaseQueryFn<string | FetchArgs, unknown, FetchBaseQueryError> = async (
   args,
   api,
@@ -75,49 +110,42 @@ export const baseQueryWithReauth: BaseQueryFn<string | FetchArgs, unknown, Fetch
   const isRefreshRequest = refreshCandidates.includes(requestPath);
 
   if (getStatusCode(result.error) === 401 && !isRefreshRequest) {
-    let refreshed = false;
-
-    for (const path of refreshCandidates) {
-      const refreshResult = await rawBaseQuery(buildRefreshRequest(path), api, extraOptions);
-      const refreshStatus = getStatusCode(refreshResult.error);
-
-      if (!refreshResult.error) {
-        const parsed = parseAuthPayload(refreshResult.data);
-        const nextToken = parsed.token || null;
-        const nextRefreshToken = parsed.refreshToken || null;
-
-        if (nextToken) {
-          api.dispatch(setToken(nextToken));
-          writeStoredSession({
-            token: nextToken,
-            refreshToken: nextRefreshToken ?? undefined,
-          });
+    // If a refresh is already in progress, wait for it to complete
+    if (refreshPromise) {
+      const refreshed = await refreshPromise;
+      if (refreshed) {
+        result = await rawBaseQuery(args, api, extraOptions);
+      }
+    } else {
+      // Start a new refresh attempt and share it across concurrent requests
+      refreshPromise = performRefresh(api, extraOptions);
+      try {
+        const refreshed = await refreshPromise;
+        if (refreshed) {
+          result = await rawBaseQuery(args, api, extraOptions);
         }
-
-        refreshed = true;
-        break;
+      } finally {
+        refreshPromise = null;
       }
-
-      if (refreshStatus !== 404) {
-        break;
-      }
-    }
-
-    if (refreshed) {
-      result = await rawBaseQuery(args, api, extraOptions);
     }
   }
 
+  // Only clear session if we still have a 401 after refresh attempt
   if (getStatusCode(result.error) === 401) {
-    api.dispatch(clearSession());
-    clearStoredSession();
+    // Prevent multiple logout events within cooldown period
+    const now = Date.now();
+    if (now - lastClearSessionTime > CLEAR_SESSION_COOLDOWN_MS) {
+      lastClearSessionTime = now;
+      api.dispatch(clearSession());
+      clearStoredSession();
 
-    if (typeof window !== "undefined") {
-      const pathname = window.location.pathname || "/";
-      const isAuthPage = pathname === "/login" || pathname === "/register";
-      const publicMenuPage = isPublicMenuPath(pathname);
-      if (!isAuthPage && !publicMenuPage) {
-        window.location.replace("/login");
+      if (typeof window !== "undefined") {
+        const pathname = window.location.pathname || "/";
+        const isAuthPage = pathname === "/login" || pathname === "/register";
+        const publicMenuPage = isPublicMenuPath(pathname);
+        if (!isAuthPage && !publicMenuPage) {
+          window.location.replace("/login");
+        }
       }
     }
   }

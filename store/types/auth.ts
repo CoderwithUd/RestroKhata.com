@@ -67,43 +67,76 @@ export type ReportsSummaryQueryParams = {
   weekStartsOn?: number;
 };
 
-export type ReportsSummaryPayload = {
-  range: {
-    period?: string;
-    from?: string;
-    to?: string;
-    tzOffsetMinutes?: number;
-    weekStartsOn?: number;
-  };
-  sales: {
-    paidInvoices: number;
-    grossSales: number;
-    discountTotal: number;
-    taxTotal: number;
-    netSales: number;
-    paidTotal: number;
-    avgTicket: number;
-  };
-  orders: {
-    total: number;
-    byStatus: Record<string, number>;
-  };
-  invoices: {
-    total: number;
-    byStatus: Record<string, number>;
-  };
-  expenses: {
-    total: number;
-    count: number;
-  };
-  profitLoss: {
-    netResult: number;
-    profit: number;
-    loss: number;
-    note?: string;
-  };
+type Metrics = {
+  orders: number;
+  invoices: number;
+  paidInvoices: number;
+  sales: number;
+  expenses: number;
+  profit: number;
 };
 
+export type ReportsMonthlyPayload = {
+  timezone: string;
+
+  range: {
+    type: string; // "tenant_start_to_today_by_month"
+    from: string; // "2026-03"
+    to: string;   // "2026-04"
+  };
+
+  totals: Metrics;
+
+  months: (Metrics & {
+    month: string; // "2026-03"
+    label: string; // "mar-2026"
+  })[];
+};
+
+
+export type ReportsSummaryPayload = {
+  timezone: string;
+
+  range: {
+    type: string; // e.g. "last_7_days"
+    from: string;
+    to: string;
+  };
+
+  thisMonth: {
+    month: string;     // "2026-04"
+    label: string;     // "apr-2026"
+    orders: number;
+    invoices: number;
+    paidInvoices: number;
+    sales: number;
+    expenses: number;
+    profit: number;
+  };
+
+  totals: {
+    orders: number;
+    invoices: number;
+    paidInvoices: number;
+    sales: number;
+    expenses: number;
+    profit: number;
+  };
+
+  days: DaySummary[];
+};
+
+export type DaySummary = {
+  date: string;        // "2026-04-04"
+  day: string;         // "sat"
+  label: string;       // "04/04/26 sat"
+  orders: number;
+  invoices: number;
+  paidInvoices: number;
+  sales: number;
+  expenses: number;
+  profit: number;
+};
 export type TenantStaffUser = {
   id?: string;
   name?: string;

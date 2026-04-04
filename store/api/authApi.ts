@@ -15,6 +15,7 @@ import type {
   LoginPayload,
   ReportsSummaryPayload,
   ReportsSummaryQueryParams,
+  ReportsMonthlyPayload,
   RegisterPayload,
   SessionPayload,
   StaffRolesPayload,
@@ -25,7 +26,11 @@ import type {
   UpdateTenantProfilePayload,
   UpdateTenantStaffArgs,
 } from "@/store/types/auth";
-import type { OrderRecord, OrdersListPayload, OrdersQueryParams } from "@/store/types/orders";
+import type {
+  OrderRecord,
+  OrdersListPayload,
+  OrdersQueryParams,
+} from "@/store/types/orders";
 
 type QueryResult = {
   data?: unknown;
@@ -33,7 +38,9 @@ type QueryResult = {
 };
 
 function asRecord(value: unknown): Record<string, unknown> | null {
-  return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : null;
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null;
 }
 
 function asString(value: unknown): string | undefined {
@@ -41,7 +48,9 @@ function asString(value: unknown): string | undefined {
 }
 
 function asNumber(value: unknown): number | undefined {
-  return typeof value === "number" && Number.isFinite(value) ? value : undefined;
+  return typeof value === "number" && Number.isFinite(value)
+    ? value
+    : undefined;
 }
 
 function asArray(value: unknown): unknown[] {
@@ -95,12 +104,16 @@ function parseTenantProfile(data: unknown): TenantProfilePayload {
   const user: AuthUser | null = parsed.user
     ? {
         ...parsed.user,
-      id: parsed.user.id || asString(userRecord?.id) || asString(userRecord?._id),
-      name: parsed.user.name || asString(userRecord?.name),
-      email: parsed.user.email || asString(userRecord?.email),
-      whatsappNumber: parsed.user.whatsappNumber || asString(userRecord?.whatsappNumber),
-      role: parsed.user.role || asString(root?.role),
-    }
+        id:
+          parsed.user.id ||
+          asString(userRecord?.id) ||
+          asString(userRecord?._id),
+        name: parsed.user.name || asString(userRecord?.name),
+        email: parsed.user.email || asString(userRecord?.email),
+        whatsappNumber:
+          parsed.user.whatsappNumber || asString(userRecord?.whatsappNumber),
+        role: parsed.user.role || asString(root?.role),
+      }
     : null;
 
   const tenant: TenantProfilePayload["tenant"] = parsed.tenant
@@ -110,7 +123,11 @@ function parseTenantProfile(data: unknown): TenantProfilePayload {
         contactNumber: asString(tenantRecord?.contactNumber) ?? null,
         email: asString(tenantRecord?.email) ?? asString(root?.email) ?? null,
         secondaryNumber: asString(tenantRecord?.secondaryNumber) ?? null,
-        ownerName: asString(tenantRecord?.ownerName) ?? asString(root?.ownerName) ?? user?.name ?? null,
+        ownerName:
+          asString(tenantRecord?.ownerName) ??
+          asString(root?.ownerName) ??
+          user?.name ??
+          null,
         gstNumber: asString(tenantRecord?.gstNumber) ?? null,
         address: addressRecord
           ? {
@@ -145,7 +162,10 @@ function parseStaffMember(value: unknown): TenantStaffMember | null {
   if (!record) return null;
 
   const userRecord = asRecord(record.user);
-  const membershipId = asString(record.membershipId) || asString(record.id) || asString(record._id);
+  const membershipId =
+    asString(record.membershipId) ||
+    asString(record.id) ||
+    asString(record._id);
   if (!membershipId) return null;
 
   return {
@@ -166,29 +186,37 @@ function parseStaffMember(value: unknown): TenantStaffMember | null {
 function parseStaffList(data: unknown): TenantStaffListPayload {
   const root = asRecord(data);
   const nestedData = asRecord(root?.data);
-  const rawItems =
-    asArray(root?.items).length
-      ? root?.items
-      : asArray(root?.staff).length
-        ? root?.staff
-        : asArray(nestedData?.items).length
-          ? nestedData?.items
-          : asArray(nestedData?.staff).length
-            ? nestedData?.staff
-            : [];
-  const items = asArray(rawItems).map(parseStaffMember).filter((staff): staff is TenantStaffMember => Boolean(staff));
+  const rawItems = asArray(root?.items).length
+    ? root?.items
+    : asArray(root?.staff).length
+      ? root?.staff
+      : asArray(nestedData?.items).length
+        ? nestedData?.items
+        : asArray(nestedData?.staff).length
+          ? nestedData?.staff
+          : [];
+  const items = asArray(rawItems)
+    .map(parseStaffMember)
+    .filter((staff): staff is TenantStaffMember => Boolean(staff));
   return { items };
 }
 
 function parseStaffRoles(data: unknown): StaffRolesPayload {
   const root = asRecord(data);
   const nestedData = asRecord(root?.data);
-  const rawRoles = asArray(root?.roles).length ? root?.roles : nestedData?.roles;
-  const roles = asArray(rawRoles).map((role) => asString(role)).filter((role): role is string => Boolean(role));
+  const rawRoles = asArray(root?.roles).length
+    ? root?.roles
+    : nestedData?.roles;
+  const roles = asArray(rawRoles)
+    .map((role) => asString(role))
+    .filter((role): role is string => Boolean(role));
   return { roles };
 }
 
-function parseStaffMutation(data: unknown, fallbackMessage: string): TenantStaffMutationPayload {
+function parseStaffMutation(
+  data: unknown,
+  fallbackMessage: string,
+): TenantStaffMutationPayload {
   const root = asRecord(data);
   if (!root) {
     return { message: fallbackMessage };
@@ -196,14 +224,22 @@ function parseStaffMutation(data: unknown, fallbackMessage: string): TenantStaff
 
   return {
     message: asString(root.message) || fallbackMessage,
-    staff: parseStaffMember(root.staff) || parseStaffMember(root.data) || parseStaffMember(root.member) || null,
+    staff:
+      parseStaffMember(root.staff) ||
+      parseStaffMember(root.data) ||
+      parseStaffMember(root.member) ||
+      null,
   };
 }
 
-function parseOrderItemsSummary(record: Record<string, unknown>): string | undefined {
+function parseOrderItemsSummary(
+  record: Record<string, unknown>,
+): string | undefined {
   const itemsArray = asArray(record.items).concat(asArray(record.orderItems));
   if (!itemsArray.length) {
-    return asString(record.itemsText) || asString(record.itemsSummary) || undefined;
+    return (
+      asString(record.itemsText) || asString(record.itemsSummary) || undefined
+    );
   }
 
   const parts = itemsArray
@@ -211,7 +247,8 @@ function parseOrderItemsSummary(record: Record<string, unknown>): string | undef
       const item = asRecord(entry);
       if (!item) return null;
 
-      const name = asString(item.name) || asString(item.itemName) || asString(item.title);
+      const name =
+        asString(item.name) || asString(item.itemName) || asString(item.title);
       const quantity = asNumber(item.quantity) || asNumber(item.qty);
 
       if (!name) return null;
@@ -238,13 +275,19 @@ function parseOrderRecord(value: unknown): OrderRecord | null {
 
   if (!id) return null;
 
-  const tableId = asString(record.tableId) || asString(tableRecord?.id) || asString(tableRecord?._id);
+  const tableId =
+    asString(record.tableId) ||
+    asString(tableRecord?.id) ||
+    asString(tableRecord?._id);
   const tableName =
     asString(record.tableName) ||
     asString(tableRecord?.name) ||
     asString(tableRecord?.tableName) ||
-    (asNumber(tableRecord?.number) ? `Table ${asNumber(tableRecord?.number)}` : undefined);
-  const customerName = asString(customerRecord?.name) || asString(customerRecord?.fullName);
+    (asNumber(tableRecord?.number)
+      ? `Table ${asNumber(tableRecord?.number)}`
+      : undefined);
+  const customerName =
+    asString(customerRecord?.name) || asString(customerRecord?.fullName);
 
   return {
     id,
@@ -252,7 +295,11 @@ function parseOrderRecord(value: unknown): OrderRecord | null {
     status: asString(record.status) || "PLACED",
     tableId,
     tableName,
-    sourceLabel: tableName ? `${tableName} - Dine-in` : customerName ? `${customerName} - Takeaway` : "Order",
+    sourceLabel: tableName
+      ? `${tableName} - Dine-in`
+      : customerName
+        ? `${customerName} - Takeaway`
+        : "Order",
     itemsSummary: parseOrderItemsSummary(record),
     items: [],
     subTotal: asNumber(record.subTotal),
@@ -266,7 +313,9 @@ function parseOrderRecord(value: unknown): OrderRecord | null {
 
 function parseOrdersList(data: unknown): OrdersListPayload {
   const root = asRecord(data);
-  const items = asArray(root?.items).map(parseOrderRecord).filter((item): item is OrderRecord => Boolean(item));
+  const items = asArray(root?.items)
+    .map(parseOrderRecord)
+    .filter((item): item is OrderRecord => Boolean(item));
   const pagination = asRecord(root?.pagination);
 
   return {
@@ -345,7 +394,9 @@ function isNotFound(error: FetchBaseQueryError | undefined): boolean {
 }
 
 async function postWithFallback(
-  fetchWithBQ: (arg: string | FetchArgs) => QueryResult | PromiseLike<QueryResult>,
+  fetchWithBQ: (
+    arg: string | FetchArgs,
+  ) => QueryResult | PromiseLike<QueryResult>,
   endpoints: string[],
   body?: unknown,
 ): Promise<QueryResult> {
@@ -374,7 +425,9 @@ async function postWithFallback(
 }
 
 async function requestWithFallback(
-  fetchWithBQ: (arg: string | FetchArgs) => QueryResult | PromiseLike<QueryResult>,
+  fetchWithBQ: (
+    arg: string | FetchArgs,
+  ) => QueryResult | PromiseLike<QueryResult>,
   method: "PUT" | "PATCH" | "DELETE",
   endpoints: string[],
   body?: unknown,
@@ -471,7 +524,11 @@ export const authApi = createApi({
           },
         };
 
-        const result = await postWithFallback(fetchWithBQ, ["/auth/register", "/auth/register-owner"], registerBody);
+        const result = await postWithFallback(
+          fetchWithBQ,
+          ["/auth/register", "/auth/register-owner"],
+          registerBody,
+        );
 
         if (result.error) {
           return { error: result.error };
@@ -495,7 +552,6 @@ export const authApi = createApi({
 
         return { data: parseSession(result.data) };
       },
-      
     }),
     tentantProfile: builder.query<TenantProfilePayload, void>({
       async queryFn(_arg, _api, _extraOptions, fetchWithBQ) {
@@ -514,7 +570,10 @@ export const authApi = createApi({
       providesTags: [{ type: "TenantProfile", id: "CURRENT" }],
     }),
 
-    updateTenantProfile: builder.mutation<TenantProfilePayload, UpdateTenantProfilePayload>({
+    updateTenantProfile: builder.mutation<
+      TenantProfilePayload,
+      UpdateTenantProfilePayload
+    >({
       async queryFn(payload, _api, _extraOptions, fetchWithBQ) {
         const body = {
           name: payload.name?.trim() || undefined,
@@ -523,7 +582,11 @@ export const authApi = createApi({
           secondaryNumber: payload.secondaryNumber?.trim() || undefined,
           ownerName: payload.ownerName?.trim() || undefined,
           email:
-            payload.email === undefined ? undefined : payload.email === null ? null : payload.email.trim() || "",
+            payload.email === undefined
+              ? undefined
+              : payload.email === null
+                ? null
+                : payload.email.trim() || "",
           gstNumber: payload.gstNumber?.trim() || undefined,
           address: payload.address
             ? {
@@ -537,9 +600,19 @@ export const authApi = createApi({
             : undefined,
         };
 
-        let result = await requestWithFallback(fetchWithBQ, "PUT", ["/tenant/profile", "/tenant/profile/update"], body);
+        let result = await requestWithFallback(
+          fetchWithBQ,
+          "PUT",
+          ["/tenant/profile", "/tenant/profile/update"],
+          body,
+        );
         if (result.error && isNotFound(result.error)) {
-          result = await requestWithFallback(fetchWithBQ, "PATCH", ["/tenant/profile", "/tenant/profile/update"], body);
+          result = await requestWithFallback(
+            fetchWithBQ,
+            "PATCH",
+            ["/tenant/profile", "/tenant/profile/update"],
+            body,
+          );
         }
 
         if (result.error) {
@@ -583,11 +656,17 @@ export const authApi = createApi({
       },
       providesTags: (result) => [
         { type: "TenantStaff", id: "LIST" },
-        ...(result?.items.map((staff) => ({ type: "TenantStaff" as const, id: staff.membershipId })) ?? []),
+        ...(result?.items.map((staff) => ({
+          type: "TenantStaff" as const,
+          id: staff.membershipId,
+        })) ?? []),
       ],
     }),
 
-    createTenantStaff: builder.mutation<TenantStaffMutationPayload, CreateTenantStaffPayload>({
+    createTenantStaff: builder.mutation<
+      TenantStaffMutationPayload,
+      CreateTenantStaffPayload
+    >({
       async queryFn(payload, _api, _extraOptions, fetchWithBQ) {
         const createBody = {
           name: payload.name.trim(),
@@ -597,7 +676,11 @@ export const authApi = createApi({
           role: payload.role.trim().toUpperCase(),
         };
 
-        const result = await postWithFallback(fetchWithBQ, ["/tenant/staff", "/tenant/staff/register"], createBody);
+        const result = await postWithFallback(
+          fetchWithBQ,
+          ["/tenant/staff", "/tenant/staff/register"],
+          createBody,
+        );
         if (result.error) {
           return { error: result.error };
         }
@@ -607,14 +690,29 @@ export const authApi = createApi({
       invalidatesTags: [{ type: "TenantStaff", id: "LIST" }],
     }),
 
-    updateTenantStaff: builder.mutation<TenantStaffMutationPayload, UpdateTenantStaffArgs>({
-      async queryFn({ membershipId, userId, payload }, _api, _extraOptions, fetchWithBQ) {
+    updateTenantStaff: builder.mutation<
+      TenantStaffMutationPayload,
+      UpdateTenantStaffArgs
+    >({
+      async queryFn(
+        { membershipId, userId, payload },
+        _api,
+        _extraOptions,
+        fetchWithBQ,
+      ) {
         const body = {
           role: payload.role?.trim().toUpperCase(),
-          isActive: typeof payload.isActive === "boolean" ? payload.isActive : undefined,
+          isActive:
+            typeof payload.isActive === "boolean"
+              ? payload.isActive
+              : undefined,
           name: payload.name?.trim() || undefined,
           email:
-            payload.email === undefined ? undefined : payload.email === null ? null : payload.email.trim() || "",
+            payload.email === undefined
+              ? undefined
+              : payload.email === null
+                ? null
+                : payload.email.trim() || "",
           whatsappNumber: payload.whatsappNumber?.trim() || undefined,
           password: payload.password?.trim() || undefined,
         };
@@ -625,9 +723,19 @@ export const authApi = createApi({
           ...(userId ? [`/tenant/staff/user/${userId}`] : []),
         ];
 
-        let result = await requestWithFallback(fetchWithBQ, "PUT", endpointCandidates, body);
+        let result = await requestWithFallback(
+          fetchWithBQ,
+          "PUT",
+          endpointCandidates,
+          body,
+        );
         if (result.error && isNotFound(result.error)) {
-          result = await requestWithFallback(fetchWithBQ, "PATCH", endpointCandidates, body);
+          result = await requestWithFallback(
+            fetchWithBQ,
+            "PATCH",
+            endpointCandidates,
+            body,
+          );
         }
 
         if (result.error) {
@@ -642,21 +750,35 @@ export const authApi = createApi({
       ],
     }),
 
-    deleteTenantStaff: builder.mutation<{ message: string }, DeleteTenantStaffArgs>({
-      async queryFn({ membershipId, userId }, _api, _extraOptions, fetchWithBQ) {
+    deleteTenantStaff: builder.mutation<
+      { message: string },
+      DeleteTenantStaffArgs
+    >({
+      async queryFn(
+        { membershipId, userId },
+        _api,
+        _extraOptions,
+        fetchWithBQ,
+      ) {
         const endpointCandidates = [
           `/tenant/staff/${membershipId}`,
           `/tenant/staff/membership/${membershipId}`,
           ...(userId ? [`/tenant/staff/user/${userId}`] : []),
         ];
 
-        const result = await requestWithFallback(fetchWithBQ, "DELETE", endpointCandidates);
+        const result = await requestWithFallback(
+          fetchWithBQ,
+          "DELETE",
+          endpointCandidates,
+        );
         if (result.error) {
           return { error: result.error };
         }
 
         const root = asRecord(result.data);
-        return { data: { message: asString(root?.message) || "staff deleted" } };
+        return {
+          data: { message: asString(root?.message) || "staff deleted" },
+        };
       },
       invalidatesTags: (_result, _error, { membershipId }) => [
         { type: "TenantStaff", id: "LIST" },
@@ -685,9 +807,15 @@ export const authApi = createApi({
       transformResponse: (response: unknown) => parseOrdersList(response),
       providesTags: (result) => [
         { type: "Orders", id: "LIST" },
-        ...(result?.items.map((order) => ({ type: "Orders" as const, id: order.id })) ?? []),
+        ...(result?.items.map((order) => ({
+          type: "Orders" as const,
+          id: order.id,
+        })) ?? []),
       ],
-      async onCacheEntryAdded(_arg, { cacheDataLoaded, cacheEntryRemoved, dispatch, getState }) {
+      async onCacheEntryAdded(
+        _arg,
+        { cacheDataLoaded, cacheEntryRemoved, dispatch, getState },
+      ) {
         if (typeof window === "undefined") return;
 
         await cacheDataLoaded;
@@ -695,7 +823,10 @@ export const authApi = createApi({
         const state = getState() as RootState;
         const token = state.auth.token;
         const tenantSlug = state.auth.tenant?.slug;
-        const socketBaseUrl = RAW_API_BASE_URL.replace(/\/+$/, "").replace(/\/api$/, "");
+        const socketBaseUrl = RAW_API_BASE_URL.replace(/\/+$/, "").replace(
+          /\/api$/,
+          "",
+        );
 
         const socket = io(socketBaseUrl, {
           withCredentials: true,
@@ -708,7 +839,9 @@ export const authApi = createApi({
         });
 
         const refreshOrders = () => {
-          dispatch(authApi.util.invalidateTags([{ type: "Orders", id: "LIST" }]));
+          dispatch(
+            authApi.util.invalidateTags([{ type: "Orders", id: "LIST" }]),
+          );
         };
 
         const events = [
@@ -747,23 +880,32 @@ export const authApi = createApi({
         url: "/reports/summary",
         method: "GET",
         credentials: "include",
-        params: {
-          period: params?.period || "today",
-          from: params?.from || undefined,
-          to: params?.to || undefined,
-          tzOffsetMinutes: params?.tzOffsetMinutes,
-          weekStartsOn: params?.weekStartsOn,
-        },
+        // params: {
+        //   period: params?.period || "today",
+        //   from: params?.from || undefined,
+        //   to: params?.to || undefined,
+        //   tzOffsetMinutes: params?.tzOffsetMinutes,
+        //   weekStartsOn: params?.weekStartsOn,
+        // },
       }),
-      transformResponse: (response: unknown) => parseReportsSummary(response),
+      // transformResponse: (response: unknown) => parseReportsSummary(response),
     }),
 
+reportsMonthly: builder.query<ReportsMonthlyPayload, void>({
+  query: () => ({
+    url: "/reports/monthly",
+    method: "GET",
+    credentials: "include",
+  }),
+}),
     refreshSession: builder.mutation<SessionPayload, void>({
       async queryFn(_arg, _api, _extraOptions, fetchWithBQ) {
         let result: QueryResult = { error: undefined };
 
         for (const endpoint of ["/auth/refresh", "/auth/refresh-token"]) {
-          result = (await fetchWithBQ(buildRefreshRequest(endpoint))) as QueryResult;
+          result = (await fetchWithBQ(
+            buildRefreshRequest(endpoint),
+          )) as QueryResult;
           if (!result.error || !isNotFound(result.error)) {
             break;
           }
@@ -809,7 +951,10 @@ export const {
   useOrdersQuery,
   useLazyOrdersQuery,
   useReportsSummaryQuery,
+  
   useLazyReportsSummaryQuery,
+  useReportsMonthlyQuery,
+
   useRefreshSessionMutation,
   useLogoutMutation,
 } = authApi;

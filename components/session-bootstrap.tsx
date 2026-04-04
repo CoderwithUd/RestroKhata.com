@@ -73,7 +73,7 @@ export function SessionBootstrap() {
         const profile = await withTimeout(loadMe(undefined, true).unwrap(), 8000);
         dispatch(setSession(profile));
         writeStoredSession(profile);
-      } catch {
+      } catch (firstError) {
         try {
           const refreshed = await withTimeout(refreshSession().unwrap(), 8000);
 
@@ -89,9 +89,20 @@ export function SessionBootstrap() {
 
           dispatch(setSession(refreshedProfile));
           writeStoredSession(refreshedProfile);
-        } catch {
-          dispatch(clearSession());
-          clearStoredSession();
+        } catch (refreshError) {
+          // Only clear session on actual auth errors (401/403)
+          // Network/timeout errors shouldn't trigger logout
+          const isAuthError =
+            typeof refreshError === "object" &&
+            refreshError !== null &&
+            "status" in refreshError &&
+            (refreshError.status === 401 || refreshError.status === 403);
+
+          if (isAuthError) {
+            dispatch(clearSession());
+            clearStoredSession();
+          }
+          // Otherwise keep stored session - don't logout on network errors
         }
       } finally {
         dispatch(bootstrapFinished());

@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useMemo, useState } from "react";
+import { FormEvent, useMemo, useState, useEffect } from "react";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { useConfirm } from "@/components/confirm-provider";
@@ -15,12 +15,14 @@ import {
 } from "@/store/api/tablesApi";
 import { useGetOrdersQuery } from "@/store/api/ordersApi";
 import { useGetInvoicesQuery } from "@/store/api/invoicesApi";
+import { useGetCustomersQuery } from "@/store/api/customersApi";
 import type {
   TableQrFormat,
   TableReservation,
   TableRecord,
   TableStatus,
 } from "@/store/types/tables";
+import type { Customer } from "@/store/types/customers";
 
 type Props = { tenantName?: string; tenantSlug?: string };
 type Filter = "all" | "active" | "inactive";
@@ -32,18 +34,12 @@ type QrTemplateId =
   | "template4"
   | "template5";
 
-type FormState = {
-  number: number;
-  name: string;
-  capacity: number;
-  isActive: boolean;
-  status: TableStatus;
-  customerId: string;
-  reservationCustomerName: string;
-  reservationCustomerPhone: string;
-  reservationPartySize: number;
-  reservationReservedFor: string;
-  reservationNote: string;
+type ReservationFormState = {
+  customerName: string;
+  customerPhone: string;
+  partySize: number;
+  reservedFor: string;
+  note: string;
   advanceRequired: boolean;
   advanceAmount: number;
   advancePaidAmount: number;
@@ -88,63 +84,38 @@ const FRONTEND_QR_BASE_URL = `${FRONTEND_PUBLIC_URL}/qr`;
 const QR_TEMPLATES: QrTemplate[] = [
   {
     id: "template1",
-    name: "Template 1",
-    description: "Classic table placard",
+    name: "Classic",
+    description: "Traditional placard",
     imagePath: "/QR/QRSCANTEMPLATE1.jpg",
-    qrSlot: {
-      x: 0.18,
-      y: 0.46,
-      size: 0.64,
-      padding: 0.055,
-    },
+    qrSlot: { x: 0.18, y: 0.46, size: 0.64, padding: 0.055 },
   },
   {
     id: "template2",
-    name: "Template 2",
-    description: "Modern menu standee",
+    name: "Modern",
+    description: "Clean standee",
     imagePath: "/QR/QRSCANTEMPLATE2.jpg",
-    qrSlot: {
-      x: 0.18,
-      y: 0.395,
-      size: 0.64,
-      padding: 0.055,
-    },
+    qrSlot: { x: 0.18, y: 0.395, size: 0.64, padding: 0.055 },
   },
   {
     id: "template3",
-    name: "Template 3",
-    description: "Warm dine card",
+    name: "Warm",
+    description: "Cozy card",
     imagePath: "/QR/QRSCANTEMPLATE3.jpg",
-    qrSlot: {
-      x: 0.23,
-      y: 0.405,
-      size: 0.53,
-      padding: 0.03,
-    },
+    qrSlot: { x: 0.23, y: 0.405, size: 0.53, padding: 0.03 },
   },
   {
     id: "template4",
-    name: "Template 4",
-    description: "Premium counter card",
+    name: "Premium",
+    description: "Elegant card",
     imagePath: "/QR/QRSCANTEMPLATE4.jpg",
-    qrSlot: {
-      x: 0.245,
-      y: 0.405,
-      size: 0.49,
-      padding: 0.04,
-    },
+    qrSlot: { x: 0.245, y: 0.405, size: 0.49, padding: 0.04 },
   },
   {
     id: "template5",
-    name: "Template 5",
-    description: "Signature table stand",
+    name: "Signature",
+    description: "Distinctive stand",
     imagePath: "/QR/QRSCANTEMPLATE5.jpg",
-    qrSlot: {
-      x: 0.255,
-      y: 0.49,
-      size: 0.35,
-      padding: 0.02,
-    },
+    qrSlot: { x: 0.255, y: 0.49, size: 0.35, padding: 0.02 },
   },
 ];
 
@@ -156,22 +127,18 @@ const sLabel = (s?: string) =>
   nStatus(s) === "RESERVED"
     ? "Reserved"
     : nStatus(s) === "OCCUPIED"
-      ? "Occupied"
-      : nStatus(s) === "BILLING"
-        ? "Billing"
-        : nStatus(s) === "AVAILABLE"
-          ? "Available"
-          : nStatus(s);
+    ? "Occupied"
+    : nStatus(s) === "BILLING"
+    ? "Billing"
+    : "Available";
 const sClass = (s?: string) =>
   nStatus(s) === "RESERVED"
-    ? "border-blue-200 bg-blue-50 text-blue-700"
+    ? "bg-amber-100 text-amber-800 border-amber-200"
     : nStatus(s) === "OCCUPIED"
-      ? "border-amber-200 bg-amber-50 text-amber-700"
-      : nStatus(s) === "BILLING"
-        ? "border-rose-200 bg-rose-50 text-rose-700"
-        : nStatus(s) === "AVAILABLE"
-          ? "border-emerald-200 bg-emerald-50 text-emerald-700"
-          : "border-slate-300 bg-slate-100 text-slate-700";
+    ? "bg-orange-100 text-orange-800 border-orange-200"
+    : nStatus(s) === "BILLING"
+    ? "bg-rose-100 text-rose-800 border-rose-200"
+    : "bg-emerald-100 text-emerald-800 border-emerald-200";
 
 function toDateTimeLocal(value?: string): string {
   if (!value) return "";
@@ -182,51 +149,40 @@ function toDateTimeLocal(value?: string): string {
   return local.toISOString().slice(0, 16);
 }
 
-function formatReservationSummary(reservation?: TableReservation): string {
-  if (!reservation) return "Tap Reserve to block the table with customer details.";
-  const parts = [
-    reservation.customerName || "Guest",
-    reservation.customerPhone || "",
-    reservation.partySize ? `${reservation.partySize} guests` : "",
-    reservation.reservedFor
-      ? new Intl.DateTimeFormat("en-IN", {
-          dateStyle: "medium",
-          timeStyle: "short",
-        }).format(new Date(reservation.reservedFor))
-      : "",
-  ].filter(Boolean);
-  return parts.join(" | ");
-}
-
-function buildReservationPayload(form: FormState) {
-  const customerName = form.reservationCustomerName.trim();
-  const customerPhone = form.reservationCustomerPhone.trim();
-  const note = form.reservationNote.trim();
-  const advanceMethod = form.advanceMethod.trim();
-  const advanceReference = form.advanceReference.trim();
-  const reservedFor = form.reservationReservedFor
-    ? new Date(form.reservationReservedFor).toISOString()
+function buildReservationPayload(form: ReservationFormState, customerId?: string) {
+  const customerName = form.customerName.trim();
+  const customerPhone = form.customerPhone.trim();
+  const note = form.note.trim();
+  const reservedFor = form.reservedFor
+    ? new Date(form.reservedFor).toISOString()
     : undefined;
 
-  if (!customerName && !customerPhone && !note && !reservedFor && !form.advanceRequired)
+  if (!customerName && !customerPhone && !note && !reservedFor)
     return undefined;
 
-  return {
+  const payload: any = {
     customerName: customerName || undefined,
     customerPhone: customerPhone || undefined,
-    partySize: norm(form.reservationPartySize, 1),
+    partySize: norm(form.partySize, 1),
     reservedFor,
     note: note || undefined,
-    advancePayment: {
-      required: form.advanceRequired,
-      amount: form.advanceRequired ? Math.max(0, form.advanceAmount || 0) : 0,
-      paidAmount: form.advanceRequired
-        ? Math.max(0, form.advancePaidAmount || 0)
-        : 0,
-      method: form.advanceRequired ? advanceMethod || undefined : undefined,
-      reference: form.advanceRequired ? advanceReference || undefined : undefined,
-    },
   };
+
+  if (customerId) {
+    payload.customerId = customerId;
+  }
+
+  if (form.advanceRequired) {
+    payload.advancePayment = {
+      required: true,
+      amount: form.advanceAmount || 0,
+      paidAmount: form.advancePaidAmount || 0,
+      method: form.advanceMethod || undefined,
+      reference: form.advanceReference || undefined,
+    };
+  }
+
+  return payload;
 }
 
 function qrSrc(qr: string, format: TableQrFormat): string | null {
@@ -246,64 +202,7 @@ function downloadHref(href: string, fileName: string) {
 }
 
 function getTemplateById(id: QrTemplateId): QrTemplate {
-  return (
-    QR_TEMPLATES.find((template) => template.id === id) || QR_TEMPLATES[0]
-  );
-}
-
-function defaultQrBaseUrl(): string {
-  return FRONTEND_QR_BASE_URL;
-}
-
-function resolveQrBaseUrl(baseUrl: string): string {
-  const candidate = baseUrl.trim();
-  const fallback = defaultQrBaseUrl();
-  if (!candidate) return fallback;
-  if (candidate.startsWith(FRONTEND_PUBLIC_URL)) return candidate;
-  return fallback;
-}
-
-function normalizePayloadUrl(payload: string, baseUrl: string): string {
-  const raw = payload.trim();
-  if (!raw) return "";
-  if (/^https?:\/\//i.test(raw)) {
-    try {
-      const url = new URL(raw);
-      if (url.origin === FRONTEND_PUBLIC_URL) {
-        const hasQrParams =
-          url.searchParams.has("token") ||
-          url.searchParams.has("tenantSlug") ||
-          url.searchParams.has("tableId") ||
-          url.searchParams.has("tableNumber");
-        const isQrPublicPath =
-          url.pathname === "/qr" ||
-          (url.pathname !== "/" &&
-            url.pathname !== "/login" &&
-            url.pathname !== "/dashboard" &&
-            url.pathname !== "/register" &&
-            url.pathname !== "/plan");
-        if (hasQrParams && !isQrPublicPath) {
-          const query = url.searchParams.toString();
-          return query
-            ? `${FRONTEND_QR_BASE_URL}?${query}`
-            : FRONTEND_QR_BASE_URL;
-        }
-      }
-      return url.toString();
-    } catch {
-      return raw;
-    }
-  }
-  const resolvedBase = resolveQrBaseUrl(baseUrl);
-  if (raw.startsWith("?")) return `${resolvedBase}${raw}`;
-  if (raw.includes("=") && !raw.includes(" ")) {
-    return `${resolvedBase}?${raw.replace(/^\?/, "")}`;
-  }
-  try {
-    return new URL(raw, FRONTEND_PUBLIC_URL).toString();
-  } catch {
-    return raw;
-  }
+  return QR_TEMPLATES.find((template) => template.id === id) || QR_TEMPLATES[0];
 }
 
 async function loadImageBySrc(src: string, errorMessage: string) {
@@ -358,12 +257,71 @@ async function downloadTemplateCard(args: {
     slot.x + slot.padding,
     slot.y + slot.padding,
     qrSize,
-    qrSize,
+    qrSize
   );
-
   const safe = args.fileBase.replace(/[^a-zA-Z0-9-_]/g, "_");
   downloadHref(canvas.toDataURL("image/png"), `${safe}_${args.template.id}.png`);
 }
+
+// Amber-themed Icons
+const Icons = {
+  Qr: () => (
+    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm12 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z" />
+    </svg>
+  ),
+  Edit: () => (
+    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+    </svg>
+  ),
+  Delete: () => (
+    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+    </svg>
+  ),
+  Reserve: () => (
+    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+    </svg>
+  ),
+  Order: () => (
+    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-1.5 6M18 13l1.5 6M9 21h6M12 15v6" />
+    </svg>
+  ),
+  Grid: () => (
+    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z" />
+    </svg>
+  ),
+  List: () => (
+    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+    </svg>
+  ),
+  Search: () => (
+    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+    </svg>
+  ),
+  Add: () => (
+    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+    </svg>
+  ),
+  Close: () => (
+    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+    </svg>
+  ),
+  ChevronDown: () => (
+    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+    </svg>
+  ),
+};
+
 export function TablesWorkspace({ tenantName, tenantSlug }: Props) {
   const router = useRouter();
   const confirm = useConfirm();
@@ -372,6 +330,10 @@ export function TablesWorkspace({ tenantName, tenantSlug }: Props) {
   const [tableListViewMode, setTableListViewMode] =
     useState<TableListViewMode>("grid");
   const [searchText, setSearchText] = useState("");
+  const [customerSearch, setCustomerSearch] = useState("");
+  const [showCustomerSuggestions, setShowCustomerSuggestions] = useState(false);
+  const [reservationTable, setReservationTable] = useState<TableRecord | null>(null);
+  
   const queryArg =
     filter === "all" ? undefined : { isActive: filter === "active" };
   const { data, isLoading, isFetching, refetch } = useGetTablesQuery(queryArg);
@@ -383,24 +345,38 @@ export function TablesWorkspace({ tenantName, tenantSlug }: Props) {
     status: "ISSUED",
     limit: 200,
   });
+  const { data: customersData } = useGetCustomersQuery({ limit: 50 });
+  
   const [createTable, { isLoading: isCreating }] = useCreateTableMutation();
   const [updateTable, { isLoading: isUpdating }] = useUpdateTableMutation();
   const [deleteTable, { isLoading: isDeleting }] = useDeleteTableMutation();
   const [fetchQr, { isFetching: isQrFetching }] = useLazyGetTableQrQuery();
 
+  const [reservationForm, setReservationForm] = useState<ReservationFormState>({
+    customerName: "",
+    customerPhone: "",
+    partySize: 2,
+    reservedFor: "",
+    note: "",
+    advanceRequired: false,
+    advanceAmount: 0,
+    advancePaidAmount: 0,
+    advanceMethod: "CASH",
+    advanceReference: "",
+  });
+
   const tables = useMemo(
     () => [...(data?.items || [])].sort((a, b) => a.number - b.number),
-    [data?.items],
+    [data?.items]
   );
   const maxNumber = useMemo(
     () => tables.reduce((m, t) => Math.max(m, t.number), 0),
-    [tables],
+    [tables]
   );
   const activeCount = tables.filter((t) => t.isActive).length;
-  const reservedCount = tables.filter(
-    (t) => nStatus(t.status) === "RESERVED",
-  ).length;
+  const reservedCount = tables.filter((t) => nStatus(t.status) === "RESERVED").length;
   const totalSeats = tables.reduce((sum, t) => sum + (t.capacity || 0), 0);
+  
   const filteredTables = useMemo(() => {
     const q = searchText.trim().toLowerCase();
     if (!q) return tables;
@@ -408,7 +384,6 @@ export function TablesWorkspace({ tenantName, tenantSlug }: Props) {
       const content = [
         table.number,
         table.name,
-        table.customerId,
         table.capacity,
         nStatus(table.status),
       ]
@@ -418,6 +393,17 @@ export function TablesWorkspace({ tenantName, tenantSlug }: Props) {
       return content.includes(q);
     });
   }, [searchText, tables]);
+
+  const filteredCustomers = useMemo(() => {
+    if (!customerSearch.trim()) return customersData?.items || [];
+    const search = customerSearch.toLowerCase();
+    return (customersData?.items || []).filter(
+      (c) =>
+        c.name?.toLowerCase().includes(search) ||
+        c.phone?.toLowerCase().includes(search) ||
+        c.email?.toLowerCase().includes(search)
+    );
+  }, [customerSearch, customersData?.items]);
 
   const invoiceCoveredOrderIds = useMemo(() => {
     const ids = new Set<string>();
@@ -441,16 +427,6 @@ export function TablesWorkspace({ tenantName, tenantSlug }: Props) {
     return counts;
   }, [invoiceCoveredOrderIds, ordersData?.items]);
 
-  const issuedInvoiceCountByTable = useMemo(() => {
-    const counts = new Map<string, number>();
-    (invoicesData?.items || []).forEach((invoice) => {
-      const tableId = invoice.table?.id;
-      if (!tableId) return;
-      counts.set(tableId, (counts.get(tableId) || 0) + 1);
-    });
-    return counts;
-  }, [invoicesData?.items]);
-
   function canOpenOrder(table: TableRecord): boolean {
     const status = nStatus(table.status);
     return status === "OCCUPIED" || status === "BILLING";
@@ -460,45 +436,23 @@ export function TablesWorkspace({ tenantName, tenantSlug }: Props) {
     router.push(`/dashboard/orders/items?tableId=${encodeURIComponent(table.id)}`);
   }
 
-  const [createForm, setCreateForm] = useState<FormState>({
+  const [createForm, setCreateForm] = useState({
     number: 1,
     name: "",
     capacity: 4,
     isActive: true,
-    status: "AVAILABLE",
-    customerId: "",
-    reservationCustomerName: "",
-    reservationCustomerPhone: "",
-    reservationPartySize: 2,
-    reservationReservedFor: "",
-    reservationNote: "",
-    advanceRequired: false,
-    advanceAmount: 0,
-    advancePaidAmount: 0,
-    advanceMethod: "CASH",
-    advanceReference: "",
   });
+  
   const [editing, setEditing] = useState<TableRecord | null>(null);
-  const [editForm, setEditForm] = useState<FormState>({
+  const [editForm, setEditForm] = useState({
     number: 1,
     name: "",
     capacity: 4,
     isActive: true,
-    status: "AVAILABLE",
-    customerId: "",
-    reservationCustomerName: "",
-    reservationCustomerPhone: "",
-    reservationPartySize: 2,
-    reservationReservedFor: "",
-    reservationNote: "",
-    advanceRequired: false,
-    advanceAmount: 0,
-    advancePaidAmount: 0,
-    advanceMethod: "CASH",
-    advanceReference: "",
+    status: "AVAILABLE" as TableStatus,
   });
+  
   const [downloadingTemplate, setDownloadingTemplate] = useState(false);
-  const [sharingQrLink, setSharingQrLink] = useState(false);
   const defaultTemplate = QR_TEMPLATES[0];
 
   const [qr, setQr] = useState<QrState>({
@@ -506,7 +460,7 @@ export function TablesWorkspace({ tenantName, tenantSlug }: Props) {
     table: null,
     format: "dataUrl",
     templateId: defaultTemplate.id,
-    baseUrl: defaultQrBaseUrl(),
+    baseUrl: FRONTEND_QR_BASE_URL,
     qr: "",
     qrPayload: "",
     error: "",
@@ -515,7 +469,6 @@ export function TablesWorkspace({ tenantName, tenantSlug }: Props) {
   const preview = qrSrc(qr.qr, qr.format);
   const qrBusy = isQrFetching;
   const selectedTemplate = getTemplateById(qr.templateId);
-  const qrPayloadUrl = normalizePayloadUrl(qr.qrPayload, qr.baseUrl);
 
   async function submitCreate(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -540,8 +493,6 @@ export function TablesWorkspace({ tenantName, tenantSlug }: Props) {
   }
 
   function openEdit(table: TableRecord) {
-    const reservation = table.reservation;
-    const advancePayment = reservation?.advancePayment;
     setEditing(table);
     setEditForm({
       number: table.number,
@@ -549,17 +500,6 @@ export function TablesWorkspace({ tenantName, tenantSlug }: Props) {
       capacity: table.capacity,
       isActive: table.isActive,
       status: nStatus(table.status),
-      customerId: table.customerId || "",
-      reservationCustomerName: reservation?.customerName || "",
-      reservationCustomerPhone: reservation?.customerPhone || "",
-      reservationPartySize: reservation?.partySize || table.capacity || 2,
-      reservationReservedFor: toDateTimeLocal(reservation?.reservedFor),
-      reservationNote: reservation?.note || "",
-      advanceRequired: Boolean(advancePayment?.required),
-      advanceAmount: advancePayment?.amount || 0,
-      advancePaidAmount: advancePayment?.paidAmount || 0,
-      advanceMethod: advancePayment?.method || "CASH",
-      advanceReference: advancePayment?.reference || "",
     });
   }
 
@@ -567,18 +507,13 @@ export function TablesWorkspace({ tenantName, tenantSlug }: Props) {
     event.preventDefault();
     if (!editing) return;
     try {
-      const status = nStatus(editForm.status);
-      const reservation =
-        status === "RESERVED" ? buildReservationPayload(editForm) : undefined;
       await updateTable({
         tableId: editing.id,
         number: norm(editForm.number, editing.number),
         name: editForm.name.trim() || `Table ${editForm.number}`,
         capacity: norm(editForm.capacity, editing.capacity),
         isActive: editForm.isActive,
-        status,
-        customerId: status === "RESERVED" ? editForm.customerId.trim() : "",
-        reservation,
+        status: nStatus(editForm.status),
       }).unwrap();
       showSuccess(`Table ${editForm.number} updated`);
       setEditing(null);
@@ -587,22 +522,48 @@ export function TablesWorkspace({ tenantName, tenantSlug }: Props) {
     }
   }
 
-  async function quickStatus(table: TableRecord, nextStatus: TableStatus) {
-    if (nStatus(nextStatus) === "RESERVED") {
-      openEdit({
-        ...table,
+  function openReservationModal(table: TableRecord) {
+    setReservationTable(table);
+    setReservationForm({
+      customerName: "",
+      customerPhone: "",
+      partySize: table.capacity || 2,
+      reservedFor: "",
+      note: "",
+      advanceRequired: false,
+      advanceAmount: 0,
+      advancePaidAmount: 0,
+      advanceMethod: "CASH",
+      advanceReference: "",
+    });
+    setCustomerSearch("");
+  }
+
+  async function submitReservation() {
+    if (!reservationTable) return;
+    try {
+      const payload = buildReservationPayload(reservationForm);
+      await updateTable({
+        tableId: reservationTable.id,
         status: "RESERVED",
-      });
-      return;
+        reservation: payload,
+      }).unwrap();
+      showSuccess(`Table ${reservationTable.number} reserved`);
+      setReservationTable(null);
+      setCustomerSearch("");
+    } catch (e) {
+      showError(getErrorMessage(e));
     }
+  }
+
+  async function changeStatus(table: TableRecord, newStatus: TableStatus) {
     try {
       await updateTable({
         tableId: table.id,
-        status: nStatus(nextStatus),
-        customerId: "",
-        reservation: undefined,
+        status: newStatus,
+        reservation: newStatus !== "RESERVED" ? undefined : table.reservation,
       }).unwrap();
-      showSuccess(`Table ${table.number} marked ${sLabel(nextStatus)}`);
+      showSuccess(`Table ${table.number} marked as ${sLabel(newStatus)}`);
     } catch (e) {
       showError(getErrorMessage(e));
     }
@@ -611,9 +572,9 @@ export function TablesWorkspace({ tenantName, tenantSlug }: Props) {
   async function removeTable(table: TableRecord) {
     const approved = await confirm({
       title: "Delete Table",
-      message: `Delete ${table.name}? This action removes the table record from your restaurant setup.`,
-      confirmText: "Delete Table",
-      cancelText: "Keep Table",
+      message: `Delete ${table.name}?`,
+      confirmText: "Delete",
+      cancelText: "Cancel",
       tone: "danger",
     });
     if (!approved) return;
@@ -631,20 +592,18 @@ export function TablesWorkspace({ tenantName, tenantSlug }: Props) {
 
   async function generateQr() {
     if (!qr.table) return;
-    const baseUrl = resolveQrBaseUrl(qr.baseUrl);
-    setQr((prev) => ({ ...prev, error: "", baseUrl }));
+    setQr((prev) => ({ ...prev, error: "" }));
     try {
       const r = await fetchQr({
         tableId: qr.table.id,
         format: qr.format,
-        baseUrl,
+        baseUrl: FRONTEND_QR_BASE_URL,
       }).unwrap();
       setQr((prev) => ({
         ...prev,
         qr: r.qr,
         qrPayload: r.qrPayload,
         format: r.format,
-        baseUrl,
       }));
     } catch (e) {
       setQr((prev) => ({ ...prev, error: getErrorMessage(e) }));
@@ -652,10 +611,7 @@ export function TablesWorkspace({ tenantName, tenantSlug }: Props) {
   }
 
   function applyTemplate(templateId: QrTemplateId) {
-    setQr((prev) => ({
-      ...prev,
-      templateId,
-    }));
+    setQr((prev) => ({ ...prev, templateId }));
   }
 
   async function downloadActiveTemplate() {
@@ -665,7 +621,7 @@ export function TablesWorkspace({ tenantName, tenantSlug }: Props) {
       await downloadTemplateCard({
         qr: qr.qr,
         format: qr.format,
-        fileBase: `table-${qr.table.number}-static`,
+        fileBase: `table-${qr.table.number}`,
         template: selectedTemplate,
       });
     } catch (e) {
@@ -675,813 +631,521 @@ export function TablesWorkspace({ tenantName, tenantSlug }: Props) {
     }
   }
 
-  function openQrLink() {
-    if (!qrPayloadUrl) {
-      showError("Generate QR first");
-      return;
-    }
-    window.open(qrPayloadUrl, "_blank", "noopener,noreferrer");
+  function handleCustomerSelect(customer: Customer) {
+    setReservationForm((prev) => ({
+      ...prev,
+      customerName: customer.name || "",
+      customerPhone: customer.phone || "",
+    }));
+    setCustomerSearch(customer.name || "");
+    setShowCustomerSuggestions(false);
   }
 
-  async function shareQrLink() {
-    if (!qrPayloadUrl) {
-      showError("Generate QR first");
-      return;
-    }
-    setSharingQrLink(true);
-    try {
-      const title = `${qr.table?.name || "Table"} Menu QR`;
-      const text = `Scan this QR to open menu for ${qr.table?.name || "table"}`;
-      if (navigator.share) {
-        await navigator.share({ title, text, url: qrPayloadUrl });
-        showSuccess("QR link shared");
-        return;
-      }
-      if (!navigator.clipboard) {
-        throw new Error("Share not supported on this browser");
-      }
-      await navigator.clipboard.writeText(qrPayloadUrl);
-      showSuccess("QR link copied");
-    } catch (e) {
-      setQr((prev) => ({ ...prev, error: getErrorMessage(e) }));
-    } finally {
-      setSharingQrLink(false);
-    }
-  }
   return (
     <>
-      <section className="mt-1 grid gap-3 sm:mt-2 sm:gap-4">
-        {isCreateTableOpen ? (
-          <div className="fixed inset-0 z-50 flex items-end justify-center overflow-y-auto p-3 pb-[calc(env(safe-area-inset-bottom)+6rem)] sm:items-center sm:p-6 sm:pb-6">
+      <div className="space-y-3 p-2 sm:p-3">
+        {/* Stats Cards */}
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 sm:gap-3">
+          <div className="rounded-lg bg-white p-3 shadow-sm border border-amber-100">
+            <p className="text-xs text-gray-500">Total Tables</p>
+            <p className="text-xl font-bold text-amber-700">{tables.length}</p>
+          </div>
+          <div className="rounded-lg bg-white p-3 shadow-sm border border-amber-100">
+            <p className="text-xs text-gray-500">Active</p>
+            <p className="text-xl font-bold text-emerald-600">{activeCount}</p>
+          </div>
+          <div className="rounded-lg bg-white p-3 shadow-sm border border-amber-100">
+            <p className="text-xs text-gray-500">Reserved</p>
+            <p className="text-xl font-bold text-amber-600">{reservedCount}</p>
+          </div>
+          <div className="rounded-lg bg-white p-3 shadow-sm border border-amber-100">
+            <p className="text-xs text-gray-500">Total Seats</p>
+            <p className="text-xl font-bold text-amber-700">{totalSeats}</p>
+          </div>
+        </div>
+
+        {/* Controls */}
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="flex gap-1 rounded-lg bg-gray-100 p-1">
             <button
               type="button"
-              aria-label="Close create table panel"
-              className="absolute inset-0 bg-slate-900/35"
-              onClick={() => setIsCreateTableOpen(false)}
-            />
-            <article className="relative z-10 w-full max-w-2xl max-h-[calc(100dvh-6.5rem)] overflow-y-auto rounded-[2rem] border border-[#e6dfd1] bg-[#fffdf9] p-3 shadow-2xl sm:max-h-[90vh] sm:rounded-3xl sm:p-5">
-              <div className="mb-3 flex items-center justify-between sm:mb-4">
-                <div>
-                  <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">
-                    Quick Add
-                  </p>
-                  <h4 className="text-lg font-semibold text-slate-900">
-                    Add Table
-                  </h4>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setIsCreateTableOpen(false)}
-                  className="h-8 w-8 rounded-full border border-[#e0d8c9] bg-white text-lg leading-none text-slate-700"
-                  aria-label="Close popup"
-                >
-                  x
-                </button>
-              </div>
-              <form onSubmit={submitCreate} className="space-y-3">
-                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                  <input
-                    type="number"
-                    min={1}
-                    value={createForm.number}
-                    onChange={(event) =>
-                      setCreateForm((prev) => ({
-                        ...prev,
-                        number: norm(Number(event.target.value), 1),
-                      }))
-                    }
-                    className="h-11 rounded-xl border border-[#ddd4c1] bg-white px-3 text-sm outline-none ring-amber-200 focus:ring-2"
-                    placeholder="Number"
-                  />
-                  <input
-                    type="number"
-                    min={1}
-                    value={createForm.capacity}
-                    onChange={(event) =>
-                      setCreateForm((prev) => ({
-                        ...prev,
-                        capacity: norm(Number(event.target.value), 4),
-                      }))
-                    }
-                    className="h-11 rounded-xl border border-[#ddd4c1] bg-white px-3 text-sm outline-none ring-amber-200 focus:ring-2"
-                    placeholder="Capacity"
-                  />
-                </div>
-                <input
-                  value={createForm.name}
-                  onChange={(event) =>
-                    setCreateForm((prev) => ({
-                      ...prev,
-                      name: event.target.value,
-                    }))
-                  }
-                  className="h-11 w-full rounded-xl border border-[#ddd4c1] bg-white px-3 text-sm outline-none ring-amber-200 focus:ring-2"
-                  placeholder={`Table ${createForm.number}`}
-                />
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <label className="inline-flex h-11 items-center gap-2 rounded-xl border border-[#ddd4c1] bg-white px-3 text-sm text-slate-700">
-                    <input
-                      type="checkbox"
-                      checked={createForm.isActive}
-                      onChange={(event) =>
-                        setCreateForm((prev) => ({
-                          ...prev,
-                          isActive: event.target.checked,
-                        }))
-                      }
-                      className="h-4 w-4 rounded border-slate-300 text-amber-500"
-                    />
-                    Active
-                  </label>
-                  <button
-                    type="button"
-                    onClick={() =>
-                      setCreateForm((prev) => ({
-                        ...prev,
-                        number: maxNumber + 1,
-                        name: `Table ${maxNumber + 1}`,
-                      }))
-                    }
-                    className="h-11 rounded-xl border border-[#e0d8c9] bg-white px-3 text-xs font-semibold text-slate-700"
-                  >
-                    Use Next
-                  </button>
-                </div>
-                <button
-                  type="submit"
-                  disabled={isCreating}
-                  className="w-full rounded-xl bg-amber-500 px-4 py-2.5 text-sm font-semibold text-white shadow-lg shadow-amber-500/25 disabled:opacity-60"
-                >
-                  {isCreating ? "Adding..." : "Add Table"}
-                </button>
-                <div className="grid grid-cols-3 gap-2 text-xs">
-                  <div className="rounded-xl border border-[#ebdfc8] bg-white p-2">
-                    <p className="text-slate-500">Tables</p>
-                    <p className="mt-1 text-base font-semibold">
-                      {tables.length}
-                    </p>
-                  </div>
-                  <div className="rounded-xl border border-[#ebdfc8] bg-white p-2">
-                    <p className="text-slate-500">Reserved</p>
-                    <p className="mt-1 text-base font-semibold">
-                      {reservedCount}
-                    </p>
-                  </div>
-                  <div className="rounded-xl border border-[#ebdfc8] bg-white p-2">
-                    <p className="text-slate-500">Seats</p>
-                    <p className="mt-1 text-base font-semibold">{totalSeats}</p>
-                  </div>
-                </div>
-              </form>
-            </article>
+              onClick={() => setTableListViewMode("grid")}
+              className={`flex items-center gap-1 rounded-md px-3 py-1.5 text-sm transition ${
+                tableListViewMode === "grid"
+                  ? "bg-white shadow text-amber-700"
+                  : "text-gray-600"
+              }`}
+            >
+              <Icons.Grid />
+              <span>Grid</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setTableListViewMode("table")}
+              className={`flex items-center gap-1 rounded-md px-3 py-1.5 text-sm transition ${
+                tableListViewMode === "table"
+                  ? "bg-white shadow text-amber-700"
+                  : "text-gray-600"
+              }`}
+            >
+              <Icons.List />
+              <span>List</span>
+            </button>
           </div>
-        ) : null}
 
-        <article className="min-w-0 rounded-2xl border border-[#e6dfd1] bg-[#fffdf9] shadow-sm">
-          <div className="border-b border-[#eee7d8] px-2.5 py-2.5 sm:px-4 sm:py-3">
-            <div className="mt-2.5 rounded-xl border border-[#eadfc9] bg-[#fffaf1] p-2.5 sm:mt-3 sm:p-3">
-              <div className="flex items-center gap-2">
-                <div className="flex shrink-0 flex-col items-center leading-none">
-                  <span className="text-lg font-bold text-slate-700">
-                    {isLoading ? "..." : filteredTables.length}
-                  </span>
-                  <span className="text-[10px] font-medium text-slate-700">
-                    tables
-                  </span>
-                </div>
-                <input
-                  value={searchText}
-                  onChange={(event) => setSearchText(event.target.value)}
-                  placeholder="Search..."
-                  className="h-10 min-w-0 flex-1 rounded-xl border border-[#dcccaf] bg-white px-3 text-sm outline-none ring-amber-200 focus:ring-2"
-                />
-                <div className="flex shrink-0 items-center rounded-lg border border-[#dccfb8] bg-white p-0.5">
-                  <button
-                    type="button"
-                    onClick={() => setTableListViewMode("grid")}
-                    className={`rounded-md px-2 py-1 text-[11px] font-semibold ${
-                      tableListViewMode === "grid"
-                        ? "bg-[#f6ead4] text-[#7a5a34]"
-                        : "text-slate-600"
-                    }`}
-                  >
-                    ⊞
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setTableListViewMode("table")}
-                    className={`rounded-md px-2 py-1 text-[11px] font-semibold ${
-                      tableListViewMode === "table"
-                        ? "bg-[#f6ead4] text-[#7a5a34]"
-                        : "text-slate-600"
-                    }`}
-                  >
-                    ☰
-                  </button>
-                </div>
+          <div className="flex flex-1 max-w-xs items-center gap-2">
+            <div className="relative flex-1">
+              <div className="absolute left-2 top-1/2 -translate-y-1/2 text-gray-400">
+                <Icons.Search />
               </div>
-
-              <div className="mt-2 grid grid-cols-1 gap-2 md:grid-cols-10 md:items-center">
-                <div className="md:col-span-7">
-                  <div className="flex items-center gap-2 overflow-x-auto whitespace-nowrap no-scrollbar">
-                    <span className="shrink-0 text-[11px] font-semibold uppercase tracking-wide text-slate-500">
-                      Status
-                    </span>
-                    <button
-                      type="button"
-                      onClick={() => setFilter("all")}
-                      className={`shrink-0 rounded-full border px-3 py-1 text-[11px] font-semibold ${
-                        filter === "all"
-                          ? "border-amber-300 bg-amber-100 text-amber-800"
-                          : "border-[#ddcfb7] bg-white text-slate-700"
-                      }`}
-                    >
-                      All
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setFilter("active")}
-                      className={`shrink-0 rounded-full border px-3 py-1 text-[11px] font-semibold ${
-                        filter === "active"
-                          ? "border-emerald-300 bg-emerald-100 text-emerald-800"
-                          : "border-[#ddcfb7] bg-white text-slate-700"
-                      }`}
-                    >
-                      Active {activeCount}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setFilter("inactive")}
-                      className={`shrink-0 rounded-full border px-3 py-1 text-[11px] font-semibold ${
-                        filter === "inactive"
-                          ? "border-slate-300 bg-slate-100 text-slate-700"
-                          : "border-[#ddcfb7] bg-white text-slate-700"
-                      }`}
-                    >
-                      Inactive {tables.length - activeCount}
-                    </button>
-                  </div>
-                </div>
-                <div className="md:col-span-3">
-                  <div className="flex items-center justify-start gap-2 md:justify-end">
-                    <button
-                      type="button"
-                      onClick={() => refetch()}
-                      className="rounded-lg border border-[#e0d8c9] bg-white px-3 py-1.5 text-xs font-semibold text-slate-700"
-                    >
-                      {isFetching ? "Refreshing..." : "Refresh"}
-                    </button>
-                  </div>
-                </div>
-              </div>
-
-              <button
-                type="button"
-                onClick={() => setIsCreateTableOpen(true)}
-                className="mt-3 w-full rounded-xl border-2 border-dashed border-amber-300 bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-700 shadow-sm transition-all hover:border-amber-400 hover:bg-amber-100 hover:shadow-md active:scale-[0.98]"
-              >
-                + Add Table
-              </button>
+              <input
+                type="text"
+                value={searchText}
+                onChange={(e) => setSearchText(e.target.value)}
+                placeholder="Search tables..."
+                className="w-full rounded-lg border border-gray-200 py-1.5 pl-8 pr-3 text-sm focus:border-amber-400 focus:outline-none focus:ring-1 focus:ring-amber-400"
+              />
             </div>
+            <button
+              type="button"
+              onClick={() => refetch()}
+              className="rounded-lg border border-gray-200 px-3 py-1.5 text-sm text-gray-600 hover:bg-gray-50"
+            >
+              ↻
+            </button>
+            <button
+              type="button"
+              onClick={() => setIsCreateTableOpen(true)}
+              className="flex items-center gap-1 rounded-lg bg-amber-500 px-3 py-1.5 text-sm text-white hover:bg-amber-600"
+            >
+              <Icons.Add />
+              <span>Add</span>
+            </button>
           </div>
+        </div>
 
-          <div className="p-2.5 sm:p-4">
-            {filteredTables.length ? (
-              tableListViewMode === "grid" ? (
-                <div className="grid gap-2.5 sm:grid-cols-2 sm:gap-3">
-                  {filteredTables.map((table) => {
-                    const reserved = nStatus(table.status) === "RESERVED";
-                    const activeOrderCount = activeOrderCountByTable.get(table.id) || 0;
-                    const issuedInvoiceCount = issuedInvoiceCountByTable.get(table.id) || 0;
-                    return (
-                      <article
-                        key={table.id}
-                        className="rounded-2xl border border-[#eadfc9] bg-[linear-gradient(160deg,#fffcf6_0%,#fff7e8_100%)] p-2 shadow-sm sm:p-2.5"
-                      >
-                        <div className="flex items-start justify-between gap-2">
-                          <div>
-                            <span className="inline-flex rounded-full bg-slate-900 px-2.5 py-1 text-[10px] font-semibold text-white">
-                              T{table.number}
-                            </span>
-                            {canOpenOrder(table) ? (
-                              <button
-                                type="button"
-                                onClick={() => openTableOrder(table)}
-                                className="mt-2 text-left text-base font-semibold text-amber-900 underline decoration-amber-300 underline-offset-2"
-                              >
-                                {table.name}
-                              </button>
-                            ) : (
-                              <p className="mt-2 text-base font-semibold text-slate-900">
-                                {table.name}
-                              </p>
-                            )}
-                            <p className="text-xs text-slate-500">
-                              {table.capacity} seats
-                            </p>
-                          </div>
-                          <div className="space-y-1 text-right">
-                            <span
-                              className={`inline-flex rounded-full border px-2.5 py-1 text-[10px] font-semibold ${sClass(table.status)}`}
-                            >
-                              {sLabel(table.status)}
-                            </span>
-                            {activeOrderCount > 0 ? (
-                              <p className="text-[10px] font-semibold text-amber-700">
-                                {activeOrderCount} active order{activeOrderCount === 1 ? "" : "s"}
-                              </p>
-                            ) : null}
-                            {issuedInvoiceCount > 0 ? (
-                              <p className="text-[10px] font-semibold text-blue-700">
-                                {issuedInvoiceCount} pending invoice{issuedInvoiceCount === 1 ? "" : "s"}
-                              </p>
-                            ) : null}
-                            <p className="text-[10px] text-slate-500">
-                              {table.isActive
-                                ? "Active Table"
-                                : "Inactive Table"}
-                            </p>
-                          </div>
-                        </div>
-                        <p className="mt-3 rounded-lg border border-[#e8e1d4] bg-white px-2.5 py-2 text-[11px] text-slate-600">
-                          {reserved
-                            ? formatReservationSummary(table.reservation)
-                            : "Tap Reserve to assign customer, slot time, and advance payment."}
-                        </p>
-                        {reserved && table.reservation?.advancePayment?.required ? (
-                          <div className="mt-2 rounded-lg border border-blue-200 bg-blue-50 px-2.5 py-2 text-[11px] text-blue-800">
-                            Advance: {table.reservation.advancePayment.paidAmount || 0} / {table.reservation.advancePayment.amount || 0}
-                            {table.reservation.advancePayment.method
-                              ? ` • ${table.reservation.advancePayment.method}`
-                              : ""}
-                          </div>
-                        ) : null}
+        {/* Filter Tabs */}
+        <div className="flex gap-2 border-b border-gray-200 pb-2">
+          <button
+            type="button"
+            onClick={() => setFilter("all")}
+            className={`rounded-full px-3 py-1 text-sm ${
+              filter === "all"
+                ? "bg-amber-100 text-amber-700"
+                : "text-gray-600 hover:bg-gray-100"
+            }`}
+          >
+            All ({tables.length})
+          </button>
+          <button
+            type="button"
+            onClick={() => setFilter("active")}
+            className={`rounded-full px-3 py-1 text-sm ${
+              filter === "active"
+                ? "bg-emerald-100 text-emerald-700"
+                : "text-gray-600 hover:bg-gray-100"
+            }`}
+          >
+            Active ({activeCount})
+          </button>
+          <button
+            type="button"
+            onClick={() => setFilter("inactive")}
+            className={`rounded-full px-3 py-1 text-sm ${
+              filter === "inactive"
+                ? "bg-gray-200 text-gray-700"
+                : "text-gray-600 hover:bg-gray-100"
+            }`}
+          >
+            Inactive ({tables.length - activeCount})
+          </button>
+        </div>
+
+        {/* Tables Display */}
+        {isLoading ? (
+          <div className="py-8 text-center text-gray-500">Loading tables...</div>
+        ) : filteredTables.length === 0 ? (
+          <div className="py-8 text-center text-gray-500">No tables found</div>
+        ) : tableListViewMode === "grid" ? (
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+            {filteredTables.map((table) => {
+              const status = nStatus(table.status);
+              const activeOrderCount = activeOrderCountByTable.get(table.id) || 0;
+              const isReserved = status === "RESERVED";
+              
+              return (
+                <div
+                  key={table.id}
+                  className="group rounded-lg bg-white p-3 shadow-sm border border-amber-100 hover:shadow-md transition-all duration-200"
+                >
+                  <div className="flex items-start justify-between">
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2">
+                        <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-700">
+                          T{table.number}
+                        </span>
                         {canOpenOrder(table) ? (
                           <button
                             type="button"
                             onClick={() => openTableOrder(table)}
-                            className="mt-2 w-full rounded-lg border border-amber-300 bg-amber-100 px-3 py-2 text-xs font-semibold text-amber-900 transition hover:bg-amber-200"
+                            className="text-sm font-semibold text-amber-700 hover:text-amber-800"
                           >
-                            Open Order
+                            {table.name}
                           </button>
-                        ) : null}
-                        <div className="mt-2.5 flex items-center justify-end gap-1.5 border-t border-[#ece3d3] pt-2">
+                        ) : (
+                          <p className="text-sm font-semibold text-gray-800">
+                            {table.name}
+                          </p>
+                        )}
+                      </div>
+                      <p className="mt-1 text-xs text-gray-500">
+                        {table.capacity} seats
+                      </p>
+                      {activeOrderCount > 0 && (
+                        <p className="mt-1 text-xs font-medium text-amber-600">
+                          {activeOrderCount} active order{activeOrderCount === 1 ? "" : "s"}
+                        </p>
+                      )}
+                    </div>
+                    <div className="text-right">
+                      <span
+                        className={`inline-flex rounded-full border px-2 py-0.5 text-xs font-semibold ${sClass(status)}`}
+                      >
+                        {sLabel(status)}
+                      </span>
+                    </div>
+                  </div>
+                  
+                  <div className="mt-3 flex gap-1.5">
+                    {canOpenOrder(table) && (
+                      <button
+                        type="button"
+                        onClick={() => openTableOrder(table)}
+                        className="flex flex-1 items-center justify-center gap-1 rounded-md bg-amber-500 px-2 py-1.5 text-xs font-semibold text-white hover:bg-amber-600"
+                      >
+                        <Icons.Order />
+                        Order
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => openQr(table)}
+                      className="rounded-md border border-gray-200 px-2 py-1.5 text-gray-600 hover:bg-gray-50"
+                      title="QR Code"
+                    >
+                      <Icons.Qr />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => openEdit(table)}
+                      className="rounded-md border border-gray-200 px-2 py-1.5 text-gray-600 hover:bg-gray-50"
+                      title="Edit"
+                    >
+                      <Icons.Edit />
+                    </button>
+                    {!isReserved && status !== "OCCUPIED" && status !== "BILLING" && (
+                      <button
+                        type="button"
+                        onClick={() => openReservationModal(table)}
+                        className="rounded-md bg-amber-500 px-2 py-1.5 text-white hover:bg-amber-600"
+                        title="Reserve"
+                      >
+                        <Icons.Reserve />
+                      </button>
+                    )}
+                    {(status === "RESERVED" || status === "AVAILABLE") && (
+                      <button
+                        type="button"
+                        onClick={() => changeStatus(table, "OCCUPIED")}
+                        className="rounded-md bg-orange-400 px-2 py-1.5 text-xs text-white hover:bg-orange-500"
+                        title="Mark Occupied"
+                      >
+                        Occupy
+                      </button>
+                    )}
+                    {(status === "OCCUPIED" || status === "BILLING") && (
+                      <button
+                        type="button"
+                        onClick={() => changeStatus(table, "AVAILABLE")}
+                        className="rounded-md bg-emerald-500 px-2 py-1.5 text-xs text-white hover:bg-emerald-600"
+                        title="Free Table"
+                      >
+                        Free
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => removeTable(table)}
+                      disabled={isDeleting}
+                      className="rounded-md border border-red-200 px-2 py-1.5 text-red-600 hover:bg-red-50 disabled:opacity-60"
+                      title="Delete"
+                    >
+                      <Icons.Delete />
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        ) : (
+          <div className="overflow-x-auto rounded-lg border border-gray-200 bg-white">
+            <table className="min-w-full text-sm">
+              <thead className="bg-gray-50">
+                <tr className="border-b border-gray-200">
+                  <th className="px-3 py-2 text-left text-gray-600">#</th>
+                  <th className="px-3 py-2 text-left text-gray-600">Name</th>
+                  <th className="px-3 py-2 text-left text-gray-600">Seats</th>
+                  <th className="px-3 py-2 text-left text-gray-600">Status</th>
+                  <th className="px-3 py-2 text-left text-gray-600">Orders</th>
+                  <th className="px-3 py-2 text-right text-gray-600">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {filteredTables.map((table) => {
+                  const status = nStatus(table.status);
+                  const activeOrderCount = activeOrderCountByTable.get(table.id) || 0;
+                  
+                  return (
+                    <tr key={table.id} className="hover:bg-gray-50">
+                      <td className="px-3 py-2 font-medium">{table.number}</td>
+                      <td className="px-3 py-2">{table.name}</td>
+                      <td className="px-3 py-2">{table.capacity}</td>
+                      <td className="px-3 py-2">
+                        <span className={`inline-flex rounded-full border px-2 py-0.5 text-xs font-semibold ${sClass(status)}`}>
+                          {sLabel(status)}
+                        </span>
+                      </td>
+                      <td className="px-3 py-2 text-xs">
+                        {activeOrderCount > 0 ? `${activeOrderCount} active` : "-"}
+                      </td>
+                      <td className="px-3 py-2">
+                        <div className="flex justify-end gap-1">
+                          {canOpenOrder(table) && (
+                            <button
+                              type="button"
+                              onClick={() => openTableOrder(table)}
+                              className="rounded-md bg-amber-500 px-2 py-1 text-xs text-white hover:bg-amber-600"
+                            >
+                              Order
+                            </button>
+                          )}
                           <button
                             type="button"
                             onClick={() => openQr(table)}
-                            title="Open QR Studio"
-                            aria-label="Open QR Studio"
-                            className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-[#d8ccb6] bg-white text-slate-700 transition-colors hover:bg-[#faf3e7]"
+                            className="rounded-md border border-gray-200 px-2 py-1 text-xs text-gray-600 hover:bg-gray-50"
                           >
-                            <svg
-                              viewBox="0 0 24 24"
-                              aria-hidden="true"
-                              className="h-4 w-4"
-                              fill="none"
-                              stroke="currentColor"
-                              strokeWidth="1.8"
-                              strokeLinecap="round"
-                              strokeLinejoin="round"
-                            >
-                              <path d="M3 3h7v7H3z" />
-                              <path d="M14 3h7v7h-7z" />
-                              <path d="M3 14h7v7H3z" />
-                              <path d="M14 14h3v3h-3z" />
-                              <path d="M21 14h-2v2h2v5h-5v-2" />
-                            </svg>
+                            QR
                           </button>
                           <button
                             type="button"
                             onClick={() => openEdit(table)}
-                            title="Edit table"
-                            aria-label="Edit table"
-                            className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-[#d8ccb6] bg-white text-slate-700 transition-colors hover:bg-[#faf3e7]"
+                            className="rounded-md border border-gray-200 px-2 py-1 text-xs text-gray-600 hover:bg-gray-50"
                           >
-                            <svg
-                              viewBox="0 0 24 24"
-                              aria-hidden="true"
-                              className="h-4 w-4"
-                              fill="none"
-                              stroke="currentColor"
-                              strokeWidth="1.8"
-                              strokeLinecap="round"
-                              strokeLinejoin="round"
+                            Edit
+                          </button>
+                          {status !== "RESERVED" && status !== "OCCUPIED" && status !== "BILLING" && (
+                            <button
+                              type="button"
+                              onClick={() => openReservationModal(table)}
+                              className="rounded-md bg-amber-500 px-2 py-1 text-xs text-white hover:bg-amber-600"
                             >
-                              <path d="M12 20h9" />
-                              <path d="m16.5 3.5 4 4L8 20H4v-4z" />
-                            </svg>
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() =>
-                              quickStatus(
-                                table,
-                                reserved ? "AVAILABLE" : "RESERVED",
-                              )
-                            }
-                            title={
-                              reserved ? "Mark available" : "Mark reserved"
-                            }
-                            aria-label={
-                              reserved ? "Mark available" : "Mark reserved"
-                            }
-                            disabled={isUpdating}
-                            className={`inline-flex h-8 w-8 items-center justify-center rounded-lg border transition-colors disabled:opacity-60 ${
-                              reserved
-                                ? "border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100"
-                                : "border-slate-700 bg-slate-700 text-white hover:bg-slate-800"
-                            }`}
-                          >
-                            {reserved ? (
-                              <svg
-                                viewBox="0 0 24 24"
-                                aria-hidden="true"
-                                className="h-4 w-4"
-                                fill="none"
-                                stroke="currentColor"
-                                strokeWidth="2"
-                                strokeLinecap="round"
-                                strokeLinejoin="round"
-                              >
-                                <path d="M20 6 9 17l-5-5" />
-                              </svg>
-                            ) : (
-                              <svg
-                                viewBox="0 0 24 24"
-                                aria-hidden="true"
-                                className="h-4 w-4"
-                                fill="none"
-                                stroke="currentColor"
-                                strokeWidth="1.8"
-                                strokeLinecap="round"
-                                strokeLinejoin="round"
-                              >
-                                <path d="M8 11V8a4 4 0 1 1 8 0v3" />
-                                <rect
-                                  x="6"
-                                  y="11"
-                                  width="12"
-                                  height="9"
-                                  rx="2"
-                                />
-                              </svg>
-                            )}
-                          </button>
+                              Reserve
+                            </button>
+                          )}
+                          {(status === "RESERVED" || status === "AVAILABLE") && (
+                            <button
+                              type="button"
+                              onClick={() => changeStatus(table, "OCCUPIED")}
+                              className="rounded-md bg-orange-500 px-2 py-1 text-xs text-white hover:bg-orange-600"
+                            >
+                              Occupy
+                            </button>
+                          )}
+                          {(status === "OCCUPIED" || status === "BILLING") && (
+                            <button
+                              type="button"
+                              onClick={() => changeStatus(table, "AVAILABLE")}
+                              className="rounded-md bg-emerald-500 px-2 py-1 text-xs text-white hover:bg-emerald-600"
+                            >
+                              Free
+                            </button>
+                          )}
                           <button
                             type="button"
                             onClick={() => removeTable(table)}
-                            title="Remove table"
-                            aria-label="Remove table"
-                            disabled={isDeleting}
-                            className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-rose-200 bg-white text-rose-700 transition-colors hover:bg-rose-50 disabled:opacity-60"
+                            className="rounded-md border border-red-200 px-2 py-1 text-xs text-red-600 hover:bg-red-50"
                           >
-                            <svg
-                              viewBox="0 0 24 24"
-                              aria-hidden="true"
-                              className="h-4 w-4"
-                              fill="none"
-                              stroke="currentColor"
-                              strokeWidth="1.8"
-                              strokeLinecap="round"
-                              strokeLinejoin="round"
-                            >
-                              <path d="M3 6h18" />
-                              <path d="M8 6V4h8v2" />
-                              <path d="m19 6-1 14H6L5 6" />
-                              <path d="M10 11v6" />
-                              <path d="M14 11v6" />
-                            </svg>
+                            Delete
                           </button>
                         </div>
-                      </article>
-                    );
-                  })}
-                </div>
-              ) : (
-                // <div className="no-scrollbar -mx-1 overflow-x-auto overscroll-x-contain px-1 sm:mx-0 sm:px-0">
-                //   <table className="w-full min-w-[780px] divide-y divide-[#efe4d3] rounded-xl border border-[#eadfc9] bg-white text-left text-xs whitespace-nowrap sm:min-w-full">
-                //     <thead className="bg-[#fff8ec]">
-                //       <tr className="text-slate-700">
-                //         <th className="px-2.5 py-2 font-semibold sm:px-3">Table</th>
-                //         <th className="px-2.5 py-2 font-semibold sm:px-3">Capacity</th>
-                //         <th className="px-2.5 py-2 font-semibold sm:px-3">Status</th>
-                //         {/* <th className="px-2.5 py-2 font-semibold sm:px-3">Customer</th> */}
-                //         <th className="px-2.5 py-2 font-semibold text-right sm:px-3">
-                //           Actions
-                //         </th>
-                //       </tr>
-                //     </thead>
-                //     <tbody className="divide-y divide-[#f1e7d9] bg-white">
-                //       {filteredTables.map((table) => {
-                //         const reserved = nStatus(table.status) === "RESERVED";
-                //         return (
-                //           <tr key={`table-row-${table.id}`}>
-                //             <td className="px-2.5 py-2 font-semibold text-slate-900 sm:px-3">
-                //               {canOpenOrder(table) ? (
-                //                 <button
-                //                   type="button"
-                //                   onClick={() => openTableOrder(table)}
-                //                   className="text-left text-amber-900 underline decoration-amber-300 underline-offset-2"
-                //                 >
-                //                   T{table.number} - {table.name}
-                //                 </button>
-                //               ) : (
-                //                 <span>T{table.number} - {table.name}</span>
-                //               )}
-                //             </td>
-                //             <td className="px-2.5 py-2 text-slate-700 sm:px-3">
-                //               {table.capacity}
-                //             </td>
-                //             <td className="px-2.5 py-2 sm:px-3">
-                //               <span
-                //                 className={`inline-flex rounded-full border px-2 py-0.5 text-[10px] font-semibold ${sClass(table.status)}`}
-                //               >
-                //                 {sLabel(table.status)}
-                //               </span>
-                //             </td>
-                //             {/* <td className="px-2.5 py-2 text-slate-700 sm:px-3">
-                //               {table.customerId || "-"}
-                //             </td> */}
-                //             <td className="px-2.5 py-2 sm:px-3">
-                //               <div className="flex justify-end gap-1.5">
-                //                 {canOpenOrder(table) ? (
-                //                   <button
-                //                     type="button"
-                //                     onClick={() => openTableOrder(table)}
-                //                     className="rounded-lg border border-amber-300 bg-amber-100 px-2.5 py-1.5 text-[11px] font-semibold text-amber-900 transition-colors hover:bg-amber-200"
-                //                   >
-                //                     Open Order
-                //                   </button>
-                //                 ) : null}
-                //                 <button
-                //                   type="button"
-                //                   onClick={() => openQr(table)}
-                //                   className="rounded-lg border border-[#d8ccb6] bg-white px-2.5 py-1.5 text-[11px] font-semibold text-slate-700 transition-colors hover:bg-[#faf3e7]"
-                //                 >
-                //                   Open QR
-                //                 </button>
-                //                 <button
-                //                   type="button"
-                //                   onClick={() => openEdit(table)}
-                //                   className="rounded-lg border border-[#d8ccb6] bg-white px-2.5 py-1.5 text-[11px] font-semibold text-slate-700 transition-colors hover:bg-[#faf3e7]"
-                //                 >
-                //                   Edit
-                //                 </button>
-                //                 <button
-                //                   type="button"
-                //                   onClick={() =>
-                //                     quickStatus(
-                //                       table,
-                //                       reserved ? "AVAILABLE" : "RESERVED",
-                //                     )
-                //                   }
-                //                   disabled={isUpdating}
-                //                   className={`rounded-lg border px-2.5 py-1.5 text-[11px] font-semibold transition-colors disabled:opacity-60 ${
-                //                     reserved
-                //                       ? "border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100"
-                //                       : "border-slate-700 bg-slate-700 text-white hover:bg-slate-800"
-                //                   }`}
-                //                 >
-                //                   {reserved ? "Available" : "Reserve"}
-                //                 </button>
-                //                 <button
-                //                   type="button"
-                //                   onClick={() => removeTable(table)}
-                //                   disabled={isDeleting}
-                //                   className="rounded-lg border border-rose-200 bg-white px-2.5 py-1.5 text-[11px] font-semibold text-rose-700 transition-colors hover:bg-rose-50 disabled:opacity-60"
-                //                 >
-                //                   Remove
-                //                 </button>
-                //               </div>
-                //             </td>
-                //           </tr>
-                //         );
-                //       })}
-                //     </tbody>
-                //   </table>
-                // </div>
-                <div className="w-full overflow-x-auto no-scrollbar">
-                  <table className="w-full min-w-[780px] sm:min-w-full border border-[#eadfc9] bg-white text-left text-xs">
-                    <thead className="bg-[#fff8ec]">
-                      <tr className="text-slate-700">
-                        {/* 👇 auto width */}
-                        <th className="px-2.5 py-2 font-semibold whitespace-nowrap sm:px-3">
-                          Table
-                        </th>
-
-                        <th className="px-2.5 py-2 font-semibold whitespace-nowrap sm:px-3">
-                          Capacity
-                        </th>
-
-                        <th className="px-2.5 py-2 font-semibold whitespace-nowrap sm:px-3">
-                          Status
-                        </th>
-
-                        {/* 👇 auto shrink */}
-                        <th className="px-2.5 py-2 font-semibold text-right whitespace-nowrap sm:px-3">
-                          Actions
-                        </th>
-                      </tr>
-                    </thead>
-
-                    <tbody className="divide-y divide-[#f1e7d9]">
-                      {filteredTables.map((table) => {
-                        const reserved = nStatus(table.status) === "RESERVED";
-
-                        return (
-                          <tr key={`table-row-${table.id}`}>
-                            {/* 👇 allow natural width */}
-                            <td className="px-2.5 py-2 font-semibold text-slate-900 sm:px-3">
-                              {canOpenOrder(table) ? (
-                                <button
-                                  type="button"
-                                  onClick={() => openTableOrder(table)}
-                                  className="text-left text-amber-900 underline decoration-amber-300 underline-offset-2"
-                                >
-                                  T{table.number} - {table.name}
-                                </button>
-                              ) : (
-                                <span>
-                                  T{table.number} - {table.name}
-                                </span>
-                              )}
-                            </td>
-
-                            <td className="px-2.5 py-2 text-slate-700 sm:px-3">
-                              {table.capacity}
-                            </td>
-
-                            <td className="px-2.5 py-2 sm:px-3">
-                              <div className="flex flex-wrap gap-1.5">
-                                <span
-                                  className={`inline-flex rounded-full border px-2 py-0.5 text-[10px] font-semibold ${sClass(table.status)}`}
-                                >
-                                  {sLabel(table.status)}
-                                </span>
-                                {(activeOrderCountByTable.get(table.id) || 0) > 0 ? (
-                                  <span className="inline-flex rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[10px] font-semibold text-amber-800">
-                                    {activeOrderCountByTable.get(table.id)} active
-                                  </span>
-                                ) : null}
-                                {(issuedInvoiceCountByTable.get(table.id) || 0) > 0 ? (
-                                  <span className="inline-flex rounded-full border border-blue-200 bg-blue-50 px-2 py-0.5 text-[10px] font-semibold text-blue-800">
-                                    {issuedInvoiceCountByTable.get(table.id)} invoice
-                                  </span>
-                                ) : null}
-                                {reserved && table.reservation?.customerName ? (
-                                  <span className="inline-flex rounded-full border border-violet-200 bg-violet-50 px-2 py-0.5 text-[10px] font-semibold text-violet-800">
-                                    {table.reservation.customerName}
-                                  </span>
-                                ) : null}
-                              </div>
-                            </td>
-
-                            {/* 👇 important fix */}
-                            <td className="px-2.5 py-2 sm:px-3">
-                              <div className="flex justify-end gap-1.5 flex-nowrap">
-                                {canOpenOrder(table) && (
-                                  <button
-                                    type="button"
-                                    onClick={() => openTableOrder(table)}
-                                    className="shrink-0 rounded-lg border border-amber-300 bg-amber-100 px-2.5 py-1.5 text-[11px] font-semibold text-amber-900 hover:bg-amber-200"
-                                  >
-                                    Open Order
-                                  </button>
-                                )}
-
-                                <button
-                                  type="button"
-                                  onClick={() => openQr(table)}
-                                  className="shrink-0 rounded-lg border border-[#d8ccb6] bg-white px-2.5 py-1.5 text-[11px] font-semibold text-slate-700 hover:bg-[#faf3e7]"
-                                >
-                                  QR Studio
-                                </button>
-
-                                <button
-                                  type="button"
-                                  onClick={() => openEdit(table)}
-                                  className="shrink-0 rounded-lg border border-[#d8ccb6] bg-white px-2.5 py-1.5 text-[11px] font-semibold text-slate-700 hover:bg-[#faf3e7]"
-                                >
-                                  Edit
-                                </button>
-
-                                <button
-                                  type="button"
-                                  onClick={() =>
-                                    quickStatus(
-                                      table,
-                                      reserved ? "AVAILABLE" : "RESERVED",
-                                    )
-                                  }
-                                  disabled={isUpdating}
-                                  className={`shrink-0 rounded-lg border px-2.5 py-1.5 text-[11px] font-semibold disabled:opacity-60 ${
-                                    reserved
-                                      ? "border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100"
-                                      : "border-slate-700 bg-slate-700 text-white hover:bg-slate-800"
-                                  }`}
-                                >
-                                  {reserved ? "Available" : "Reserve"}
-                                </button>
-
-                                <button
-                                  type="button"
-                                  onClick={() => removeTable(table)}
-                                  disabled={isDeleting}
-                                  className="shrink-0 rounded-lg border border-rose-200 bg-white px-2.5 py-1.5 text-[11px] font-semibold text-rose-700 hover:bg-rose-50 disabled:opacity-60"
-                                >
-                                  Remove
-                                </button>
-                              </div>
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-              )
-            ) : (
-              <div className="rounded-2xl border border-dashed border-[#e0d6c4] bg-[#fffcf7] px-4 py-10 text-center text-sm text-slate-600">
-                No tables found for selected filters/search.
-              </div>
-            )}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
           </div>
-        </article>
-      </section>
+        )}
+      </div>
 
-      {editing ? (
-        <div className="fixed inset-0 z-[60] flex items-end justify-center overflow-y-auto p-3 pb-[calc(env(safe-area-inset-bottom)+6rem)] sm:items-center sm:p-6 sm:pb-6">
-          <button
-            type="button"
-            className="absolute inset-0 bg-slate-900/40"
-            onClick={() => setEditing(null)}
-          />
-          <aside className="relative z-10 w-full max-w-2xl max-h-[calc(100dvh-6.5rem)] overflow-y-auto rounded-[2rem] border border-[#e6dfd1] bg-[#fffdf9] p-3 shadow-2xl sm:max-h-[90vh] sm:rounded-3xl sm:p-5">
-            <div className="mb-3 flex items-center justify-between sm:mb-4">
+      {/* Create Table Modal */}
+      {isCreateTableOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-black/50 p-4">
+          <div className="relative max-h-[90vh] w-full max-w-md overflow-y-auto rounded-lg bg-white p-4 shadow-xl">
+            <div className="mb-4 flex items-center justify-between">
+              <h3 className="text-lg font-semibold text-amber-800">Add New Table</h3>
+              <button
+                type="button"
+                onClick={() => setIsCreateTableOpen(false)}
+                className="text-gray-400 hover:text-gray-600"
+              >
+                <Icons.Close />
+              </button>
+            </div>
+            <form onSubmit={submitCreate} className="space-y-3">
               <div>
-                <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">
-                  Quick Edit
-                </p>
-                <h4 className="text-lg font-semibold text-slate-900">
-                  Update Table
-                </h4>
+                <label className="mb-1 block text-sm text-gray-600">Table Number</label>
+                <input
+                  type="number"
+                  min={1}
+                  value={createForm.number}
+                  onChange={(e) =>
+                    setCreateForm((prev) => ({
+                      ...prev,
+                      number: norm(Number(e.target.value), 1),
+                    }))
+                  }
+                  className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:border-amber-400 focus:outline-none focus:ring-1 focus:ring-amber-400"
+                  required
+                />
               </div>
+              <div>
+                <label className="mb-1 block text-sm text-gray-600">Table Name</label>
+                <input
+                  type="text"
+                  value={createForm.name}
+                  onChange={(e) =>
+                    setCreateForm((prev) => ({ ...prev, name: e.target.value }))
+                  }
+                  placeholder={`Table ${createForm.number}`}
+                  className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:border-amber-400 focus:outline-none focus:ring-1 focus:ring-amber-400"
+                />
+              </div>
+              <div>
+                <label className="mb-1 block text-sm text-gray-600">Capacity</label>
+                <input
+                  type="number"
+                  min={1}
+                  value={createForm.capacity}
+                  onChange={(e) =>
+                    setCreateForm((prev) => ({
+                      ...prev,
+                      capacity: norm(Number(e.target.value), 4),
+                    }))
+                  }
+                  className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:border-amber-400 focus:outline-none focus:ring-1 focus:ring-amber-400"
+                  required
+                />
+              </div>
+              <label className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  checked={createForm.isActive}
+                  onChange={(e) =>
+                    setCreateForm((prev) => ({ ...prev, isActive: e.target.checked }))
+                  }
+                  className="h-4 w-4 rounded border-gray-300 text-amber-500 focus:ring-amber-400"
+                />
+                <span className="text-sm text-gray-700">Active Table</span>
+              </label>
+              <div className="flex gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setIsCreateTableOpen(false)}
+                  className="flex-1 rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-600 hover:bg-gray-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={isCreating}
+                  className="flex-1 rounded-lg bg-amber-500 px-3 py-2 text-sm text-white hover:bg-amber-600 disabled:opacity-50"
+                >
+                  {isCreating ? "Creating..." : "Create Table"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Table Modal */}
+      {editing && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-black/50 p-4">
+          <div className="relative max-h-[90vh] w-full max-w-md overflow-y-auto rounded-lg bg-white p-4 shadow-xl">
+            <div className="mb-4 flex items-center justify-between">
+              <h3 className="text-lg font-semibold text-amber-800">Edit Table</h3>
               <button
                 type="button"
                 onClick={() => setEditing(null)}
-                className="h-8 w-8 rounded-full border border-[#e0d8c9] bg-white text-lg leading-none text-slate-700"
-                aria-label="Close popup"
+                className="text-gray-400 hover:text-gray-600"
               >
-                x
+                <Icons.Close />
               </button>
             </div>
-            <form className="space-y-3" onSubmit={submitUpdate}>
-              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+            <form onSubmit={submitUpdate} className="space-y-3">
+              <div>
+                <label className="mb-1 block text-sm text-gray-600">Table Number</label>
                 <input
                   type="number"
                   min={1}
                   value={editForm.number}
-                  onChange={(event) =>
+                  onChange={(e) =>
                     setEditForm((prev) => ({
                       ...prev,
-                      number: norm(Number(event.target.value), prev.number),
+                      number: norm(Number(e.target.value), prev.number),
                     }))
                   }
-                  className="h-11 w-full rounded-xl border border-[#ddd4c1] bg-white px-3 text-sm outline-none ring-amber-200 focus:ring-2"
-                />
-                <input
-                  value={editForm.name}
-                  onChange={(event) =>
-                    setEditForm((prev) => ({
-                      ...prev,
-                      name: event.target.value,
-                    }))
-                  }
-                  className="h-11 w-full rounded-xl border border-[#ddd4c1] bg-white px-3 text-sm outline-none ring-amber-200 focus:ring-2"
+                  className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:border-amber-400 focus:outline-none focus:ring-1 focus:ring-amber-400"
                 />
               </div>
-              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+              <div>
+                <label className="mb-1 block text-sm text-gray-600">Table Name</label>
+                <input
+                  type="text"
+                  value={editForm.name}
+                  onChange={(e) =>
+                    setEditForm((prev) => ({ ...prev, name: e.target.value }))
+                  }
+                  className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:border-amber-400 focus:outline-none focus:ring-1 focus:ring-amber-400"
+                />
+              </div>
+              <div>
+                <label className="mb-1 block text-sm text-gray-600">Capacity</label>
                 <input
                   type="number"
                   min={1}
                   value={editForm.capacity}
-                  onChange={(event) =>
+                  onChange={(e) =>
                     setEditForm((prev) => ({
                       ...prev,
-                      capacity: norm(Number(event.target.value), prev.capacity),
+                      capacity: norm(Number(e.target.value), prev.capacity),
                     }))
                   }
-                  className="h-11 w-full rounded-xl border border-[#ddd4c1] bg-white px-3 text-sm outline-none ring-amber-200 focus:ring-2"
+                  className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:border-amber-400 focus:outline-none focus:ring-1 focus:ring-amber-400"
                 />
+              </div>
+              <div>
+                <label className="mb-1 block text-sm text-gray-600">Status</label>
                 <select
                   value={nStatus(editForm.status)}
-                  onChange={(event) =>
+                  onChange={(e) =>
                     setEditForm((prev) => ({
                       ...prev,
-                      status: nStatus(event.target.value),
+                      status: nStatus(e.target.value),
                     }))
                   }
-                  className="h-11 w-full rounded-xl border border-[#ddd4c1] bg-white px-3 text-sm"
+                  className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:border-amber-400 focus:outline-none focus:ring-1 focus:ring-amber-400"
                 >
                   {STATUS_OPTIONS.map((option) => (
                     <option key={option.value} value={option.value}>
@@ -1490,387 +1154,2224 @@ export function TablesWorkspace({ tenantName, tenantSlug }: Props) {
                   ))}
                 </select>
               </div>
-              <input
-                value={editForm.customerId}
-                onChange={(event) =>
-                  setEditForm((prev) => ({
-                    ...prev,
-                    customerId: event.target.value,
-                  }))
-                }
-                placeholder="Customer id"
-                className="h-11 w-full rounded-xl border border-[#ddd4c1] bg-white px-3 text-sm"
-              />
-              {nStatus(editForm.status) === "RESERVED" ? (
-                <div className="space-y-3 rounded-[24px] border border-[#e8decd] bg-[linear-gradient(160deg,#fffaf2_0%,#fff7ea_100%)] p-4">
-                  <div>
-                    <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">
-                      Reservation Details
-                    </p>
-                    <h5 className="mt-1 text-base font-semibold text-slate-900">
-                      Guest and booking info
-                    </h5>
+              <label className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  checked={editForm.isActive}
+                  onChange={(e) =>
+                    setEditForm((prev) => ({ ...prev, isActive: e.target.checked }))
+                  }
+                  className="h-4 w-4 rounded border-gray-300 text-amber-500 focus:ring-amber-400"
+                />
+                <span className="text-sm text-gray-700">Active Table</span>
+              </label>
+              <div className="flex gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setEditing(null)}
+                  className="flex-1 rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-600 hover:bg-gray-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={isUpdating}
+                  className="flex-1 rounded-lg bg-amber-500 px-3 py-2 text-sm text-white hover:bg-amber-600 disabled:opacity-50"
+                >
+                  {isUpdating ? "Saving..." : "Save Changes"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Reservation Modal */}
+      {reservationTable && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-black/50 p-4">
+          <div className="relative max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-lg bg-white p-4 shadow-xl">
+            <div className="mb-4 flex items-center justify-between">
+              <h3 className="text-lg font-semibold text-amber-800">
+                Reserve Table {reservationTable.number} - {reservationTable.name}
+              </h3>
+              <button
+                type="button"
+                onClick={() => setReservationTable(null)}
+                className="text-gray-400 hover:text-gray-600"
+              >
+                <Icons.Close />
+              </button>
+            </div>
+            
+            <div className="space-y-3">
+              {/* Customer Search */}
+              <div className="relative">
+                <label className="mb-1 block text-sm font-medium text-gray-700">Customer Name *</label>
+                <input
+                  type="text"
+                  value={customerSearch}
+                  onChange={(e) => {
+                    setCustomerSearch(e.target.value);
+                    setShowCustomerSuggestions(true);
+                    setReservationForm((prev) => ({
+                      ...prev,
+                      customerName: e.target.value,
+                    }));
+                  }}
+                  onFocus={() => setShowCustomerSuggestions(true)}
+                  placeholder="Search existing customer or enter name..."
+                  className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:border-amber-400 focus:outline-none focus:ring-1 focus:ring-amber-400"
+                />
+                {showCustomerSuggestions && filteredCustomers.length > 0 && (
+                  <div className="absolute z-10 mt-1 max-h-48 w-full overflow-y-auto rounded-lg border border-gray-200 bg-white shadow-lg">
+                    {filteredCustomers.map((customer) => (
+                      <button
+                        key={customer.id}
+                        type="button"
+                        onClick={() => handleCustomerSelect(customer)}
+                        className="w-full px-3 py-2 text-left text-sm hover:bg-amber-50"
+                      >
+                        <div className="font-medium">{customer.name}</div>
+                        <div className="text-xs text-gray-500">{customer.phone}</div>
+                      </button>
+                    ))}
                   </div>
-                  <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                    <input
-                      value={editForm.reservationCustomerName}
-                      onChange={(event) =>
-                        setEditForm((prev) => ({
-                          ...prev,
-                          reservationCustomerName: event.target.value,
-                        }))
-                      }
-                      placeholder="Customer name"
-                      className="h-11 w-full rounded-xl border border-[#ddd4c1] bg-white px-3 text-sm outline-none ring-amber-200 focus:ring-2"
-                    />
-                    <input
-                      value={editForm.reservationCustomerPhone}
-                      onChange={(event) =>
-                        setEditForm((prev) => ({
-                          ...prev,
-                          reservationCustomerPhone: event.target.value,
-                        }))
-                      }
-                      placeholder="Customer phone"
-                      className="h-11 w-full rounded-xl border border-[#ddd4c1] bg-white px-3 text-sm outline-none ring-amber-200 focus:ring-2"
-                    />
-                    <input
-                      type="number"
-                      min={1}
-                      value={editForm.reservationPartySize}
-                      onChange={(event) =>
-                        setEditForm((prev) => ({
-                          ...prev,
-                          reservationPartySize: norm(
-                            Number(event.target.value),
-                            1,
-                          ),
-                        }))
-                      }
-                      placeholder="Party size"
-                      className="h-11 w-full rounded-xl border border-[#ddd4c1] bg-white px-3 text-sm outline-none ring-amber-200 focus:ring-2"
-                    />
-                    <input
-                      type="datetime-local"
-                      value={editForm.reservationReservedFor}
-                      onChange={(event) =>
-                        setEditForm((prev) => ({
-                          ...prev,
-                          reservationReservedFor: event.target.value,
-                        }))
-                      }
-                      className="h-11 w-full rounded-xl border border-[#ddd4c1] bg-white px-3 text-sm outline-none ring-amber-200 focus:ring-2"
-                    />
-                  </div>
-                  <textarea
-                    value={editForm.reservationNote}
-                    onChange={(event) =>
-                      setEditForm((prev) => ({
+                )}
+              </div>
+              
+              <div>
+                <label className="mb-1 block text-sm font-medium text-gray-700">Phone Number</label>
+                <input
+                  type="tel"
+                  value={reservationForm.customerPhone}
+                  onChange={(e) =>
+                    setReservationForm((prev) => ({
+                      ...prev,
+                      customerPhone: e.target.value,
+                    }))
+                  }
+                  className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:border-amber-400 focus:outline-none focus:ring-1 focus:ring-amber-400"
+                />
+              </div>
+              
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="mb-1 block text-sm font-medium text-gray-700">Party Size</label>
+                  <input
+                    type="number"
+                    min={1}
+                    value={reservationForm.partySize}
+                    onChange={(e) =>
+                      setReservationForm((prev) => ({
                         ...prev,
-                        reservationNote: event.target.value,
+                        partySize: norm(Number(e.target.value), 1),
                       }))
                     }
-                    rows={3}
-                    placeholder="Reservation note: birthday, corner table, special request..."
-                    className="w-full rounded-xl border border-[#ddd4c1] bg-white px-3 py-2.5 text-sm outline-none ring-amber-200 focus:ring-2"
+                    className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:border-amber-400 focus:outline-none focus:ring-1 focus:ring-amber-400"
                   />
-                  <div className="rounded-2xl border border-[#e6d9c3] bg-white p-3">
-                    <label className="inline-flex items-center gap-2 text-sm font-medium text-slate-700">
-                      <input
-                        type="checkbox"
-                        checked={editForm.advanceRequired}
-                        onChange={(event) =>
-                          setEditForm((prev) => ({
-                            ...prev,
-                            advanceRequired: event.target.checked,
-                          }))
-                        }
-                        className="h-4 w-4 rounded border-slate-300 text-amber-500"
-                      />
-                      Advance payment required
-                    </label>
-                    {editForm.advanceRequired ? (
-                      <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
+                </div>
+                <div>
+                  <label className="mb-1 block text-sm font-medium text-gray-700">Reservation Time</label>
+                  <input
+                    type="datetime-local"
+                    value={reservationForm.reservedFor}
+                    onChange={(e) =>
+                      setReservationForm((prev) => ({
+                        ...prev,
+                        reservedFor: e.target.value,
+                      }))
+                    }
+                    className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:border-amber-400 focus:outline-none focus:ring-1 focus:ring-amber-400"
+                  />
+                </div>
+              </div>
+              
+              <div>
+                <label className="mb-1 block text-sm font-medium text-gray-700">Notes (Optional)</label>
+                <textarea
+                  value={reservationForm.note}
+                  onChange={(e) =>
+                    setReservationForm((prev) => ({
+                      ...prev,
+                      note: e.target.value,
+                    }))
+                  }
+                  rows={2}
+                  placeholder="Special requests, preferences..."
+                  className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:border-amber-400 focus:outline-none focus:ring-1 focus:ring-amber-400"
+                />
+              </div>
+              
+              {/* Advance Payment Section */}
+              <div className="rounded-lg border border-amber-200 bg-amber-50 p-3">
+                <label className="flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    checked={reservationForm.advanceRequired}
+                    onChange={(e) =>
+                      setReservationForm((prev) => ({
+                        ...prev,
+                        advanceRequired: e.target.checked,
+                      }))
+                    }
+                    className="h-4 w-4 rounded border-gray-300 text-amber-500 focus:ring-amber-400"
+                  />
+                  <span className="text-sm font-medium text-amber-800">Advance Payment Required</span>
+                </label>
+                
+                {reservationForm.advanceRequired && (
+                  <div className="mt-3 space-y-3">
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="mb-1 block text-xs text-gray-600">Advance Amount</label>
                         <input
                           type="number"
                           min={0}
-                          value={editForm.advanceAmount}
-                          onChange={(event) =>
-                            setEditForm((prev) => ({
+                          value={reservationForm.advanceAmount}
+                          onChange={(e) =>
+                            setReservationForm((prev) => ({
                               ...prev,
-                              advanceAmount: Math.max(
-                                0,
-                                Number(event.target.value) || 0,
-                              ),
+                              advanceAmount: Math.max(0, Number(e.target.value) || 0),
                             }))
                           }
-                          placeholder="Advance amount"
-                          className="h-11 w-full rounded-xl border border-[#ddd4c1] bg-white px-3 text-sm outline-none ring-amber-200 focus:ring-2"
+                          placeholder="Amount"
+                          className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:border-amber-400 focus:outline-none focus:ring-1 focus:ring-amber-400"
                         />
+                      </div>
+                      <div>
+                        <label className="mb-1 block text-xs text-gray-600">Paid Amount</label>
                         <input
                           type="number"
                           min={0}
-                          value={editForm.advancePaidAmount}
-                          onChange={(event) =>
-                            setEditForm((prev) => ({
+                          value={reservationForm.advancePaidAmount}
+                          onChange={(e) =>
+                            setReservationForm((prev) => ({
                               ...prev,
-                              advancePaidAmount: Math.max(
-                                0,
-                                Number(event.target.value) || 0,
-                              ),
+                              advancePaidAmount: Math.max(0, Number(e.target.value) || 0),
                             }))
                           }
-                          placeholder="Paid amount"
-                          className="h-11 w-full rounded-xl border border-[#ddd4c1] bg-white px-3 text-sm outline-none ring-amber-200 focus:ring-2"
+                          placeholder="Paid"
+                          className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:border-amber-400 focus:outline-none focus:ring-1 focus:ring-amber-400"
                         />
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="mb-1 block text-xs text-gray-600">Payment Method</label>
                         <select
-                          value={editForm.advanceMethod}
-                          onChange={(event) =>
-                            setEditForm((prev) => ({
+                          value={reservationForm.advanceMethod}
+                          onChange={(e) =>
+                            setReservationForm((prev) => ({
                               ...prev,
-                              advanceMethod: event.target.value,
+                              advanceMethod: e.target.value,
                             }))
                           }
-                          className="h-11 w-full rounded-xl border border-[#ddd4c1] bg-white px-3 text-sm"
+                          className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:border-amber-400 focus:outline-none focus:ring-1 focus:ring-amber-400"
                         >
                           <option value="CASH">Cash</option>
                           <option value="UPI">UPI</option>
                           <option value="CARD">Card</option>
                         </select>
+                      </div>
+                      <div>
+                        <label className="mb-1 block text-xs text-gray-600">Reference</label>
                         <input
-                          value={editForm.advanceReference}
-                          onChange={(event) =>
-                            setEditForm((prev) => ({
+                          type="text"
+                          value={reservationForm.advanceReference}
+                          onChange={(e) =>
+                            setReservationForm((prev) => ({
                               ...prev,
-                              advanceReference: event.target.value,
+                              advanceReference: e.target.value,
                             }))
                           }
-                          placeholder="Payment reference"
-                          className="h-11 w-full rounded-xl border border-[#ddd4c1] bg-white px-3 text-sm outline-none ring-amber-200 focus:ring-2"
+                          placeholder="Transaction ID"
+                          className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:border-amber-400 focus:outline-none focus:ring-1 focus:ring-amber-400"
                         />
                       </div>
-                    ) : null}
+                    </div>
                   </div>
-                </div>
-              ) : null}
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <label className="inline-flex h-11 items-center gap-2 rounded-xl border border-[#ddd4c1] bg-white px-3 text-sm text-slate-700">
-                  <input
-                    type="checkbox"
-                    checked={editForm.isActive}
-                    onChange={(event) =>
-                      setEditForm((prev) => ({
-                        ...prev,
-                        isActive: event.target.checked,
-                      }))
-                    }
-                    className="h-4 w-4 rounded border-slate-300 text-amber-500"
-                  />
-                  {editForm.isActive ? "Active" : "Inactive"}
-                </label>
+                )}
               </div>
-              <button
-                type="submit"
-                disabled={isUpdating}
-                className="w-full rounded-xl bg-amber-500 px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-60"
-              >
-                {isUpdating ? "Saving..." : "Save"}
-              </button>
-            </form>
-          </aside>
+              
+              <div className="flex gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setReservationTable(null)}
+                  className="flex-1 rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-600 hover:bg-gray-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={submitReservation}
+                  disabled={isUpdating}
+                  className="flex-1 rounded-lg bg-amber-500 px-3 py-2 text-sm text-white hover:bg-amber-600 disabled:opacity-50"
+                >
+                  {isUpdating ? "Saving..." : "Confirm Reservation"}
+                </button>
+              </div>
+            </div>
+          </div>
         </div>
-      ) : null}
+      )}
 
-      {qr.open && qr.table ? (
-        <div className="fixed inset-0 z-[70] flex items-end justify-center overflow-y-auto p-2 pb-[calc(env(safe-area-inset-bottom)+6rem)] sm:p-4 sm:pb-4 lg:p-6">
-          <button
-            type="button"
-            className="absolute inset-0 bg-slate-900/50"
-            onClick={() => setQr((prev) => ({ ...prev, open: false }))}
-          />
-          <section className="relative z-10 flex w-full max-w-6xl flex-col overflow-hidden rounded-[28px] border border-[#e6dfd1] bg-[#fffdf9] shadow-2xl max-h-[calc(100dvh-5.5rem)] sm:max-h-[94vh]">
-            <header className="sticky top-0 z-10 flex flex-wrap items-center justify-between gap-2 border-b border-[#eee7d8] bg-[#fff6e7] px-4 py-3">
-              <div>
-                <h4 className="text-sm font-semibold">{qr.table.name} QR Studio</h4>
-                <p className="text-xs text-slate-600">
-                  QR URL base fixed: {FRONTEND_QR_BASE_URL}
-                </p>
-              </div>
+      {/* QR Modal */}
+      {qr.open && qr.table && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-black/50 p-4">
+          <div className="relative max-h-[90vh] w-full max-w-md overflow-y-auto rounded-lg bg-white p-4 shadow-xl">
+            <div className="mb-4 flex items-center justify-between">
+              <h3 className="text-lg font-semibold text-amber-800">{qr.table.name} - QR Code</h3>
               <button
                 type="button"
                 onClick={() => setQr((prev) => ({ ...prev, open: false }))}
-                className="rounded-lg border border-[#e0d8c9] bg-white px-3 py-1 text-xs font-semibold"
+                className="text-gray-400 hover:text-gray-600"
               >
-                Close
+                <Icons.Close />
               </button>
-            </header>
-
-            <div className="grid gap-3 overflow-y-auto p-3 sm:gap-4 sm:p-4 xl:grid-cols-[1.08fr_1fr]">
-              <div className="space-y-3 rounded-2xl border border-[#e8e0d0] bg-white p-4">
-                <div className="mx-auto w-full max-w-[280px] overflow-hidden rounded-2xl border border-[#ece4d6] bg-white shadow-sm sm:max-w-[360px]">
-                  <div className="relative aspect-[1684/2528] w-full">
-                    <Image
-                      src={selectedTemplate.imagePath}
-                      alt={`${selectedTemplate.name} preview`}
-                      fill
-                      unoptimized
-                      className="object-cover"
-                    />
-                    <div
-                      className="absolute rounded-[6px] border border-slate-200/80 bg-white/85"
-                      style={{
-                        left: `${selectedTemplate.qrSlot.x * 100}%`,
-                        top: `${selectedTemplate.qrSlot.y * 100}%`,
-                        width: `${selectedTemplate.qrSlot.size * 100}%`,
-                        height: `${selectedTemplate.qrSlot.size * 100}%`,
-                      }}
-                    >
-                      {preview ? (
-                        <div
-                          className="absolute"
-                          style={{
-                            inset: `${selectedTemplate.qrSlot.padding * 100}%`,
-                          }}
-                        >
-                          <Image
-                            src={preview}
-                            alt={`QR for ${qr.table.name}`}
-                            fill
-                            unoptimized
-                            className="object-contain"
-                          />
-                        </div>
-                      ) : (
-                        <div className="flex h-full items-center justify-center px-1 text-center text-[10px] font-medium text-slate-500">
-                          Generate QR
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                  <button
-                    type="button"
-                    onClick={generateQr}
-                    disabled={qrBusy}
-                    className="rounded-lg border border-[#e0d8c9] bg-white px-3 py-2 text-xs font-semibold text-slate-700 disabled:opacity-60"
-                  >
-                    {qrBusy ? "Generating..." : "Generate QR"}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={downloadActiveTemplate}
-                    disabled={!qr.qr || downloadingTemplate}
-                    className="rounded-lg bg-amber-500 px-3 py-2 text-xs font-semibold text-white disabled:opacity-50"
-                  >
-                    {downloadingTemplate
-                      ? "Preparing..."
-                      : `Download ${selectedTemplate.name}`}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={openQrLink}
-                    disabled={!qrPayloadUrl}
-                    className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-700 disabled:opacity-50"
-                  >
-                    Open Link
-                  </button>
-                  <button
-                    type="button"
-                    onClick={shareQrLink}
-                    disabled={!qrPayloadUrl || sharingQrLink}
-                    className="rounded-lg border border-violet-200 bg-violet-50 px-3 py-2 text-xs font-semibold text-violet-700 disabled:opacity-50"
-                  >
-                    {sharingQrLink ? "Sharing..." : "Share Link"}
-                  </button>
-                </div>
-
-                {qrPayloadUrl ? (
-                  <p className="break-all rounded-lg border border-[#ece4d6] bg-[#fffaf3] px-2.5 py-2 text-[11px] text-slate-600">
-                    {qrPayloadUrl}
-                  </p>
-                ) : null}
-                <p className="text-[11px] text-slate-500">
-                  {tenantName || tenantSlug || "Restaurant"} | Template:{" "}
-                  {selectedTemplate.name}
-                </p>
+            </div>
+            
+            <div className="space-y-3">
+              <div>
+                <label className="mb-1 block text-sm text-gray-600">Template</label>
+                <select
+                  value={qr.templateId}
+                  onChange={(e) => applyTemplate(e.target.value as QrTemplateId)}
+                  className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:border-amber-400 focus:outline-none focus:ring-1 focus:ring-amber-400"
+                >
+                  {QR_TEMPLATES.map((template) => (
+                    <option key={template.id} value={template.id}>
+                      {template.name} - {template.description}
+                    </option>
+                  ))}
+                </select>
               </div>
-
-              <div className="space-y-3 rounded-2xl border border-[#e8e0d0] bg-[#fffcf6] p-4">
-                <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-800">
-                  Static QR mode active
-                </div>
-
+              
+              <div>
+                <label className="mb-1 block text-sm text-gray-600">Format</label>
                 <select
                   value={qr.format}
-                  onChange={(event) =>
+                  onChange={(e) =>
                     setQr((prev) => ({
                       ...prev,
-                      format: event.target.value as TableQrFormat,
+                      format: e.target.value as TableQrFormat,
                     }))
                   }
-                  className="h-10 w-full rounded-lg border border-[#ddd4c1] bg-white px-3 text-sm"
+                  className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:border-amber-400 focus:outline-none focus:ring-1 focus:ring-amber-400"
                 >
                   <option value="dataUrl">PNG</option>
                   <option value="svg">SVG</option>
                 </select>
-
-                <div className="rounded-lg border border-[#e5d7c0] bg-[#fff8ea] px-3 py-2 text-[11px] text-slate-600">
-                  QR link always starts with {FRONTEND_PUBLIC_URL}
-                </div>
-
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between gap-2">
-                    <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">
-                      Templates
-                    </p>
-                    <span className="text-[10px] font-medium text-slate-400">
-                      Swipe to select
-                    </span>
-                  </div>
-                  <div className="no-scrollbar -mx-1 flex gap-2 overflow-x-auto px-1 pb-1 snap-x snap-mandatory">
-                    {QR_TEMPLATES.map((template) => (
-                      <button
-                        key={template.id}
-                        type="button"
-                        onClick={() => applyTemplate(template.id)}
-                        className={`w-[92px] shrink-0 snap-start rounded-2xl border p-2 text-left transition sm:w-[104px] ${qr.templateId === template.id ? "border-slate-700 bg-white shadow-sm" : "border-[#e4dccf] bg-[#fffaf2]"}`}
-                      >
-                        <div className="relative mb-2 aspect-[1684/2528] w-full overflow-hidden rounded-xl border border-[#e9e0d2] bg-white">
-                          <Image
-                            src={template.imagePath}
-                            alt={`${template.name} thumbnail`}
-                            fill
-                            unoptimized
-                            className="object-cover"
-                          />
-                          {qr.templateId === template.id ? (
-                            <span className="absolute left-1.5 top-1.5 rounded-full bg-slate-900 px-1.5 py-0.5 text-[9px] font-semibold text-white">
-                              Active
-                            </span>
-                          ) : null}
-                        </div>
-                        <p className="truncate text-[11px] font-semibold text-slate-800">
-                          {template.name}
-                        </p>
-                        <p className="mt-0.5 line-clamp-2 text-[10px] leading-4 text-slate-500">
-                          {template.description}
-                        </p>
-                      </button>
-                    ))}
-                  </div>
-                </div>
-                {qr.error ? (
-                  <p className="rounded-lg border border-rose-200 bg-rose-50 px-2.5 py-2 text-[11px] text-rose-700">
-                    {qr.error}
-                  </p>
-                ) : null}
               </div>
+              
+              <button
+                type="button"
+                onClick={generateQr}
+                disabled={qrBusy}
+                className="w-full rounded-lg bg-amber-500 px-3 py-2 text-sm text-white hover:bg-amber-600 disabled:opacity-50"
+              >
+                {qrBusy ? "Generating..." : "Generate QR Code"}
+              </button>
+              
+              {preview && (
+                <div className="flex justify-center rounded-lg border border-gray-200 p-4">
+                  <div className="relative h-48 w-48">
+                    <Image src={preview} alt="QR Code" fill unoptimized className="object-contain" />
+                  </div>
+                </div>
+              )}
+              
+              <button
+                type="button"
+                onClick={downloadActiveTemplate}
+                disabled={!qr.qr || downloadingTemplate}
+                className="w-full rounded-lg bg-emerald-500 px-3 py-2 text-sm text-white hover:bg-emerald-600 disabled:opacity-50"
+              >
+                {downloadingTemplate ? "Preparing..." : "Download QR"}
+              </button>
+              
+              {qr.error && (
+                <p className="rounded-lg bg-red-50 p-2 text-sm text-red-600">{qr.error}</p>
+              )}
             </div>
-          </section>
+          </div>
         </div>
-      ) : null}
+      )}
     </>
   );
 }
+// "use client";
+
+// import { FormEvent, useMemo, useState } from "react";
+// import Image from "next/image";
+// import { useRouter } from "next/navigation";
+// import { useConfirm } from "@/components/confirm-provider";
+// import { getErrorMessage } from "@/lib/error";
+// import { showError, showSuccess } from "@/lib/feedback";
+// import {
+//   useCreateTableMutation,
+//   useDeleteTableMutation,
+//   useGetTablesQuery,
+//   useLazyGetTableQrQuery,
+//   useUpdateTableMutation,
+// } from "@/store/api/tablesApi";
+// import { useGetOrdersQuery } from "@/store/api/ordersApi";
+// import { useGetInvoicesQuery } from "@/store/api/invoicesApi";
+// import type {
+//   TableQrFormat,
+//   TableReservation,
+//   TableRecord,
+//   TableStatus,
+// } from "@/store/types/tables";
+
+// type Props = { tenantName?: string; tenantSlug?: string };
+// type Filter = "all" | "active" | "inactive";
+// type TableListViewMode = "grid" | "table";
+// type QrTemplateId =
+//   | "template1"
+//   | "template2"
+//   | "template3"
+//   | "template4"
+//   | "template5";
+
+// type FormState = {
+//   number: number;
+//   name: string;
+//   capacity: number;
+//   isActive: boolean;
+//   status: TableStatus;
+//   customerId: string;
+//   reservationCustomerName: string;
+//   reservationCustomerPhone: string;
+//   reservationPartySize: number;
+//   reservationReservedFor: string;
+//   reservationNote: string;
+//   advanceRequired: boolean;
+//   advanceAmount: number;
+//   advancePaidAmount: number;
+//   advanceMethod: string;
+//   advanceReference: string;
+// };
+
+// type QrState = {
+//   open: boolean;
+//   table: TableRecord | null;
+//   format: TableQrFormat;
+//   templateId: QrTemplateId;
+//   baseUrl: string;
+//   qr: string;
+//   qrPayload: string;
+//   error: string;
+// };
+
+// type QrTemplate = {
+//   id: QrTemplateId;
+//   name: string;
+//   description: string;
+//   imagePath: string;
+//   qrSlot: {
+//     x: number;
+//     y: number;
+//     size: number;
+//     padding: number;
+//   };
+// };
+
+// const STATUS_OPTIONS: Array<{ value: TableStatus; label: string }> = [
+//   { value: "AVAILABLE", label: "Available" },
+//   { value: "RESERVED", label: "Reserved" },
+//   { value: "OCCUPIED", label: "Occupied" },
+//   { value: "BILLING", label: "Billing" },
+// ];
+
+// const FRONTEND_PUBLIC_URL = "https://restro-khata-com.vercel.app";
+// const FRONTEND_QR_BASE_URL = `${FRONTEND_PUBLIC_URL}/qr`;
+
+// const QR_TEMPLATES: QrTemplate[] = [
+//   {
+//     id: "template1",
+//     name: "Template 1",
+//     description: "Classic table placard",
+//     imagePath: "/QR/QRSCANTEMPLATE1.jpg",
+//     qrSlot: {
+//       x: 0.18,
+//       y: 0.46,
+//       size: 0.64,
+//       padding: 0.055,
+//     },
+//   },
+//   {
+//     id: "template2",
+//     name: "Template 2",
+//     description: "Modern menu standee",
+//     imagePath: "/QR/QRSCANTEMPLATE2.jpg",
+//     qrSlot: {
+//       x: 0.18,
+//       y: 0.395,
+//       size: 0.64,
+//       padding: 0.055,
+//     },
+//   },
+//   {
+//     id: "template3",
+//     name: "Template 3",
+//     description: "Warm dine card",
+//     imagePath: "/QR/QRSCANTEMPLATE3.jpg",
+//     qrSlot: {
+//       x: 0.23,
+//       y: 0.405,
+//       size: 0.53,
+//       padding: 0.03,
+//     },
+//   },
+//   {
+//     id: "template4",
+//     name: "Template 4",
+//     description: "Premium counter card",
+//     imagePath: "/QR/QRSCANTEMPLATE4.jpg",
+//     qrSlot: {
+//       x: 0.245,
+//       y: 0.405,
+//       size: 0.49,
+//       padding: 0.04,
+//     },
+//   },
+//   {
+//     id: "template5",
+//     name: "Template 5",
+//     description: "Signature table stand",
+//     imagePath: "/QR/QRSCANTEMPLATE5.jpg",
+//     qrSlot: {
+//       x: 0.255,
+//       y: 0.49,
+//       size: 0.35,
+//       padding: 0.02,
+//     },
+//   },
+// ];
+
+// const norm = (n: number, fallback: number) =>
+//   Number.isFinite(n) ? Math.max(1, Math.floor(n)) : fallback;
+// const nStatus = (s?: string) =>
+//   (s || "AVAILABLE").trim().toUpperCase() || "AVAILABLE";
+// const sLabel = (s?: string) =>
+//   nStatus(s) === "RESERVED"
+//     ? "Reserved"
+//     : nStatus(s) === "OCCUPIED"
+//       ? "Occupied"
+//       : nStatus(s) === "BILLING"
+//         ? "Billing"
+//         : nStatus(s) === "AVAILABLE"
+//           ? "Available"
+//           : nStatus(s);
+// const sClass = (s?: string) =>
+//   nStatus(s) === "RESERVED"
+//     ? "border-blue-200 bg-blue-50 text-blue-700"
+//     : nStatus(s) === "OCCUPIED"
+//       ? "border-amber-200 bg-amber-50 text-amber-700"
+//       : nStatus(s) === "BILLING"
+//         ? "border-rose-200 bg-rose-50 text-rose-700"
+//         : nStatus(s) === "AVAILABLE"
+//           ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+//           : "border-slate-300 bg-slate-100 text-slate-700";
+
+// function toDateTimeLocal(value?: string): string {
+//   if (!value) return "";
+//   const date = new Date(value);
+//   if (Number.isNaN(date.getTime())) return "";
+//   const offset = date.getTimezoneOffset();
+//   const local = new Date(date.getTime() - offset * 60000);
+//   return local.toISOString().slice(0, 16);
+// }
+
+// function formatReservationSummary(reservation?: TableReservation): string {
+//   if (!reservation) return "Tap Reserve to block the table with customer details.";
+//   const parts = [
+//     reservation.customerName || "Guest",
+//     reservation.customerPhone || "",
+//     reservation.partySize ? `${reservation.partySize} guests` : "",
+//     reservation.reservedFor
+//       ? new Intl.DateTimeFormat("en-IN", {
+//           dateStyle: "medium",
+//           timeStyle: "short",
+//         }).format(new Date(reservation.reservedFor))
+//       : "",
+//   ].filter(Boolean);
+//   return parts.join(" | ");
+// }
+
+// function buildReservationPayload(form: FormState) {
+//   const customerName = form.reservationCustomerName.trim();
+//   const customerPhone = form.reservationCustomerPhone.trim();
+//   const note = form.reservationNote.trim();
+//   const advanceMethod = form.advanceMethod.trim();
+//   const advanceReference = form.advanceReference.trim();
+//   const reservedFor = form.reservationReservedFor
+//     ? new Date(form.reservationReservedFor).toISOString()
+//     : undefined;
+
+//   if (!customerName && !customerPhone && !note && !reservedFor && !form.advanceRequired)
+//     return undefined;
+
+//   return {
+//     customerName: customerName || undefined,
+//     customerPhone: customerPhone || undefined,
+//     partySize: norm(form.reservationPartySize, 1),
+//     reservedFor,
+//     note: note || undefined,
+//     advancePayment: {
+//       required: form.advanceRequired,
+//       amount: form.advanceRequired ? Math.max(0, form.advanceAmount || 0) : 0,
+//       paidAmount: form.advanceRequired
+//         ? Math.max(0, form.advancePaidAmount || 0)
+//         : 0,
+//       method: form.advanceRequired ? advanceMethod || undefined : undefined,
+//       reference: form.advanceRequired ? advanceReference || undefined : undefined,
+//     },
+//   };
+// }
+
+// function qrSrc(qr: string, format: TableQrFormat): string | null {
+//   if (!qr.trim()) return null;
+//   if (qr.startsWith("data:image/")) return qr;
+//   if (format === "svg" && qr.includes("<svg"))
+//     return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(qr)}`;
+//   if (format === "dataUrl") return `data:image/png;base64,${qr}`;
+//   return null;
+// }
+
+// function downloadHref(href: string, fileName: string) {
+//   const a = document.createElement("a");
+//   a.href = href;
+//   a.download = fileName;
+//   a.click();
+// }
+
+// function getTemplateById(id: QrTemplateId): QrTemplate {
+//   return (
+//     QR_TEMPLATES.find((template) => template.id === id) || QR_TEMPLATES[0]
+//   );
+// }
+
+// function defaultQrBaseUrl(): string {
+//   return FRONTEND_QR_BASE_URL;
+// }
+
+// function resolveQrBaseUrl(baseUrl: string): string {
+//   const candidate = baseUrl.trim();
+//   const fallback = defaultQrBaseUrl();
+//   if (!candidate) return fallback;
+//   if (candidate.startsWith(FRONTEND_PUBLIC_URL)) return candidate;
+//   return fallback;
+// }
+
+// function normalizePayloadUrl(payload: string, baseUrl: string): string {
+//   const raw = payload.trim();
+//   if (!raw) return "";
+//   if (/^https?:\/\//i.test(raw)) {
+//     try {
+//       const url = new URL(raw);
+//       if (url.origin === FRONTEND_PUBLIC_URL) {
+//         const hasQrParams =
+//           url.searchParams.has("token") ||
+//           url.searchParams.has("tenantSlug") ||
+//           url.searchParams.has("tableId") ||
+//           url.searchParams.has("tableNumber");
+//         const isQrPublicPath =
+//           url.pathname === "/qr" ||
+//           (url.pathname !== "/" &&
+//             url.pathname !== "/login" &&
+//             url.pathname !== "/dashboard" &&
+//             url.pathname !== "/register" &&
+//             url.pathname !== "/plan");
+//         if (hasQrParams && !isQrPublicPath) {
+//           const query = url.searchParams.toString();
+//           return query
+//             ? `${FRONTEND_QR_BASE_URL}?${query}`
+//             : FRONTEND_QR_BASE_URL;
+//         }
+//       }
+//       return url.toString();
+//     } catch {
+//       return raw;
+//     }
+//   }
+//   const resolvedBase = resolveQrBaseUrl(baseUrl);
+//   if (raw.startsWith("?")) return `${resolvedBase}${raw}`;
+//   if (raw.includes("=") && !raw.includes(" ")) {
+//     return `${resolvedBase}?${raw.replace(/^\?/, "")}`;
+//   }
+//   try {
+//     return new URL(raw, FRONTEND_PUBLIC_URL).toString();
+//   } catch {
+//     return raw;
+//   }
+// }
+
+// async function loadImageBySrc(src: string, errorMessage: string) {
+//   return new Promise<HTMLImageElement>((resolve, reject) => {
+//     const image = new window.Image();
+//     image.onload = () => resolve(image);
+//     image.onerror = () => reject(new Error(errorMessage));
+//     image.src = src;
+//   });
+// }
+
+// async function loadQrImage(qr: string, format: TableQrFormat) {
+//   const src = qrSrc(qr, format);
+//   if (!src) throw new Error("QR not ready");
+//   return loadImageBySrc(src, "Failed to load QR image");
+// }
+
+// async function loadTemplateImage(imagePath: string) {
+//   return loadImageBySrc(imagePath, "Failed to load template image");
+// }
+
+// function getQrSlotRect(template: QrTemplate, width: number, height: number) {
+//   const slotSize = Math.min(width, height) * template.qrSlot.size;
+//   const x = width * template.qrSlot.x;
+//   const y = height * template.qrSlot.y;
+//   const padding = slotSize * template.qrSlot.padding;
+//   return { x, y, slotSize, padding };
+// }
+
+// async function downloadTemplateCard(args: {
+//   qr: string;
+//   format: TableQrFormat;
+//   fileBase: string;
+//   template: QrTemplate;
+// }) {
+//   const [qrImage, templateImage] = await Promise.all([
+//     loadQrImage(args.qr, args.format),
+//     loadTemplateImage(args.template.imagePath),
+//   ]);
+//   const canvas = document.createElement("canvas");
+//   const width = templateImage.naturalWidth || templateImage.width;
+//   const height = templateImage.naturalHeight || templateImage.height;
+//   canvas.width = width;
+//   canvas.height = height;
+//   const ctx = canvas.getContext("2d");
+//   if (!ctx) throw new Error("Canvas not available");
+//   ctx.drawImage(templateImage, 0, 0, width, height);
+//   const slot = getQrSlotRect(args.template, width, height);
+//   const qrSize = slot.slotSize - slot.padding * 2;
+//   ctx.drawImage(
+//     qrImage,
+//     slot.x + slot.padding,
+//     slot.y + slot.padding,
+//     qrSize,
+//     qrSize,
+//   );
+
+//   const safe = args.fileBase.replace(/[^a-zA-Z0-9-_]/g, "_");
+//   downloadHref(canvas.toDataURL("image/png"), `${safe}_${args.template.id}.png`);
+// }
+// export function TablesWorkspace({ tenantName, tenantSlug }: Props) {
+//   const router = useRouter();
+//   const confirm = useConfirm();
+//   const [filter, setFilter] = useState<Filter>("all");
+//   const [isCreateTableOpen, setIsCreateTableOpen] = useState(false);
+//   const [tableListViewMode, setTableListViewMode] =
+//     useState<TableListViewMode>("grid");
+//   const [searchText, setSearchText] = useState("");
+//   const queryArg =
+//     filter === "all" ? undefined : { isActive: filter === "active" };
+//   const { data, isLoading, isFetching, refetch } = useGetTablesQuery(queryArg);
+//   const { data: ordersData } = useGetOrdersQuery({
+//     status: ["PLACED", "IN_PROGRESS", "READY", "SERVED"],
+//     limit: 200,
+//   });
+//   const { data: invoicesData } = useGetInvoicesQuery({
+//     status: "ISSUED",
+//     limit: 200,
+//   });
+//   const [createTable, { isLoading: isCreating }] = useCreateTableMutation();
+//   const [updateTable, { isLoading: isUpdating }] = useUpdateTableMutation();
+//   const [deleteTable, { isLoading: isDeleting }] = useDeleteTableMutation();
+//   const [fetchQr, { isFetching: isQrFetching }] = useLazyGetTableQrQuery();
+
+//   const tables = useMemo(
+//     () => [...(data?.items || [])].sort((a, b) => a.number - b.number),
+//     [data?.items],
+//   );
+//   const maxNumber = useMemo(
+//     () => tables.reduce((m, t) => Math.max(m, t.number), 0),
+//     [tables],
+//   );
+//   const activeCount = tables.filter((t) => t.isActive).length;
+//   const reservedCount = tables.filter(
+//     (t) => nStatus(t.status) === "RESERVED",
+//   ).length;
+//   const totalSeats = tables.reduce((sum, t) => sum + (t.capacity || 0), 0);
+//   const filteredTables = useMemo(() => {
+//     const q = searchText.trim().toLowerCase();
+//     if (!q) return tables;
+//     return tables.filter((table) => {
+//       const content = [
+//         table.number,
+//         table.name,
+//         table.customerId,
+//         table.capacity,
+//         nStatus(table.status),
+//       ]
+//         .filter((value) => value !== undefined && value !== null)
+//         .join(" ")
+//         .toLowerCase();
+//       return content.includes(q);
+//     });
+//   }, [searchText, tables]);
+
+//   const invoiceCoveredOrderIds = useMemo(() => {
+//     const ids = new Set<string>();
+//     (invoicesData?.items || []).forEach((invoice) => {
+//       if (invoice.orderId) ids.add(invoice.orderId);
+//       (invoice.orderIds || []).forEach((orderId) => ids.add(orderId));
+//     });
+//     return ids;
+//   }, [invoicesData?.items]);
+
+//   const activeOrderCountByTable = useMemo(() => {
+//     const counts = new Map<string, number>();
+//     (ordersData?.items || []).forEach((order) => {
+//       const tableId = order.table?.id || order.tableId;
+//       if (!tableId) return;
+//       if (invoiceCoveredOrderIds.has(order.id)) return;
+//       const status = nStatus(order.status);
+//       if (!["PLACED", "IN_PROGRESS", "READY", "SERVED"].includes(status)) return;
+//       counts.set(tableId, (counts.get(tableId) || 0) + 1);
+//     });
+//     return counts;
+//   }, [invoiceCoveredOrderIds, ordersData?.items]);
+
+//   const issuedInvoiceCountByTable = useMemo(() => {
+//     const counts = new Map<string, number>();
+//     (invoicesData?.items || []).forEach((invoice) => {
+//       const tableId = invoice.table?.id;
+//       if (!tableId) return;
+//       counts.set(tableId, (counts.get(tableId) || 0) + 1);
+//     });
+//     return counts;
+//   }, [invoicesData?.items]);
+
+//   function canOpenOrder(table: TableRecord): boolean {
+//     const status = nStatus(table.status);
+//     return status === "OCCUPIED" || status === "BILLING";
+//   }
+
+//   function openTableOrder(table: TableRecord) {
+//     router.push(`/dashboard/orders/items?tableId=${encodeURIComponent(table.id)}`);
+//   }
+
+//   const [createForm, setCreateForm] = useState<FormState>({
+//     number: 1,
+//     name: "",
+//     capacity: 4,
+//     isActive: true,
+//     status: "AVAILABLE",
+//     customerId: "",
+//     reservationCustomerName: "",
+//     reservationCustomerPhone: "",
+//     reservationPartySize: 2,
+//     reservationReservedFor: "",
+//     reservationNote: "",
+//     advanceRequired: false,
+//     advanceAmount: 0,
+//     advancePaidAmount: 0,
+//     advanceMethod: "CASH",
+//     advanceReference: "",
+//   });
+//   const [editing, setEditing] = useState<TableRecord | null>(null);
+//   const [editForm, setEditForm] = useState<FormState>({
+//     number: 1,
+//     name: "",
+//     capacity: 4,
+//     isActive: true,
+//     status: "AVAILABLE",
+//     customerId: "",
+//     reservationCustomerName: "",
+//     reservationCustomerPhone: "",
+//     reservationPartySize: 2,
+//     reservationReservedFor: "",
+//     reservationNote: "",
+//     advanceRequired: false,
+//     advanceAmount: 0,
+//     advancePaidAmount: 0,
+//     advanceMethod: "CASH",
+//     advanceReference: "",
+//   });
+//   const [downloadingTemplate, setDownloadingTemplate] = useState(false);
+//   const [sharingQrLink, setSharingQrLink] = useState(false);
+//   const defaultTemplate = QR_TEMPLATES[0];
+
+//   const [qr, setQr] = useState<QrState>({
+//     open: false,
+//     table: null,
+//     format: "dataUrl",
+//     templateId: defaultTemplate.id,
+//     baseUrl: defaultQrBaseUrl(),
+//     qr: "",
+//     qrPayload: "",
+//     error: "",
+//   });
+
+//   const preview = qrSrc(qr.qr, qr.format);
+//   const qrBusy = isQrFetching;
+//   const selectedTemplate = getTemplateById(qr.templateId);
+//   const qrPayloadUrl = normalizePayloadUrl(qr.qrPayload, qr.baseUrl);
+
+//   async function submitCreate(event: FormEvent<HTMLFormElement>) {
+//     event.preventDefault();
+//     try {
+//       const number = norm(createForm.number, maxNumber + 1);
+//       await createTable({
+//         number,
+//         name: createForm.name.trim() || `Table ${number}`,
+//         capacity: norm(createForm.capacity, 4),
+//         isActive: createForm.isActive,
+//       }).unwrap();
+//       setCreateForm((prev) => ({
+//         ...prev,
+//         number: number + 1,
+//         name: `Table ${number + 1}`,
+//       }));
+//       setIsCreateTableOpen(false);
+//       showSuccess(`Table ${number} created`);
+//     } catch (e) {
+//       showError(getErrorMessage(e));
+//     }
+//   }
+
+//   function openEdit(table: TableRecord) {
+//     const reservation = table.reservation;
+//     const advancePayment = reservation?.advancePayment;
+//     setEditing(table);
+//     setEditForm({
+//       number: table.number,
+//       name: table.name,
+//       capacity: table.capacity,
+//       isActive: table.isActive,
+//       status: nStatus(table.status),
+//       customerId: table.customerId || "",
+//       reservationCustomerName: reservation?.customerName || "",
+//       reservationCustomerPhone: reservation?.customerPhone || "",
+//       reservationPartySize: reservation?.partySize || table.capacity || 2,
+//       reservationReservedFor: toDateTimeLocal(reservation?.reservedFor),
+//       reservationNote: reservation?.note || "",
+//       advanceRequired: Boolean(advancePayment?.required),
+//       advanceAmount: advancePayment?.amount || 0,
+//       advancePaidAmount: advancePayment?.paidAmount || 0,
+//       advanceMethod: advancePayment?.method || "CASH",
+//       advanceReference: advancePayment?.reference || "",
+//     });
+//   }
+
+//   async function submitUpdate(event: FormEvent<HTMLFormElement>) {
+//     event.preventDefault();
+//     if (!editing) return;
+//     try {
+//       const status = nStatus(editForm.status);
+//       const reservation =
+//         status === "RESERVED" ? buildReservationPayload(editForm) : undefined;
+//       await updateTable({
+//         tableId: editing.id,
+//         number: norm(editForm.number, editing.number),
+//         name: editForm.name.trim() || `Table ${editForm.number}`,
+//         capacity: norm(editForm.capacity, editing.capacity),
+//         isActive: editForm.isActive,
+//         status,
+//         customerId: status === "RESERVED" ? editForm.customerId.trim() : "",
+//         reservation,
+//       }).unwrap();
+//       showSuccess(`Table ${editForm.number} updated`);
+//       setEditing(null);
+//     } catch (e) {
+//       showError(getErrorMessage(e));
+//     }
+//   }
+
+//   async function quickStatus(table: TableRecord, nextStatus: TableStatus) {
+//     if (nStatus(nextStatus) === "RESERVED") {
+//       openEdit({
+//         ...table,
+//         status: "RESERVED",
+//       });
+//       return;
+//     }
+//     try {
+//       await updateTable({
+//         tableId: table.id,
+//         status: nStatus(nextStatus),
+//         customerId: "",
+//         reservation: undefined,
+//       }).unwrap();
+//       showSuccess(`Table ${table.number} marked ${sLabel(nextStatus)}`);
+//     } catch (e) {
+//       showError(getErrorMessage(e));
+//     }
+//   }
+
+//   async function removeTable(table: TableRecord) {
+//     const approved = await confirm({
+//       title: "Delete Table",
+//       message: `Delete ${table.name}? This action removes the table record from your restaurant setup.`,
+//       confirmText: "Delete Table",
+//       cancelText: "Keep Table",
+//       tone: "danger",
+//     });
+//     if (!approved) return;
+//     try {
+//       await deleteTable({ tableId: table.id }).unwrap();
+//       showSuccess(`Table ${table.number} deleted`);
+//     } catch (e) {
+//       showError(getErrorMessage(e));
+//     }
+//   }
+
+//   function openQr(table: TableRecord) {
+//     router.push(`/dashboard/tables/qr/${encodeURIComponent(table.id)}`);
+//   }
+
+//   async function generateQr() {
+//     if (!qr.table) return;
+//     const baseUrl = resolveQrBaseUrl(qr.baseUrl);
+//     setQr((prev) => ({ ...prev, error: "", baseUrl }));
+//     try {
+//       const r = await fetchQr({
+//         tableId: qr.table.id,
+//         format: qr.format,
+//         baseUrl,
+//       }).unwrap();
+//       setQr((prev) => ({
+//         ...prev,
+//         qr: r.qr,
+//         qrPayload: r.qrPayload,
+//         format: r.format,
+//         baseUrl,
+//       }));
+//     } catch (e) {
+//       setQr((prev) => ({ ...prev, error: getErrorMessage(e) }));
+//     }
+//   }
+
+//   function applyTemplate(templateId: QrTemplateId) {
+//     setQr((prev) => ({
+//       ...prev,
+//       templateId,
+//     }));
+//   }
+
+//   async function downloadActiveTemplate() {
+//     if (!qr.table || !qr.qr) return;
+//     setDownloadingTemplate(true);
+//     try {
+//       await downloadTemplateCard({
+//         qr: qr.qr,
+//         format: qr.format,
+//         fileBase: `table-${qr.table.number}-static`,
+//         template: selectedTemplate,
+//       });
+//     } catch (e) {
+//       setQr((prev) => ({ ...prev, error: getErrorMessage(e) }));
+//     } finally {
+//       setDownloadingTemplate(false);
+//     }
+//   }
+
+//   function openQrLink() {
+//     if (!qrPayloadUrl) {
+//       showError("Generate QR first");
+//       return;
+//     }
+//     window.open(qrPayloadUrl, "_blank", "noopener,noreferrer");
+//   }
+
+//   async function shareQrLink() {
+//     if (!qrPayloadUrl) {
+//       showError("Generate QR first");
+//       return;
+//     }
+//     setSharingQrLink(true);
+//     try {
+//       const title = `${qr.table?.name || "Table"} Menu QR`;
+//       const text = `Scan this QR to open menu for ${qr.table?.name || "table"}`;
+//       if (navigator.share) {
+//         await navigator.share({ title, text, url: qrPayloadUrl });
+//         showSuccess("QR link shared");
+//         return;
+//       }
+//       if (!navigator.clipboard) {
+//         throw new Error("Share not supported on this browser");
+//       }
+//       await navigator.clipboard.writeText(qrPayloadUrl);
+//       showSuccess("QR link copied");
+//     } catch (e) {
+//       setQr((prev) => ({ ...prev, error: getErrorMessage(e) }));
+//     } finally {
+//       setSharingQrLink(false);
+//     }
+//   }
+//   return (
+//     <>
+//       <section className="mt-1 grid gap-3 sm:mt-2 sm:gap-4">
+//         {isCreateTableOpen ? (
+//           <div className="fixed inset-0 z-50 flex items-end justify-center overflow-y-auto p-3 pb-[calc(env(safe-area-inset-bottom)+6rem)] sm:items-center sm:p-6 sm:pb-6">
+//             <button
+//               type="button"
+//               aria-label="Close create table panel"
+//               className="absolute inset-0 bg-slate-900/35"
+//               onClick={() => setIsCreateTableOpen(false)}
+//             />
+//             <article className="relative z-10 w-full max-w-2xl max-h-[calc(100dvh-6.5rem)] overflow-y-auto rounded-[2rem] border border-[#e6dfd1] bg-[#fffdf9] p-3 shadow-2xl sm:max-h-[90vh] sm:rounded-3xl sm:p-5">
+//               <div className="mb-3 flex items-center justify-between sm:mb-4">
+//                 <div>
+//                   <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">
+//                     Quick Add
+//                   </p>
+//                   <h4 className="text-lg font-semibold text-slate-900">
+//                     Add Table
+//                   </h4>
+//                 </div>
+//                 <button
+//                   type="button"
+//                   onClick={() => setIsCreateTableOpen(false)}
+//                   className="h-8 w-8 rounded-full border border-[#e0d8c9] bg-white text-lg leading-none text-slate-700"
+//                   aria-label="Close popup"
+//                 >
+//                   x
+//                 </button>
+//               </div>
+//               <form onSubmit={submitCreate} className="space-y-3">
+//                 <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+//                   <input
+//                     type="number"
+//                     min={1}
+//                     value={createForm.number}
+//                     onChange={(event) =>
+//                       setCreateForm((prev) => ({
+//                         ...prev,
+//                         number: norm(Number(event.target.value), 1),
+//                       }))
+//                     }
+//                     className="h-11 rounded-xl border border-[#ddd4c1] bg-white px-3 text-sm outline-none ring-amber-200 focus:ring-2"
+//                     placeholder="Number"
+//                   />
+//                   <input
+//                     type="number"
+//                     min={1}
+//                     value={createForm.capacity}
+//                     onChange={(event) =>
+//                       setCreateForm((prev) => ({
+//                         ...prev,
+//                         capacity: norm(Number(event.target.value), 4),
+//                       }))
+//                     }
+//                     className="h-11 rounded-xl border border-[#ddd4c1] bg-white px-3 text-sm outline-none ring-amber-200 focus:ring-2"
+//                     placeholder="Capacity"
+//                   />
+//                 </div>
+//                 <input
+//                   value={createForm.name}
+//                   onChange={(event) =>
+//                     setCreateForm((prev) => ({
+//                       ...prev,
+//                       name: event.target.value,
+//                     }))
+//                   }
+//                   className="h-11 w-full rounded-xl border border-[#ddd4c1] bg-white px-3 text-sm outline-none ring-amber-200 focus:ring-2"
+//                   placeholder={`Table ${createForm.number}`}
+//                 />
+//                 <div className="flex flex-wrap items-center justify-between gap-2">
+//                   <label className="inline-flex h-11 items-center gap-2 rounded-xl border border-[#ddd4c1] bg-white px-3 text-sm text-slate-700">
+//                     <input
+//                       type="checkbox"
+//                       checked={createForm.isActive}
+//                       onChange={(event) =>
+//                         setCreateForm((prev) => ({
+//                           ...prev,
+//                           isActive: event.target.checked,
+//                         }))
+//                       }
+//                       className="h-4 w-4 rounded border-slate-300 text-amber-500"
+//                     />
+//                     Active
+//                   </label>
+//                   <button
+//                     type="button"
+//                     onClick={() =>
+//                       setCreateForm((prev) => ({
+//                         ...prev,
+//                         number: maxNumber + 1,
+//                         name: `Table ${maxNumber + 1}`,
+//                       }))
+//                     }
+//                     className="h-11 rounded-xl border border-[#e0d8c9] bg-white px-3 text-xs font-semibold text-slate-700"
+//                   >
+//                     Use Next
+//                   </button>
+//                 </div>
+//                 <button
+//                   type="submit"
+//                   disabled={isCreating}
+//                   className="w-full rounded-xl bg-amber-500 px-4 py-2.5 text-sm font-semibold text-white shadow-lg shadow-amber-500/25 disabled:opacity-60"
+//                 >
+//                   {isCreating ? "Adding..." : "Add Table"}
+//                 </button>
+//                 <div className="grid grid-cols-3 gap-2 text-xs">
+//                   <div className="rounded-xl border border-[#ebdfc8] bg-white p-2">
+//                     <p className="text-slate-500">Tables</p>
+//                     <p className="mt-1 text-base font-semibold">
+//                       {tables.length}
+//                     </p>
+//                   </div>
+//                   <div className="rounded-xl border border-[#ebdfc8] bg-white p-2">
+//                     <p className="text-slate-500">Reserved</p>
+//                     <p className="mt-1 text-base font-semibold">
+//                       {reservedCount}
+//                     </p>
+//                   </div>
+//                   <div className="rounded-xl border border-[#ebdfc8] bg-white p-2">
+//                     <p className="text-slate-500">Seats</p>
+//                     <p className="mt-1 text-base font-semibold">{totalSeats}</p>
+//                   </div>
+//                 </div>
+//               </form>
+//             </article>
+//           </div>
+//         ) : null}
+
+//         <article className="min-w-0 rounded-2xl border border-[#e6dfd1] bg-[#fffdf9] shadow-sm">
+//           <div className="border-b border-[#eee7d8] px-2.5 py-2.5 sm:px-4 sm:py-3">
+//             <div className="mt-2.5 rounded-xl border border-[#eadfc9] bg-[#fffaf1] p-2.5 sm:mt-3 sm:p-3">
+//               <div className="flex items-center gap-2">
+//                 <div className="flex shrink-0 flex-col items-center leading-none">
+//                   <span className="text-lg font-bold text-slate-700">
+//                     {isLoading ? "..." : filteredTables.length}
+//                   </span>
+//                   <span className="text-[10px] font-medium text-slate-700">
+//                     tables
+//                   </span>
+//                 </div>
+//                 <input
+//                   value={searchText}
+//                   onChange={(event) => setSearchText(event.target.value)}
+//                   placeholder="Search..."
+//                   className="h-10 min-w-0 flex-1 rounded-xl border border-[#dcccaf] bg-white px-3 text-sm outline-none ring-amber-200 focus:ring-2"
+//                 />
+//                 <div className="flex shrink-0 items-center rounded-lg border border-[#dccfb8] bg-white p-0.5">
+//                   <button
+//                     type="button"
+//                     onClick={() => setTableListViewMode("grid")}
+//                     className={`rounded-md px-2 py-1 text-[11px] font-semibold ${
+//                       tableListViewMode === "grid"
+//                         ? "bg-[#f6ead4] text-[#7a5a34]"
+//                         : "text-slate-600"
+//                     }`}
+//                   >
+//                     ⊞
+//                   </button>
+//                   <button
+//                     type="button"
+//                     onClick={() => setTableListViewMode("table")}
+//                     className={`rounded-md px-2 py-1 text-[11px] font-semibold ${
+//                       tableListViewMode === "table"
+//                         ? "bg-[#f6ead4] text-[#7a5a34]"
+//                         : "text-slate-600"
+//                     }`}
+//                   >
+//                     ☰
+//                   </button>
+//                 </div>
+//               </div>
+
+//               <div className="mt-2 grid grid-cols-1 gap-2 md:grid-cols-10 md:items-center">
+//                 <div className="md:col-span-7">
+//                   <div className="flex items-center gap-2 overflow-x-auto whitespace-nowrap no-scrollbar">
+//                     <span className="shrink-0 text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+//                       Status
+//                     </span>
+//                     <button
+//                       type="button"
+//                       onClick={() => setFilter("all")}
+//                       className={`shrink-0 rounded-full border px-3 py-1 text-[11px] font-semibold ${
+//                         filter === "all"
+//                           ? "border-amber-300 bg-amber-100 text-amber-800"
+//                           : "border-[#ddcfb7] bg-white text-slate-700"
+//                       }`}
+//                     >
+//                       All
+//                     </button>
+//                     <button
+//                       type="button"
+//                       onClick={() => setFilter("active")}
+//                       className={`shrink-0 rounded-full border px-3 py-1 text-[11px] font-semibold ${
+//                         filter === "active"
+//                           ? "border-emerald-300 bg-emerald-100 text-emerald-800"
+//                           : "border-[#ddcfb7] bg-white text-slate-700"
+//                       }`}
+//                     >
+//                       Active {activeCount}
+//                     </button>
+//                     <button
+//                       type="button"
+//                       onClick={() => setFilter("inactive")}
+//                       className={`shrink-0 rounded-full border px-3 py-1 text-[11px] font-semibold ${
+//                         filter === "inactive"
+//                           ? "border-slate-300 bg-slate-100 text-slate-700"
+//                           : "border-[#ddcfb7] bg-white text-slate-700"
+//                       }`}
+//                     >
+//                       Inactive {tables.length - activeCount}
+//                     </button>
+//                   </div>
+//                 </div>
+//                 <div className="md:col-span-3">
+//                   <div className="flex items-center justify-start gap-2 md:justify-end">
+//                     <button
+//                       type="button"
+//                       onClick={() => refetch()}
+//                       className="rounded-lg border border-[#e0d8c9] bg-white px-3 py-1.5 text-xs font-semibold text-slate-700"
+//                     >
+//                       {isFetching ? "Refreshing..." : "Refresh"}
+//                     </button>
+//                   </div>
+//                 </div>
+//               </div>
+
+//               <button
+//                 type="button"
+//                 onClick={() => setIsCreateTableOpen(true)}
+//                 className="mt-3 w-full rounded-xl border-2 border-dashed border-amber-300 bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-700 shadow-sm transition-all hover:border-amber-400 hover:bg-amber-100 hover:shadow-md active:scale-[0.98]"
+//               >
+//                 + Add Table
+//               </button>
+//             </div>
+//           </div>
+
+//           <div className="p-2.5 sm:p-4">
+//             {filteredTables.length ? (
+//               tableListViewMode === "grid" ? (
+//                 <div className="grid gap-2.5 sm:grid-cols-2 sm:gap-3">
+//                   {filteredTables.map((table) => {
+//                     const reserved = nStatus(table.status) === "RESERVED";
+//                     const activeOrderCount = activeOrderCountByTable.get(table.id) || 0;
+//                     const issuedInvoiceCount = issuedInvoiceCountByTable.get(table.id) || 0;
+//                     return (
+//                       <article
+//                         key={table.id}
+//                         className="rounded-2xl border border-[#eadfc9] bg-[linear-gradient(160deg,#fffcf6_0%,#fff7e8_100%)] p-2 shadow-sm sm:p-2.5"
+//                       >
+//                         <div className="flex items-start justify-between gap-2">
+//                           <div>
+//                             <span className="inline-flex rounded-full bg-slate-900 px-2.5 py-1 text-[10px] font-semibold text-white">
+//                               T{table.number}
+//                             </span>
+//                             {canOpenOrder(table) ? (
+//                               <button
+//                                 type="button"
+//                                 onClick={() => openTableOrder(table)}
+//                                 className="mt-2 text-left text-base font-semibold text-amber-900 underline decoration-amber-300 underline-offset-2"
+//                               >
+//                                 {table.name}
+//                               </button>
+//                             ) : (
+//                               <p className="mt-2 text-base font-semibold text-slate-900">
+//                                 {table.name}
+//                               </p>
+//                             )}
+//                             <p className="text-xs text-slate-500">
+//                               {table.capacity} seats
+//                             </p>
+//                           </div>
+//                           <div className="space-y-1 text-right">
+//                             <span
+//                               className={`inline-flex rounded-full border px-2.5 py-1 text-[10px] font-semibold ${sClass(table.status)}`}
+//                             >
+//                               {sLabel(table.status)}
+//                             </span>
+//                             {activeOrderCount > 0 ? (
+//                               <p className="text-[10px] font-semibold text-amber-700">
+//                                 {activeOrderCount} active order{activeOrderCount === 1 ? "" : "s"}
+//                               </p>
+//                             ) : null}
+//                             {issuedInvoiceCount > 0 ? (
+//                               <p className="text-[10px] font-semibold text-blue-700">
+//                                 {issuedInvoiceCount} pending invoice{issuedInvoiceCount === 1 ? "" : "s"}
+//                               </p>
+//                             ) : null}
+//                             <p className="text-[10px] text-slate-500">
+//                               {table.isActive
+//                                 ? "Active Table"
+//                                 : "Inactive Table"}
+//                             </p>
+//                           </div>
+//                         </div>
+//                         <p className="mt-3 rounded-lg border border-[#e8e1d4] bg-white px-2.5 py-2 text-[11px] text-slate-600">
+//                           {reserved
+//                             ? formatReservationSummary(table.reservation)
+//                             : "Tap Reserve to assign customer, slot time, and advance payment."}
+//                         </p>
+//                         {reserved && table.reservation?.advancePayment?.required ? (
+//                           <div className="mt-2 rounded-lg border border-blue-200 bg-blue-50 px-2.5 py-2 text-[11px] text-blue-800">
+//                             Advance: {table.reservation.advancePayment.paidAmount || 0} / {table.reservation.advancePayment.amount || 0}
+//                             {table.reservation.advancePayment.method
+//                               ? ` • ${table.reservation.advancePayment.method}`
+//                               : ""}
+//                           </div>
+//                         ) : null}
+//                         {canOpenOrder(table) ? (
+//                           <button
+//                             type="button"
+//                             onClick={() => openTableOrder(table)}
+//                             className="mt-2 w-full rounded-lg border border-amber-300 bg-amber-100 px-3 py-2 text-xs font-semibold text-amber-900 transition hover:bg-amber-200"
+//                           >
+//                             Open Order
+//                           </button>
+//                         ) : null}
+//                         <div className="mt-2.5 flex items-center justify-end gap-1.5 border-t border-[#ece3d3] pt-2">
+//                           <button
+//                             type="button"
+//                             onClick={() => openQr(table)}
+//                             title="Open QR Studio"
+//                             aria-label="Open QR Studio"
+//                             className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-[#d8ccb6] bg-white text-slate-700 transition-colors hover:bg-[#faf3e7]"
+//                           >
+//                             <svg
+//                               viewBox="0 0 24 24"
+//                               aria-hidden="true"
+//                               className="h-4 w-4"
+//                               fill="none"
+//                               stroke="currentColor"
+//                               strokeWidth="1.8"
+//                               strokeLinecap="round"
+//                               strokeLinejoin="round"
+//                             >
+//                               <path d="M3 3h7v7H3z" />
+//                               <path d="M14 3h7v7h-7z" />
+//                               <path d="M3 14h7v7H3z" />
+//                               <path d="M14 14h3v3h-3z" />
+//                               <path d="M21 14h-2v2h2v5h-5v-2" />
+//                             </svg>
+//                           </button>
+//                           <button
+//                             type="button"
+//                             onClick={() => openEdit(table)}
+//                             title="Edit table"
+//                             aria-label="Edit table"
+//                             className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-[#d8ccb6] bg-white text-slate-700 transition-colors hover:bg-[#faf3e7]"
+//                           >
+//                             <svg
+//                               viewBox="0 0 24 24"
+//                               aria-hidden="true"
+//                               className="h-4 w-4"
+//                               fill="none"
+//                               stroke="currentColor"
+//                               strokeWidth="1.8"
+//                               strokeLinecap="round"
+//                               strokeLinejoin="round"
+//                             >
+//                               <path d="M12 20h9" />
+//                               <path d="m16.5 3.5 4 4L8 20H4v-4z" />
+//                             </svg>
+//                           </button>
+//                           <button
+//                             type="button"
+//                             onClick={() =>
+//                               quickStatus(
+//                                 table,
+//                                 reserved ? "AVAILABLE" : "RESERVED",
+//                               )
+//                             }
+//                             title={
+//                               reserved ? "Mark available" : "Mark reserved"
+//                             }
+//                             aria-label={
+//                               reserved ? "Mark available" : "Mark reserved"
+//                             }
+//                             disabled={isUpdating}
+//                             className={`inline-flex h-8 w-8 items-center justify-center rounded-lg border transition-colors disabled:opacity-60 ${
+//                               reserved
+//                                 ? "border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100"
+//                                 : "border-slate-700 bg-slate-700 text-white hover:bg-slate-800"
+//                             }`}
+//                           >
+//                             {reserved ? (
+//                               <svg
+//                                 viewBox="0 0 24 24"
+//                                 aria-hidden="true"
+//                                 className="h-4 w-4"
+//                                 fill="none"
+//                                 stroke="currentColor"
+//                                 strokeWidth="2"
+//                                 strokeLinecap="round"
+//                                 strokeLinejoin="round"
+//                               >
+//                                 <path d="M20 6 9 17l-5-5" />
+//                               </svg>
+//                             ) : (
+//                               <svg
+//                                 viewBox="0 0 24 24"
+//                                 aria-hidden="true"
+//                                 className="h-4 w-4"
+//                                 fill="none"
+//                                 stroke="currentColor"
+//                                 strokeWidth="1.8"
+//                                 strokeLinecap="round"
+//                                 strokeLinejoin="round"
+//                               >
+//                                 <path d="M8 11V8a4 4 0 1 1 8 0v3" />
+//                                 <rect
+//                                   x="6"
+//                                   y="11"
+//                                   width="12"
+//                                   height="9"
+//                                   rx="2"
+//                                 />
+//                               </svg>
+//                             )}
+//                           </button>
+//                           <button
+//                             type="button"
+//                             onClick={() => removeTable(table)}
+//                             title="Remove table"
+//                             aria-label="Remove table"
+//                             disabled={isDeleting}
+//                             className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-rose-200 bg-white text-rose-700 transition-colors hover:bg-rose-50 disabled:opacity-60"
+//                           >
+//                             <svg
+//                               viewBox="0 0 24 24"
+//                               aria-hidden="true"
+//                               className="h-4 w-4"
+//                               fill="none"
+//                               stroke="currentColor"
+//                               strokeWidth="1.8"
+//                               strokeLinecap="round"
+//                               strokeLinejoin="round"
+//                             >
+//                               <path d="M3 6h18" />
+//                               <path d="M8 6V4h8v2" />
+//                               <path d="m19 6-1 14H6L5 6" />
+//                               <path d="M10 11v6" />
+//                               <path d="M14 11v6" />
+//                             </svg>
+//                           </button>
+//                         </div>
+//                       </article>
+//                     );
+//                   })}
+//                 </div>
+//               ) : (
+//                 // <div className="no-scrollbar -mx-1 overflow-x-auto overscroll-x-contain px-1 sm:mx-0 sm:px-0">
+//                 //   <table className="w-full min-w-[780px] divide-y divide-[#efe4d3] rounded-xl border border-[#eadfc9] bg-white text-left text-xs whitespace-nowrap sm:min-w-full">
+//                 //     <thead className="bg-[#fff8ec]">
+//                 //       <tr className="text-slate-700">
+//                 //         <th className="px-2.5 py-2 font-semibold sm:px-3">Table</th>
+//                 //         <th className="px-2.5 py-2 font-semibold sm:px-3">Capacity</th>
+//                 //         <th className="px-2.5 py-2 font-semibold sm:px-3">Status</th>
+//                 //         {/* <th className="px-2.5 py-2 font-semibold sm:px-3">Customer</th> */}
+//                 //         <th className="px-2.5 py-2 font-semibold text-right sm:px-3">
+//                 //           Actions
+//                 //         </th>
+//                 //       </tr>
+//                 //     </thead>
+//                 //     <tbody className="divide-y divide-[#f1e7d9] bg-white">
+//                 //       {filteredTables.map((table) => {
+//                 //         const reserved = nStatus(table.status) === "RESERVED";
+//                 //         return (
+//                 //           <tr key={`table-row-${table.id}`}>
+//                 //             <td className="px-2.5 py-2 font-semibold text-slate-900 sm:px-3">
+//                 //               {canOpenOrder(table) ? (
+//                 //                 <button
+//                 //                   type="button"
+//                 //                   onClick={() => openTableOrder(table)}
+//                 //                   className="text-left text-amber-900 underline decoration-amber-300 underline-offset-2"
+//                 //                 >
+//                 //                   T{table.number} - {table.name}
+//                 //                 </button>
+//                 //               ) : (
+//                 //                 <span>T{table.number} - {table.name}</span>
+//                 //               )}
+//                 //             </td>
+//                 //             <td className="px-2.5 py-2 text-slate-700 sm:px-3">
+//                 //               {table.capacity}
+//                 //             </td>
+//                 //             <td className="px-2.5 py-2 sm:px-3">
+//                 //               <span
+//                 //                 className={`inline-flex rounded-full border px-2 py-0.5 text-[10px] font-semibold ${sClass(table.status)}`}
+//                 //               >
+//                 //                 {sLabel(table.status)}
+//                 //               </span>
+//                 //             </td>
+//                 //             {/* <td className="px-2.5 py-2 text-slate-700 sm:px-3">
+//                 //               {table.customerId || "-"}
+//                 //             </td> */}
+//                 //             <td className="px-2.5 py-2 sm:px-3">
+//                 //               <div className="flex justify-end gap-1.5">
+//                 //                 {canOpenOrder(table) ? (
+//                 //                   <button
+//                 //                     type="button"
+//                 //                     onClick={() => openTableOrder(table)}
+//                 //                     className="rounded-lg border border-amber-300 bg-amber-100 px-2.5 py-1.5 text-[11px] font-semibold text-amber-900 transition-colors hover:bg-amber-200"
+//                 //                   >
+//                 //                     Open Order
+//                 //                   </button>
+//                 //                 ) : null}
+//                 //                 <button
+//                 //                   type="button"
+//                 //                   onClick={() => openQr(table)}
+//                 //                   className="rounded-lg border border-[#d8ccb6] bg-white px-2.5 py-1.5 text-[11px] font-semibold text-slate-700 transition-colors hover:bg-[#faf3e7]"
+//                 //                 >
+//                 //                   Open QR
+//                 //                 </button>
+//                 //                 <button
+//                 //                   type="button"
+//                 //                   onClick={() => openEdit(table)}
+//                 //                   className="rounded-lg border border-[#d8ccb6] bg-white px-2.5 py-1.5 text-[11px] font-semibold text-slate-700 transition-colors hover:bg-[#faf3e7]"
+//                 //                 >
+//                 //                   Edit
+//                 //                 </button>
+//                 //                 <button
+//                 //                   type="button"
+//                 //                   onClick={() =>
+//                 //                     quickStatus(
+//                 //                       table,
+//                 //                       reserved ? "AVAILABLE" : "RESERVED",
+//                 //                     )
+//                 //                   }
+//                 //                   disabled={isUpdating}
+//                 //                   className={`rounded-lg border px-2.5 py-1.5 text-[11px] font-semibold transition-colors disabled:opacity-60 ${
+//                 //                     reserved
+//                 //                       ? "border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100"
+//                 //                       : "border-slate-700 bg-slate-700 text-white hover:bg-slate-800"
+//                 //                   }`}
+//                 //                 >
+//                 //                   {reserved ? "Available" : "Reserve"}
+//                 //                 </button>
+//                 //                 <button
+//                 //                   type="button"
+//                 //                   onClick={() => removeTable(table)}
+//                 //                   disabled={isDeleting}
+//                 //                   className="rounded-lg border border-rose-200 bg-white px-2.5 py-1.5 text-[11px] font-semibold text-rose-700 transition-colors hover:bg-rose-50 disabled:opacity-60"
+//                 //                 >
+//                 //                   Remove
+//                 //                 </button>
+//                 //               </div>
+//                 //             </td>
+//                 //           </tr>
+//                 //         );
+//                 //       })}
+//                 //     </tbody>
+//                 //   </table>
+//                 // </div>
+//                 <div className="w-full overflow-x-auto no-scrollbar">
+//                   <table className="w-full min-w-[780px] sm:min-w-full border border-[#eadfc9] bg-white text-left text-xs">
+//                     <thead className="bg-[#fff8ec]">
+//                       <tr className="text-slate-700">
+//                         {/* 👇 auto width */}
+//                         <th className="px-2.5 py-2 font-semibold whitespace-nowrap sm:px-3">
+//                           Table
+//                         </th>
+
+//                         <th className="px-2.5 py-2 font-semibold whitespace-nowrap sm:px-3">
+//                           Capacity
+//                         </th>
+
+//                         <th className="px-2.5 py-2 font-semibold whitespace-nowrap sm:px-3">
+//                           Status
+//                         </th>
+
+//                         {/* 👇 auto shrink */}
+//                         <th className="px-2.5 py-2 font-semibold text-right whitespace-nowrap sm:px-3">
+//                           Actions
+//                         </th>
+//                       </tr>
+//                     </thead>
+
+//                     <tbody className="divide-y divide-[#f1e7d9]">
+//                       {filteredTables.map((table) => {
+//                         const reserved = nStatus(table.status) === "RESERVED";
+
+//                         return (
+//                           <tr key={`table-row-${table.id}`}>
+//                             {/* 👇 allow natural width */}
+//                             <td className="px-2.5 py-2 font-semibold text-slate-900 sm:px-3">
+//                               {canOpenOrder(table) ? (
+//                                 <button
+//                                   type="button"
+//                                   onClick={() => openTableOrder(table)}
+//                                   className="text-left text-amber-900 underline decoration-amber-300 underline-offset-2"
+//                                 >
+//                                   T{table.number} - {table.name}
+//                                 </button>
+//                               ) : (
+//                                 <span>
+//                                   T{table.number} - {table.name}
+//                                 </span>
+//                               )}
+//                             </td>
+
+//                             <td className="px-2.5 py-2 text-slate-700 sm:px-3">
+//                               {table.capacity}
+//                             </td>
+
+//                             <td className="px-2.5 py-2 sm:px-3">
+//                               <div className="flex flex-wrap gap-1.5">
+//                                 <span
+//                                   className={`inline-flex rounded-full border px-2 py-0.5 text-[10px] font-semibold ${sClass(table.status)}`}
+//                                 >
+//                                   {sLabel(table.status)}
+//                                 </span>
+//                                 {(activeOrderCountByTable.get(table.id) || 0) > 0 ? (
+//                                   <span className="inline-flex rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[10px] font-semibold text-amber-800">
+//                                     {activeOrderCountByTable.get(table.id)} active
+//                                   </span>
+//                                 ) : null}
+//                                 {(issuedInvoiceCountByTable.get(table.id) || 0) > 0 ? (
+//                                   <span className="inline-flex rounded-full border border-blue-200 bg-blue-50 px-2 py-0.5 text-[10px] font-semibold text-blue-800">
+//                                     {issuedInvoiceCountByTable.get(table.id)} invoice
+//                                   </span>
+//                                 ) : null}
+//                                 {reserved && table.reservation?.customerName ? (
+//                                   <span className="inline-flex rounded-full border border-violet-200 bg-violet-50 px-2 py-0.5 text-[10px] font-semibold text-violet-800">
+//                                     {table.reservation.customerName}
+//                                   </span>
+//                                 ) : null}
+//                               </div>
+//                             </td>
+
+//                             {/* 👇 important fix */}
+//                             <td className="px-2.5 py-2 sm:px-3">
+//                               <div className="flex justify-end gap-1.5 flex-nowrap">
+//                                 {canOpenOrder(table) && (
+//                                   <button
+//                                     type="button"
+//                                     onClick={() => openTableOrder(table)}
+//                                     className="shrink-0 rounded-lg border border-amber-300 bg-amber-100 px-2.5 py-1.5 text-[11px] font-semibold text-amber-900 hover:bg-amber-200"
+//                                   >
+//                                     Open Order
+//                                   </button>
+//                                 )}
+
+//                                 <button
+//                                   type="button"
+//                                   onClick={() => openQr(table)}
+//                                   className="shrink-0 rounded-lg border border-[#d8ccb6] bg-white px-2.5 py-1.5 text-[11px] font-semibold text-slate-700 hover:bg-[#faf3e7]"
+//                                 >
+//                                   QR Studio
+//                                 </button>
+
+//                                 <button
+//                                   type="button"
+//                                   onClick={() => openEdit(table)}
+//                                   className="shrink-0 rounded-lg border border-[#d8ccb6] bg-white px-2.5 py-1.5 text-[11px] font-semibold text-slate-700 hover:bg-[#faf3e7]"
+//                                 >
+//                                   Edit
+//                                 </button>
+
+//                                 <button
+//                                   type="button"
+//                                   onClick={() =>
+//                                     quickStatus(
+//                                       table,
+//                                       reserved ? "AVAILABLE" : "RESERVED",
+//                                     )
+//                                   }
+//                                   disabled={isUpdating}
+//                                   className={`shrink-0 rounded-lg border px-2.5 py-1.5 text-[11px] font-semibold disabled:opacity-60 ${
+//                                     reserved
+//                                       ? "border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100"
+//                                       : "border-slate-700 bg-slate-700 text-white hover:bg-slate-800"
+//                                   }`}
+//                                 >
+//                                   {reserved ? "Available" : "Reserve"}
+//                                 </button>
+
+//                                 <button
+//                                   type="button"
+//                                   onClick={() => removeTable(table)}
+//                                   disabled={isDeleting}
+//                                   className="shrink-0 rounded-lg border border-rose-200 bg-white px-2.5 py-1.5 text-[11px] font-semibold text-rose-700 hover:bg-rose-50 disabled:opacity-60"
+//                                 >
+//                                   Remove
+//                                 </button>
+//                               </div>
+//                             </td>
+//                           </tr>
+//                         );
+//                       })}
+//                     </tbody>
+//                   </table>
+//                 </div>
+//               )
+//             ) : (
+//               <div className="rounded-2xl border border-dashed border-[#e0d6c4] bg-[#fffcf7] px-4 py-10 text-center text-sm text-slate-600">
+//                 No tables found for selected filters/search.
+//               </div>
+//             )}
+//           </div>
+//         </article>
+//       </section>
+
+//       {editing ? (
+//         <div className="fixed inset-0 z-[60] flex items-end justify-center overflow-y-auto p-3 pb-[calc(env(safe-area-inset-bottom)+6rem)] sm:items-center sm:p-6 sm:pb-6">
+//           <button
+//             type="button"
+//             className="absolute inset-0 bg-slate-900/40"
+//             onClick={() => setEditing(null)}
+//           />
+//           <aside className="relative z-10 w-full max-w-2xl max-h-[calc(100dvh-6.5rem)] overflow-y-auto rounded-[2rem] border border-[#e6dfd1] bg-[#fffdf9] p-3 shadow-2xl sm:max-h-[90vh] sm:rounded-3xl sm:p-5">
+//             <div className="mb-3 flex items-center justify-between sm:mb-4">
+//               <div>
+//                 <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">
+//                   Quick Edit
+//                 </p>
+//                 <h4 className="text-lg font-semibold text-slate-900">
+//                   Update Table
+//                 </h4>
+//               </div>
+//               <button
+//                 type="button"
+//                 onClick={() => setEditing(null)}
+//                 className="h-8 w-8 rounded-full border border-[#e0d8c9] bg-white text-lg leading-none text-slate-700"
+//                 aria-label="Close popup"
+//               >
+//                 x
+//               </button>
+//             </div>
+//             <form className="space-y-3" onSubmit={submitUpdate}>
+//               <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+//                 <input
+//                   type="number"
+//                   min={1}
+//                   value={editForm.number}
+//                   onChange={(event) =>
+//                     setEditForm((prev) => ({
+//                       ...prev,
+//                       number: norm(Number(event.target.value), prev.number),
+//                     }))
+//                   }
+//                   className="h-11 w-full rounded-xl border border-[#ddd4c1] bg-white px-3 text-sm outline-none ring-amber-200 focus:ring-2"
+//                 />
+//                 <input
+//                   value={editForm.name}
+//                   onChange={(event) =>
+//                     setEditForm((prev) => ({
+//                       ...prev,
+//                       name: event.target.value,
+//                     }))
+//                   }
+//                   className="h-11 w-full rounded-xl border border-[#ddd4c1] bg-white px-3 text-sm outline-none ring-amber-200 focus:ring-2"
+//                 />
+//               </div>
+//               <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+//                 <input
+//                   type="number"
+//                   min={1}
+//                   value={editForm.capacity}
+//                   onChange={(event) =>
+//                     setEditForm((prev) => ({
+//                       ...prev,
+//                       capacity: norm(Number(event.target.value), prev.capacity),
+//                     }))
+//                   }
+//                   className="h-11 w-full rounded-xl border border-[#ddd4c1] bg-white px-3 text-sm outline-none ring-amber-200 focus:ring-2"
+//                 />
+//                 <select
+//                   value={nStatus(editForm.status)}
+//                   onChange={(event) =>
+//                     setEditForm((prev) => ({
+//                       ...prev,
+//                       status: nStatus(event.target.value),
+//                     }))
+//                   }
+//                   className="h-11 w-full rounded-xl border border-[#ddd4c1] bg-white px-3 text-sm"
+//                 >
+//                   {STATUS_OPTIONS.map((option) => (
+//                     <option key={option.value} value={option.value}>
+//                       {option.label}
+//                     </option>
+//                   ))}
+//                 </select>
+//               </div>
+//               <input
+//                 value={editForm.customerId}
+//                 onChange={(event) =>
+//                   setEditForm((prev) => ({
+//                     ...prev,
+//                     customerId: event.target.value,
+//                   }))
+//                 }
+//                 placeholder="Customer id"
+//                 className="h-11 w-full rounded-xl border border-[#ddd4c1] bg-white px-3 text-sm"
+//               />
+//               {nStatus(editForm.status) === "RESERVED" ? (
+//                 <div className="space-y-3 rounded-[24px] border border-[#e8decd] bg-[linear-gradient(160deg,#fffaf2_0%,#fff7ea_100%)] p-4">
+//                   <div>
+//                     <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">
+//                       Reservation Details
+//                     </p>
+//                     <h5 className="mt-1 text-base font-semibold text-slate-900">
+//                       Guest and booking info
+//                     </h5>
+//                   </div>
+//                   <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+//                     <input
+//                       value={editForm.reservationCustomerName}
+//                       onChange={(event) =>
+//                         setEditForm((prev) => ({
+//                           ...prev,
+//                           reservationCustomerName: event.target.value,
+//                         }))
+//                       }
+//                       placeholder="Customer name"
+//                       className="h-11 w-full rounded-xl border border-[#ddd4c1] bg-white px-3 text-sm outline-none ring-amber-200 focus:ring-2"
+//                     />
+//                     <input
+//                       value={editForm.reservationCustomerPhone}
+//                       onChange={(event) =>
+//                         setEditForm((prev) => ({
+//                           ...prev,
+//                           reservationCustomerPhone: event.target.value,
+//                         }))
+//                       }
+//                       placeholder="Customer phone"
+//                       className="h-11 w-full rounded-xl border border-[#ddd4c1] bg-white px-3 text-sm outline-none ring-amber-200 focus:ring-2"
+//                     />
+//                     <input
+//                       type="number"
+//                       min={1}
+//                       value={editForm.reservationPartySize}
+//                       onChange={(event) =>
+//                         setEditForm((prev) => ({
+//                           ...prev,
+//                           reservationPartySize: norm(
+//                             Number(event.target.value),
+//                             1,
+//                           ),
+//                         }))
+//                       }
+//                       placeholder="Party size"
+//                       className="h-11 w-full rounded-xl border border-[#ddd4c1] bg-white px-3 text-sm outline-none ring-amber-200 focus:ring-2"
+//                     />
+//                     <input
+//                       type="datetime-local"
+//                       value={editForm.reservationReservedFor}
+//                       onChange={(event) =>
+//                         setEditForm((prev) => ({
+//                           ...prev,
+//                           reservationReservedFor: event.target.value,
+//                         }))
+//                       }
+//                       className="h-11 w-full rounded-xl border border-[#ddd4c1] bg-white px-3 text-sm outline-none ring-amber-200 focus:ring-2"
+//                     />
+//                   </div>
+//                   <textarea
+//                     value={editForm.reservationNote}
+//                     onChange={(event) =>
+//                       setEditForm((prev) => ({
+//                         ...prev,
+//                         reservationNote: event.target.value,
+//                       }))
+//                     }
+//                     rows={3}
+//                     placeholder="Reservation note: birthday, corner table, special request..."
+//                     className="w-full rounded-xl border border-[#ddd4c1] bg-white px-3 py-2.5 text-sm outline-none ring-amber-200 focus:ring-2"
+//                   />
+//                   <div className="rounded-2xl border border-[#e6d9c3] bg-white p-3">
+//                     <label className="inline-flex items-center gap-2 text-sm font-medium text-slate-700">
+//                       <input
+//                         type="checkbox"
+//                         checked={editForm.advanceRequired}
+//                         onChange={(event) =>
+//                           setEditForm((prev) => ({
+//                             ...prev,
+//                             advanceRequired: event.target.checked,
+//                           }))
+//                         }
+//                         className="h-4 w-4 rounded border-slate-300 text-amber-500"
+//                       />
+//                       Advance payment required
+//                     </label>
+//                     {editForm.advanceRequired ? (
+//                       <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
+//                         <input
+//                           type="number"
+//                           min={0}
+//                           value={editForm.advanceAmount}
+//                           onChange={(event) =>
+//                             setEditForm((prev) => ({
+//                               ...prev,
+//                               advanceAmount: Math.max(
+//                                 0,
+//                                 Number(event.target.value) || 0,
+//                               ),
+//                             }))
+//                           }
+//                           placeholder="Advance amount"
+//                           className="h-11 w-full rounded-xl border border-[#ddd4c1] bg-white px-3 text-sm outline-none ring-amber-200 focus:ring-2"
+//                         />
+//                         <input
+//                           type="number"
+//                           min={0}
+//                           value={editForm.advancePaidAmount}
+//                           onChange={(event) =>
+//                             setEditForm((prev) => ({
+//                               ...prev,
+//                               advancePaidAmount: Math.max(
+//                                 0,
+//                                 Number(event.target.value) || 0,
+//                               ),
+//                             }))
+//                           }
+//                           placeholder="Paid amount"
+//                           className="h-11 w-full rounded-xl border border-[#ddd4c1] bg-white px-3 text-sm outline-none ring-amber-200 focus:ring-2"
+//                         />
+//                         <select
+//                           value={editForm.advanceMethod}
+//                           onChange={(event) =>
+//                             setEditForm((prev) => ({
+//                               ...prev,
+//                               advanceMethod: event.target.value,
+//                             }))
+//                           }
+//                           className="h-11 w-full rounded-xl border border-[#ddd4c1] bg-white px-3 text-sm"
+//                         >
+//                           <option value="CASH">Cash</option>
+//                           <option value="UPI">UPI</option>
+//                           <option value="CARD">Card</option>
+//                         </select>
+//                         <input
+//                           value={editForm.advanceReference}
+//                           onChange={(event) =>
+//                             setEditForm((prev) => ({
+//                               ...prev,
+//                               advanceReference: event.target.value,
+//                             }))
+//                           }
+//                           placeholder="Payment reference"
+//                           className="h-11 w-full rounded-xl border border-[#ddd4c1] bg-white px-3 text-sm outline-none ring-amber-200 focus:ring-2"
+//                         />
+//                       </div>
+//                     ) : null}
+//                   </div>
+//                 </div>
+//               ) : null}
+//               <div className="flex flex-wrap items-center justify-between gap-2">
+//                 <label className="inline-flex h-11 items-center gap-2 rounded-xl border border-[#ddd4c1] bg-white px-3 text-sm text-slate-700">
+//                   <input
+//                     type="checkbox"
+//                     checked={editForm.isActive}
+//                     onChange={(event) =>
+//                       setEditForm((prev) => ({
+//                         ...prev,
+//                         isActive: event.target.checked,
+//                       }))
+//                     }
+//                     className="h-4 w-4 rounded border-slate-300 text-amber-500"
+//                   />
+//                   {editForm.isActive ? "Active" : "Inactive"}
+//                 </label>
+//               </div>
+//               <button
+//                 type="submit"
+//                 disabled={isUpdating}
+//                 className="w-full rounded-xl bg-amber-500 px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-60"
+//               >
+//                 {isUpdating ? "Saving..." : "Save"}
+//               </button>
+//             </form>
+//           </aside>
+//         </div>
+//       ) : null}
+
+//       {qr.open && qr.table ? (
+//         <div className="fixed inset-0 z-[70] flex items-end justify-center overflow-y-auto p-2 pb-[calc(env(safe-area-inset-bottom)+6rem)] sm:p-4 sm:pb-4 lg:p-6">
+//           <button
+//             type="button"
+//             className="absolute inset-0 bg-slate-900/50"
+//             onClick={() => setQr((prev) => ({ ...prev, open: false }))}
+//           />
+//           <section className="relative z-10 flex w-full max-w-6xl flex-col overflow-hidden rounded-[28px] border border-[#e6dfd1] bg-[#fffdf9] shadow-2xl max-h-[calc(100dvh-5.5rem)] sm:max-h-[94vh]">
+//             <header className="sticky top-0 z-10 flex flex-wrap items-center justify-between gap-2 border-b border-[#eee7d8] bg-[#fff6e7] px-4 py-3">
+//               <div>
+//                 <h4 className="text-sm font-semibold">{qr.table.name} QR Studio</h4>
+//                 <p className="text-xs text-slate-600">
+//                   QR URL base fixed: {FRONTEND_QR_BASE_URL}
+//                 </p>
+//               </div>
+//               <button
+//                 type="button"
+//                 onClick={() => setQr((prev) => ({ ...prev, open: false }))}
+//                 className="rounded-lg border border-[#e0d8c9] bg-white px-3 py-1 text-xs font-semibold"
+//               >
+//                 Close
+//               </button>
+//             </header>
+
+//             <div className="grid gap-3 overflow-y-auto p-3 sm:gap-4 sm:p-4 xl:grid-cols-[1.08fr_1fr]">
+//               <div className="space-y-3 rounded-2xl border border-[#e8e0d0] bg-white p-4">
+//                 <div className="mx-auto w-full max-w-[280px] overflow-hidden rounded-2xl border border-[#ece4d6] bg-white shadow-sm sm:max-w-[360px]">
+//                   <div className="relative aspect-[1684/2528] w-full">
+//                     <Image
+//                       src={selectedTemplate.imagePath}
+//                       alt={`${selectedTemplate.name} preview`}
+//                       fill
+//                       unoptimized
+//                       className="object-cover"
+//                     />
+//                     <div
+//                       className="absolute rounded-[6px] border border-slate-200/80 bg-white/85"
+//                       style={{
+//                         left: `${selectedTemplate.qrSlot.x * 100}%`,
+//                         top: `${selectedTemplate.qrSlot.y * 100}%`,
+//                         width: `${selectedTemplate.qrSlot.size * 100}%`,
+//                         height: `${selectedTemplate.qrSlot.size * 100}%`,
+//                       }}
+//                     >
+//                       {preview ? (
+//                         <div
+//                           className="absolute"
+//                           style={{
+//                             inset: `${selectedTemplate.qrSlot.padding * 100}%`,
+//                           }}
+//                         >
+//                           <Image
+//                             src={preview}
+//                             alt={`QR for ${qr.table.name}`}
+//                             fill
+//                             unoptimized
+//                             className="object-contain"
+//                           />
+//                         </div>
+//                       ) : (
+//                         <div className="flex h-full items-center justify-center px-1 text-center text-[10px] font-medium text-slate-500">
+//                           Generate QR
+//                         </div>
+//                       )}
+//                     </div>
+//                   </div>
+//                 </div>
+
+//                 <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+//                   <button
+//                     type="button"
+//                     onClick={generateQr}
+//                     disabled={qrBusy}
+//                     className="rounded-lg border border-[#e0d8c9] bg-white px-3 py-2 text-xs font-semibold text-slate-700 disabled:opacity-60"
+//                   >
+//                     {qrBusy ? "Generating..." : "Generate QR"}
+//                   </button>
+//                   <button
+//                     type="button"
+//                     onClick={downloadActiveTemplate}
+//                     disabled={!qr.qr || downloadingTemplate}
+//                     className="rounded-lg bg-amber-500 px-3 py-2 text-xs font-semibold text-white disabled:opacity-50"
+//                   >
+//                     {downloadingTemplate
+//                       ? "Preparing..."
+//                       : `Download ${selectedTemplate.name}`}
+//                   </button>
+//                   <button
+//                     type="button"
+//                     onClick={openQrLink}
+//                     disabled={!qrPayloadUrl}
+//                     className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-700 disabled:opacity-50"
+//                   >
+//                     Open Link
+//                   </button>
+//                   <button
+//                     type="button"
+//                     onClick={shareQrLink}
+//                     disabled={!qrPayloadUrl || sharingQrLink}
+//                     className="rounded-lg border border-violet-200 bg-violet-50 px-3 py-2 text-xs font-semibold text-violet-700 disabled:opacity-50"
+//                   >
+//                     {sharingQrLink ? "Sharing..." : "Share Link"}
+//                   </button>
+//                 </div>
+
+//                 {qrPayloadUrl ? (
+//                   <p className="break-all rounded-lg border border-[#ece4d6] bg-[#fffaf3] px-2.5 py-2 text-[11px] text-slate-600">
+//                     {qrPayloadUrl}
+//                   </p>
+//                 ) : null}
+//                 <p className="text-[11px] text-slate-500">
+//                   {tenantName || tenantSlug || "Restaurant"} | Template:{" "}
+//                   {selectedTemplate.name}
+//                 </p>
+//               </div>
+
+//               <div className="space-y-3 rounded-2xl border border-[#e8e0d0] bg-[#fffcf6] p-4">
+//                 <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-800">
+//                   Static QR mode active
+//                 </div>
+
+//                 <select
+//                   value={qr.format}
+//                   onChange={(event) =>
+//                     setQr((prev) => ({
+//                       ...prev,
+//                       format: event.target.value as TableQrFormat,
+//                     }))
+//                   }
+//                   className="h-10 w-full rounded-lg border border-[#ddd4c1] bg-white px-3 text-sm"
+//                 >
+//                   <option value="dataUrl">PNG</option>
+//                   <option value="svg">SVG</option>
+//                 </select>
+
+//                 <div className="rounded-lg border border-[#e5d7c0] bg-[#fff8ea] px-3 py-2 text-[11px] text-slate-600">
+//                   QR link always starts with {FRONTEND_PUBLIC_URL}
+//                 </div>
+
+//                 <div className="space-y-2">
+//                   <div className="flex items-center justify-between gap-2">
+//                     <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">
+//                       Templates
+//                     </p>
+//                     <span className="text-[10px] font-medium text-slate-400">
+//                       Swipe to select
+//                     </span>
+//                   </div>
+//                   <div className="no-scrollbar -mx-1 flex gap-2 overflow-x-auto px-1 pb-1 snap-x snap-mandatory">
+//                     {QR_TEMPLATES.map((template) => (
+//                       <button
+//                         key={template.id}
+//                         type="button"
+//                         onClick={() => applyTemplate(template.id)}
+//                         className={`w-[92px] shrink-0 snap-start rounded-2xl border p-2 text-left transition sm:w-[104px] ${qr.templateId === template.id ? "border-slate-700 bg-white shadow-sm" : "border-[#e4dccf] bg-[#fffaf2]"}`}
+//                       >
+//                         <div className="relative mb-2 aspect-[1684/2528] w-full overflow-hidden rounded-xl border border-[#e9e0d2] bg-white">
+//                           <Image
+//                             src={template.imagePath}
+//                             alt={`${template.name} thumbnail`}
+//                             fill
+//                             unoptimized
+//                             className="object-cover"
+//                           />
+//                           {qr.templateId === template.id ? (
+//                             <span className="absolute left-1.5 top-1.5 rounded-full bg-slate-900 px-1.5 py-0.5 text-[9px] font-semibold text-white">
+//                               Active
+//                             </span>
+//                           ) : null}
+//                         </div>
+//                         <p className="truncate text-[11px] font-semibold text-slate-800">
+//                           {template.name}
+//                         </p>
+//                         <p className="mt-0.5 line-clamp-2 text-[10px] leading-4 text-slate-500">
+//                           {template.description}
+//                         </p>
+//                       </button>
+//                     ))}
+//                   </div>
+//                 </div>
+//                 {qr.error ? (
+//                   <p className="rounded-lg border border-rose-200 bg-rose-50 px-2.5 py-2 text-[11px] text-rose-700">
+//                     {qr.error}
+//                   </p>
+//                 ) : null}
+//               </div>
+//             </div>
+//           </section>
+//         </div>
+//       ) : null}
+//     </>
+//   );
+// }
