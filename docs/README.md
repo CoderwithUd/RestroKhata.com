@@ -2,6 +2,13 @@
 
 This document replaces the older scattered docs and is the single source of truth for this backend as of April 1, 2026.
 
+Machine-readable API assets:
+
+- [OpenAPI JSON](./openapi.json)
+- [Postman collection](./postman.collection.json)
+- [Curl examples](./curl-examples.md)
+- Regenerate them with `npm run docs:api`
+
 ## 1. Project Summary
 
 This backend powers a restaurant SaaS system with:
@@ -48,6 +55,19 @@ Core table statuses:
 - `available`
 - `occupied`
 - `reserved`
+
+Core service modes:
+
+- `DINE_IN`
+- `TAKEAWAY`
+- `WALK_IN`
+
+Core fulfillment types:
+
+- `KITCHEN`
+- `BAR`
+- `COUNTER`
+- `DIRECT`
 
 ## 2. Runtime And Transport Notes
 
@@ -848,6 +868,68 @@ Optional body or query:
 
 Use token QR when you do not want to expose direct tenant and table ids in client URL.
 
+### Reservation advance APIs
+
+These endpoints manage reservation money that remains as a liability until it is consumed, refunded, or forfeited.
+
+#### `POST /api/tables/:tableId/reservation/advance`
+
+Required:
+
+- `amount`
+
+Optional:
+
+- `method`
+- `reference`
+- `note`
+
+Behavior:
+
+- adds advance against an active reservation
+- rejects amounts `<= 0`
+- cannot collect more than the remaining required advance when `required=true`
+- creates a payment ledger entry of type `RESERVATION_ADVANCE_RECEIVED`
+
+#### `POST /api/tables/:tableId/reservation/refund`
+
+Required:
+
+- `amount` or omit it to refund the full current liability balance
+
+Optional:
+
+- `method`
+- `reference`
+- `note`
+- `releaseReservation=true|false`
+
+Behavior:
+
+- creates a payment ledger entry of type `RESERVATION_ADVANCE_REFUND`
+- if `releaseReservation=true`, the reservation is closed only when liability balance reaches `0`
+- amount cannot exceed current liability balance
+
+#### `POST /api/tables/:tableId/reservation/no-show`
+
+Required:
+
+- `action` with value `refund` or `forfeit`
+
+Optional:
+
+- `amount` or omit it to settle the full remaining liability balance
+- `method`
+- `reference`
+- `note`
+
+Behavior:
+
+- marks reservation inactive
+- sets table back to `available`
+- creates a payment ledger entry of type `RESERVATION_ADVANCE_REFUND` or `RESERVATION_ADVANCE_FORFEIT`
+- amount must exactly equal the current liability balance
+
 ## 11. Customer APIs
 
 ### `GET /api/customers`
@@ -906,11 +988,6 @@ Optional:
 - `customerId`
 - `customerName`
 - `customerPhone`
-
-UI note:
-
-- staff order flow can keep customer fields blank and continue with skip
-- if one of `customerName` or `customerPhone` is sent, send the other too
 
 Example:
 
@@ -1131,11 +1208,6 @@ Optional:
 - `discountType`
 - `discountValue`
 
-UI note:
-
-- billing flow may collect customer name and phone before invoice creation
-- fields remain optional, but if one is entered the other should also be entered
-
 Discount rules:
 
 - `discountType` must be `PERCENTAGE` or `FLAT`
@@ -1219,7 +1291,7 @@ Optional body:
 Rules:
 
 - if `paidAmount` omitted, backend uses `totalDue`
-- `paidAmount` must be `>= totalDue`
+- `paidAmount` must exactly match `totalDue`
 - paid invoice cannot be paid again
 - void invoice cannot be paid
 
@@ -1240,7 +1312,39 @@ Side effects:
 - related orders are unlocked
 - table status re-synced
 
-## 14. Expense APIs
+### `GET /api/invoices/:invoiceId/payments`
+
+Returns payment history entries linked to one invoice.
+
+Response:
+
+- `items[]` with payment ledger records
+- `total`
+
+Use this endpoint when the frontend needs a payment timeline or audit trail for a bill.
+
+## 14. Payment APIs
+
+### `GET /api/payments`
+
+Query:
+
+- `invoiceId`
+- `tableId`
+- `orderId`
+- `customerId`
+- `type`
+- `page`
+- `limit`
+
+Returns:
+
+- `items[]`
+- `pagination`
+
+Use this endpoint for global cashflow, payment audit, or reconciliation screens.
+
+## 15. Expense APIs
 
 ### `POST /api/expenses`
 
@@ -1276,7 +1380,7 @@ Can update:
 
 Deletes one expense.
 
-## 15. Report APIs
+## 16. Report APIs
 
 ### `GET /api/reports/summary`
 
@@ -1298,7 +1402,7 @@ Returns monthly data from tenant creation month to current month:
 - `totals`
 - range metadata
 
-## 16. Public QR APIs
+## 17. Public QR APIs
 
 Public APIs work without staff login. They resolve restaurant by `tenantSlug` or by QR `token`.
 
@@ -1443,7 +1547,7 @@ Rules:
 - same single-order invoice rules apply
 - all items must already be `SERVED` or `CANCELLED`
 
-## 17. Edge Cases Developers Should Know
+## 18. Edge Cases Developers Should Know
 
 ### Invoice locking behavior
 
@@ -1476,7 +1580,7 @@ Rules:
 - same user can have multiple memberships
 - always pass `tenantSlug` if the user works in multiple restaurants
 
-## 18. Recommended Frontend Integration Notes
+## 19. Recommended Frontend Integration Notes
 
 - always preserve `sessionToken` for public QR flows
 - always preserve `lineId` for item-level order editing
@@ -1484,19 +1588,18 @@ Rules:
 - on `409` during order or invoice actions, refetch latest order or invoice state
 - for multi-tenant staff login, send `tenantSlug` explicitly
 
-## 19. Example End-to-End Scenario
+## 20. Example End-to-End Scenario
 
 ### Staff dining scenario
 
 1. waiter logs in with `tenantSlug`
 2. waiter fetches menu and tables
 3. waiter creates order for table 4
-   customer name/phone may be added now or skipped
 4. kitchen reads `/api/orders/kitchen/items`
 5. kitchen updates line statuses from `PLACED -> IN_PROGRESS -> READY -> SERVED`
-6. waiter opens billing desk, reviews items, optionally edits discount and customer info, then creates invoice
+6. waiter creates invoice
 7. manager applies discount if needed
-8. invoice preview offers PDF + WhatsApp share, then manager pays by cash or UPI
+8. manager pays invoice
 9. covered orders become `COMPLETED`
 10. table becomes available again
 
@@ -1510,7 +1613,7 @@ Rules:
 6. customer requests invoice
 7. staff or public invoice flow creates invoice after service is complete
 
-## 20. Quick Endpoint Index
+## 21. Quick Endpoint Index
 
 ### Health
 
@@ -1565,6 +1668,9 @@ Rules:
 - `GET /api/tables`
 - `GET /api/tables/:tableId/qr`
 - `POST /api/tables/:tableId/qr-token`
+- `POST /api/tables/:tableId/reservation/advance`
+- `POST /api/tables/:tableId/reservation/refund`
+- `POST /api/tables/:tableId/reservation/no-show`
 - `PUT /api/tables/:tableId`
 - `DELETE /api/tables/:tableId`
 
@@ -1590,10 +1696,15 @@ Rules:
 - `POST /api/invoices`
 - `POST /api/invoices/group`
 - `GET /api/invoices`
+- `GET /api/invoices/:invoiceId/payments`
 - `GET /api/invoices/:invoiceId`
 - `PUT /api/invoices/:invoiceId`
 - `POST /api/invoices/:invoiceId/pay`
 - `DELETE /api/invoices/:invoiceId`
+
+### Payments
+
+- `GET /api/payments`
 
 ### Expenses
 
@@ -1617,3 +1728,294 @@ Rules:
 - `POST /api/public/orders/current/cancel`
 - `POST /api/public/orders/current/request-invoice`
 - `POST /api/public/orders/current/invoice`
+
+## 22. Fulfillment Routing, Counter Takeaway, And Walk-In Billing
+
+This section matters for cafes, QSR counters, dessert shops, juice bars, and mixed-format restaurants where not every sale starts from a table.
+
+### Why this exists
+
+Different menu items need different operational treatment:
+
+- food usually goes to kitchen
+- bottled water or packaged items may not need a queue
+- coffee or shakes may belong to counter
+- beer, mocktails, and soft drinks may belong to bar
+- takeaway orders need a token and queue even when no table exists
+- direct counter billing should not create fake tables
+
+The backend now supports this with `fulfillmentType` and `serviceMode`.
+
+### When to use each mode
+
+Use `serviceMode=DINE_IN` when staff is serving a real table.
+
+Use `serviceMode=TAKEAWAY` when the customer orders at counter, needs preparation, and should receive a token number. This is the right flow for packing orders, pickup, and queue-based preparation without a table.
+
+Use `serviceMode=WALK_IN` only at invoice level for quick direct billing where there is no order lifecycle. This is best for direct sale items such as prepacked drinks or ready items that do not need kitchen workflow.
+
+### Menu item behavior
+
+Every menu item now has `fulfillmentType`:
+
+- `KITCHEN`
+- `BAR`
+- `COUNTER`
+- `DIRECT`
+
+Rules:
+
+- `DIRECT` items skip all queues and are auto-marked `SERVED`
+- `KITCHEN`, `BAR`, and `COUNTER` stay in queue until staff updates status
+- order and invoice lines store a snapshot of `fulfillmentType`, so changing a menu item later does not rewrite old orders
+
+Example menu item payload:
+
+```json
+{
+  "categoryId": "67f4d4f4b3f0e1a201234567",
+  "name": "Cold Coffee",
+  "description": "Counter prepared beverage",
+  "taxPercentage": 5,
+  "fulfillmentType": "COUNTER",
+  "sortOrder": 10,
+  "variants": [
+    { "name": "Regular", "price": 120 }
+  ],
+  "optionGroupIds": []
+}
+```
+
+### Takeaway counter order flow
+
+Use this when the customer comes to counter and orders for packing.
+
+Request:
+
+```http
+POST /api/orders
+```
+
+```json
+{
+  "serviceMode": "TAKEAWAY",
+  "customerName": "Rohit",
+  "customerPhone": "9876543210",
+  "note": "Less spicy, pack separately",
+  "items": [
+    {
+      "itemId": "67f4d9a8b3f0e1a201234999",
+      "variantId": "67f4d9b1b3f0e1a201234998",
+      "quantity": 2,
+      "optionIds": []
+    }
+  ]
+}
+```
+
+Response highlights:
+
+- `serviceMode` returns as `TAKEAWAY`
+- `tokenNumber` is generated atomically per tenant
+- `table` is `null`
+- queued items appear in kitchen/bar/counter queues
+
+Important backend rules:
+
+- takeaway orders are not auto-merged with unrelated open orders
+- if frontend wants to add more items to the same takeaway order, use `appendToOrderId`
+- direct-only takeaway orders are rejected; frontend should create a walk-in invoice instead
+- invoice can be created only after all queued items are `SERVED` or `CANCELLED`
+
+### Walk-in direct billing flow
+
+Use this when there is no order lifecycle and no preparation queue is needed.
+
+Request:
+
+```http
+POST /api/invoices
+```
+
+```json
+{
+  "customerName": "Walk In",
+  "items": [
+    {
+      "itemId": "67f4d9a8b3f0e1a201234111",
+      "variantId": "67f4d9b1b3f0e1a201234112",
+      "quantity": 1,
+      "optionIds": []
+    }
+  ]
+}
+```
+
+Rules:
+
+- walk-in invoice supports non-queued items only
+- `KITCHEN` items are rejected in direct walk-in billing
+- invoice response returns `serviceMode=WALK_IN`
+- `table` is `null`
+
+### Queue API
+
+Use:
+
+```http
+GET /api/orders/kitchen/items
+```
+
+Supported filters:
+
+- `fulfillmentType=KITCHEN`
+- `fulfillmentType=BAR`
+- `fulfillmentType=COUNTER`
+- `status=PLACED,IN_PROGRESS,READY`
+- `groupByFulfillment=true`
+- `includeDone=true` for owner or manager
+
+Response contains:
+
+- flat `items`
+- grouped `queues`
+
+Each queue item includes:
+
+- `serviceMode`
+- `tokenNumber`
+- `table` or `null`
+- item fulfillment and kitchen status
+
+This lets frontend build separate tabs or columns:
+
+- Kitchen
+- Bar
+- Counter
+
+### Frontend screen guidance
+
+For easy UI, use four operational screens.
+
+#### 1. Dine-In POS
+
+Use for waiter and table service.
+
+Main inputs:
+
+- table selector
+- customer optional
+- menu grid
+- running order summary
+
+Actions:
+
+- create or append order
+- move item to another table
+- cancel item
+- request invoice
+
+#### 2. Counter Takeaway POS
+
+Use for cashier or counter operator.
+
+Main inputs:
+
+- customer name and phone optional
+- menu grid
+- takeaway cart
+- notes for packing
+
+After submit:
+
+- show generated `tokenNumber`
+- show current item statuses
+- allow append by using `appendToOrderId`
+- allow invoice only after all queued items are done
+
+Recommended UI states:
+
+- `Queued`
+- `In Progress`
+- `Ready`
+- `Served / Packed`
+- `Billed`
+
+#### 3. Fulfillment Dashboard
+
+Use for kitchen, bar, and counter staff.
+
+Recommended layout:
+
+- top filter by `fulfillmentType`
+- columns or tabs per fulfillment queue
+- cards showing token number first for takeaway
+- table number first for dine-in
+- item age and priority
+
+Sorting recommendation:
+
+- highest priority first
+- oldest pending item first
+
+#### 4. Walk-In Billing Screen
+
+Use for direct sales with no prep queue.
+
+Recommended use cases:
+
+- bottled water
+- packaged ice cream
+- bakery counter stock
+- ready canned drinks
+
+UI should:
+
+- not ask for table
+- not create takeaway order
+- go straight to invoice
+- optionally ask customer phone for CRM linkage
+
+### Immutable billing rules
+
+Once invoice status becomes `PAID`:
+
+- invoice update is blocked
+- covered order is treated as finalized
+- frontend should switch to read-only view
+
+### Practical frontend decision tree
+
+If order is for a table, use `POST /api/orders` with `serviceMode=DINE_IN`.
+
+If order is for packing and needs preparation queue, use `POST /api/orders` with `serviceMode=TAKEAWAY`.
+
+If sale is instant and needs no queue, use `POST /api/invoices` with direct `items`.
+
+If menu item is `DIRECT`, frontend should not wait for queue completion.
+
+If menu item is `KITCHEN`, `BAR`, or `COUNTER`, frontend should drive staff through queue statuses before billing.
+
+## 23. Migration For Old Orders And Invoices
+
+If your database already contains old documents created before `serviceMode` was added, run the backfill once.
+
+Scripts:
+
+- `npm run migrate:service-mode:dry`
+- `npm run migrate:service-mode`
+
+Inference rules:
+
+- order with `tableId` => `DINE_IN`
+- order without `tableId` => `TAKEAWAY`
+- invoice with `tableId` => `DINE_IN`
+- invoice without `tableId` but linked to order or orderIds => `TAKEAWAY`
+- invoice without `tableId` and without linked orders => `WALK_IN`
+
+Recommended rollout:
+
+1. Run dry run in staging.
+2. Verify counts in output.
+3. Run real migration in production during low traffic.
+4. Restart API instances if your deployment uses long-lived cached schema metadata.

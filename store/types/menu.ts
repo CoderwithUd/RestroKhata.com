@@ -44,6 +44,7 @@ export type MenuItemRecord = {
   sortOrder?: number;
   categoryId?: string;
   categoryName?: string;
+  fulfillmentType?: string;
   category?: {
     id: string;
     name: string;
@@ -120,6 +121,7 @@ export type CreateMenuItemPayload = {
   sortOrder?: number;
   variants: MenuVariantPayload[];
   optionGroupIds?: string[];
+  fulfillmentType?: string;
 };
 
 export type UpdateMenuItemPayload = {
@@ -131,6 +133,7 @@ export type UpdateMenuItemPayload = {
   sortOrder?: number;
   variants: MenuVariantPayload[];
   optionGroupIds?: string[];
+  fulfillmentType?: string;
 };
 
 export type UpdateMenuItemArgs = {

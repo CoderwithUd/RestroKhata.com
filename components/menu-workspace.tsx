@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { useConfirm } from "@/components/confirm-provider";
@@ -44,6 +44,7 @@ type ItemForm = {
   taxPercentage: string;
   variants: VariantForm[];
   optionGroupIds: string[];
+  fulfillmentType: string;
 };
 
 type OptionGroupForm = {
@@ -64,6 +65,7 @@ const MENU_ACTIVE_PANEL_STORAGE_KEY = "restrokhata:menu-active-panel";
 const MENU_LIST_VIEW_STORAGE_KEY = "restrokhata:menu-list-view";
 const LAST_ITEM_VARIANTS_STORAGE_KEY = "restrokhata:last-item-variants";
 const VARIANT_NAME_PRESETS = ["Regular", "Half", "Full", "Large"];
+const FULFILLMENTTYPE_NAME = ["KITCHEN", "BAR", "COUNTER", "DIRECT"];
 
 function toNumber(value: string, fallback = 0): number {
   const parsed = Number(value);
@@ -123,6 +125,7 @@ function createEmptyForm(): ItemForm {
     taxPercentage: "5",
     variants: [createVariant(0)],
     optionGroupIds: [],
+    fulfillmentType: "",
   };
 }
 
@@ -222,6 +225,7 @@ function toCreatePayload(form: ItemForm): CreateMenuItemPayload {
     sortOrder: 0,
     optionGroupIds: form.optionGroupIds,
     variants: toVariantsPayload(form.variants),
+    fulfillmentType: form.fulfillmentType,
   };
 }
 
@@ -241,6 +245,7 @@ function toUpdatePayload(
     sortOrder: item.sortOrder ?? 0,
     optionGroupIds: form.optionGroupIds,
     variants: toVariantsPayload(form.variants),
+       fulfillmentType: form.fulfillmentType, 
   };
 }
 
@@ -366,7 +371,7 @@ function VariantFields({
                 id={`${idPrefix}-variant-price-${variant.key}`}
                 type="number"
                 min={0}
-                step="0.01"
+                
                 value={variant.price}
                 onChange={(event) =>
                   onChange(variant.key, "price", event.target.value)
@@ -448,6 +453,53 @@ function OptionGroupFields({
           Selected groups: {selectedNames.join(", ")}
         </p>
       ) : null}
+    </div>
+  );
+}
+
+function FulfillmentTypeField({
+  idPrefix,
+  value,
+  onChange,
+}: {
+  idPrefix: string;
+  value: string;
+  onChange: (value: string) => void;
+}) {
+  return (
+    <div className="space-y-2">
+      <div className="flex items-center justify-between gap-2">
+        <label
+          htmlFor={`${idPrefix}-fulfillment-type`}
+          className="text-xs font-medium text-slate-700"
+        >
+          Fulfillment Type
+        </label>
+        <span className="text-[11px] text-slate-500">Tap one option</span>
+      </div>
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+        {FULFILLMENTTYPE_NAME.map((type) => {
+          const active = value === type;
+          return (
+            <button
+              key={`${idPrefix}-${type}`}
+              type="button"
+              aria-pressed={active}
+              onClick={() => onChange(type)}
+              className={`rounded-lg border px-3 py-2 text-xs font-semibold transition-colors ${
+                active
+                  ? "border-amber-300 bg-amber-100 text-amber-800"
+                  : "border-[#ddd4c1] bg-white text-slate-700 hover:bg-[#faf2e4]"
+              }`}
+            >
+              {type}
+            </button>
+          );
+        })}
+      </div>
+      <div className="rounded-lg border border-[#e8dcc4] bg-[#fffaf0] px-3 py-2 text-[11px] text-slate-600">
+        Selected: {value || "None"}
+      </div>
     </div>
   );
 }
@@ -1221,6 +1273,7 @@ export function MenuWorkspace({ tenantSlug }: Props) {
       taxPercentage: String(item.taxPercentage ?? 0),
       variants: ensureVariants(item),
       optionGroupIds: item.optionGroupIds || [],
+      fulfillmentType:item.fulfillmentType || "KITCHEN",
     });
     changeActiveMenuPanel("itemList");
     setQuickMenuAction("item");
@@ -1942,7 +1995,7 @@ export function MenuWorkspace({ tenantSlug }: Props) {
                   type="number"
                   min={0}
                   max={100}
-                  step="0.01"
+                  
                   value={itemForm.taxPercentage}
                   onChange={(event) =>
                     setItemForm((prev) => ({
@@ -1996,6 +2049,14 @@ export function MenuWorkspace({ tenantSlug }: Props) {
               placeholder="Short description"
             />
 
+            <FulfillmentTypeField
+              idPrefix="menu-item"
+              value={itemForm.fulfillmentType}
+              onChange={(value) =>
+                setItemForm((prev) => ({ ...prev, fulfillmentType: value }))
+              }
+            />
+
             <OptionGroupFields
               groups={optionGroups}
               selected={itemForm.optionGroupIds}
@@ -2040,11 +2101,7 @@ export function MenuWorkspace({ tenantSlug }: Props) {
         <article className="min-w-0 rounded-2xl border border-[#e6dfd1] bg-[#fffdf9] shadow-sm">
           <div className="border-b border-[#eee7d8] px-2.5 py-2.5 sm:px-4 sm:py-3">
             <div className="mt-2.5 rounded-xl border border-[#eadfc9] bg-[#fffaf1] p-2.5 sm:mt-3 sm:p-3">
-           
-
               <div className="flex items-center gap-2">
-           
-
                 <div className="flex shrink-0 flex-col items-center leading-none">
                   <span className="text-lg font-bold text-slate-700">
                     {activeMenuPanel === "itemList"
@@ -2084,7 +2141,7 @@ export function MenuWorkspace({ tenantSlug }: Props) {
                         : "text-slate-600"
                     }`}
                   >
-                    ⊞
+                    ?
                   </button>
                   <button
                     type="button"
@@ -2095,7 +2152,7 @@ export function MenuWorkspace({ tenantSlug }: Props) {
                         : "text-slate-600"
                     }`}
                   >
-                    ☰
+                    ?
                   </button>
                 </div>
               </div>
@@ -2721,7 +2778,7 @@ export function MenuWorkspace({ tenantSlug }: Props) {
                 className="h-8 w-8 rounded-full border border-[#e0d8c9] bg-white text-lg leading-none text-slate-700"
                 aria-label="Close preview"
               >
-                ×
+                X
               </button>
             </div>
             <div className="min-h-0 flex-1 bg-[#f6f4ef]">
@@ -2767,7 +2824,7 @@ export function MenuWorkspace({ tenantSlug }: Props) {
                 className="h-8 w-8 rounded-full border border-[#e0d8c9] bg-white text-lg leading-none text-slate-700"
                 aria-label="Close popup"
               >
-                ×
+                X
               </button>
             </div>
 
@@ -2910,7 +2967,7 @@ export function MenuWorkspace({ tenantSlug }: Props) {
                       type="number"
                       min={0}
                       max={100}
-                      step="0.01"
+                      
                       value={
                         editingItem
                           ? editForm.taxPercentage
@@ -2960,6 +3017,26 @@ export function MenuWorkspace({ tenantSlug }: Props) {
                     />
                   </div>
                 </div>
+
+                <FulfillmentTypeField
+                  idPrefix="quick-menu-item"
+                  value={
+                    editingItem
+                      ? editForm.fulfillmentType
+                      : itemForm.fulfillmentType
+                  }
+                  onChange={(value) =>
+                    editingItem
+                      ? setEditForm((prev) => ({
+                          ...prev,
+                          fulfillmentType: value,
+                        }))
+                      : setItemForm((prev) => ({
+                          ...prev,
+                          fulfillmentType: value,
+                        }))
+                  }
+                />
 
                 <OptionGroupFields
                   groups={optionGroups}
@@ -3380,7 +3457,7 @@ export function MenuWorkspace({ tenantSlug }: Props) {
                     type="number"
                     min={0}
                     max={100}
-                    step="0.01"
+                    
                     value={editForm.taxPercentage}
                     onChange={(event) =>
                       setEditForm((prev) => ({
@@ -3438,15 +3515,7 @@ export function MenuWorkspace({ tenantSlug }: Props) {
                   toggleGroup("edit", groupId, checked)
                 }
               />
-
-              <button
-                type="submit"
-                disabled={isUpdatingItem}
-                className="w-full rounded-xl bg-amber-500 px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-60"
-              >
-                {isUpdatingItem ? "Saving..." : "Save Changes"}
-              </button>
-            </form>
+              </form>
           </aside>
         </div>
       ) : null}

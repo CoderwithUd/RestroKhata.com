@@ -540,7 +540,143 @@ function NavItem({
   );
 }
 
+const getTenantInitials = (name: string) => {
+  if (!name) return "BD"; // default fallback
+  const words = name.trim().split(/\s+/);
+  const firstTwo = words.slice(0, 2);
+  const initials = firstTwo
+    .map((word) => word[0]?.toUpperCase() || "")
+    .join("");
+  return initials || "BD";
+};
+
 // ─── Section Icon ─────────────────────────────────────────────────────────────
+function DashboardSidebar({
+  variant,
+  tenantName,
+  subscriptionPlan,
+  memberName,
+  memberRole,
+  version,
+  navSections,
+  activeSectionId,
+  getNavBadge,
+  onLogout,
+  onClose,
+  isLoggingOut,
+}: {
+  variant: "desktop" | "drawer";
+  tenantName: string;
+  subscriptionPlan: string;
+  memberName: string;
+  memberRole: string;
+  version: string;
+  navSections: DashboardSection[];
+  activeSectionId: SectionId;
+  getNavBadge: (id: SectionId) => string | undefined;
+  onLogout: () => void;
+  onClose?: () => void;
+  isLoggingOut: boolean;
+}) {
+  const isDrawer = variant === "drawer";
+  const rootClassName = isDrawer
+    ? "no-scrollbar absolute left-0 top-0 h-full w-[90%] max-w-[360px] overflow-hidden bg-[#fffdf9] p-1 shadow-2xl"
+    : // ? "no-scrollbar absolute left-0 top-0 h-full w-[90%] max-w-[360px] overflow-hidden border-r border-[#e6dfd1] bg-[#fffdf9] p-4 shadow-2xl"
+      "hidden h-[calc(100vh-3rem)] w-[25%] shrink-0 rounded-[28px] border border-[#e6dfd1] bg-[#fffdf9] p-3.5 shadow-sm lg:sticky lg:top-3 lg:flex lg:flex-col";
+  const shellClassName = isDrawer
+    ? "flex h-full flex-col  bg-[linear-gradient(145deg,#fff8eb_0%,#fffdf9_55%,#f5fbf8_100%)] p-1 shadow-sm"
+    : // ? "flex h-full flex-col rounded-[28px] border border-[#eadfca] bg-[linear-gradient(145deg,#fff8eb_0%,#fffdf9_55%,#f5fbf8_100%)] p-4 shadow-sm"
+      "flex h-full flex-col";
+  const tenantTitleClassName = "truncate text-lg font-semibold text-slate-900";
+  const desktopVersionClassName =
+    "rounded-full border border-[#eadfc9] bg-[#fff6e7] px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-amber-800";
+  const topBlockClassName = isDrawer
+    ? "shrink-0 border-b border-[#eee7d8] pb-4"
+    : "shrink-0 border-b border-[#eee7d8] pb-4";
+  const navClassName =
+    "no-scrollbar min-h-0 flex-1 space-y-1 overflow-y-auto pr-1 pt-1";
+  const bottomClassName = "shrink-0 border-t border-[#eee7d8] pt-1";
+  const versionTextClassName = "mt-1 text-xs text-slate-500";
+
+  return (
+    <aside className={rootClassName}>
+      <div className={shellClassName}>
+        <div className={topBlockClassName}>
+          <div className="flex items-start justify-between gap-3">
+            <div className="flex items-start gap-3">
+              <div className="inline-flex h-10 w-10 items-center justify-center rounded-2xl bg-amber-500 text-sm font-bold text-white shadow-lg shadow-amber-500/20">
+                {getTenantInitials(tenantName)}
+              </div>
+              <div className="min-w-0">
+                <h2 className={tenantTitleClassName}>{tenantName}</h2>
+           <p className={versionTextClassName}>{version}</p>
+                {/* <p className="mt-1 text-xs text-slate-500">
+                  {subscriptionPlan}
+                </p>
+                {isDrawer ? (
+                  <p className={versionTextClassName}>{version}</p>
+                ) : null} */}
+              </div>
+            </div>
+
+            {/* {isDrawer ? (
+              <button
+                type="button"
+                onClick={onClose}
+                className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-[#e6dfd1] bg-white text-slate-700"
+                aria-label="Close menu"
+              >
+                <svg
+                  viewBox="0 0 24 24"
+                  className="h-4 w-4"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                >
+                  <path d="M6 6l12 12M18 6 6 18" />
+                </svg>
+              </button>
+            ) : (
+              <span className={desktopVersionClassName}>{version}</span>
+            )} */}
+             <span className={desktopVersionClassName}>{subscriptionPlan}</span>
+          </div>
+        </div>
+
+        <nav className={navClassName}>
+          {navSections.map((item) => (
+            <NavItem
+              key={item.id}
+              item={item}
+              href={`/dashboard/${item.id}`}
+              active={item.id === activeSectionId}
+              onClick={onClose}
+              badge={getNavBadge(item.id)}
+            />
+          ))}
+          <button
+            type="button"
+            onClick={onLogout}
+            disabled={isLoggingOut}
+            className="mt-3 inline-flex w-full items-center justify-center rounded-2xl border border-[#dfd2bb] bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 disabled:opacity-60"
+          >
+            {isLoggingOut ? "Signing out..." : "Logout"}
+          </button>
+        </nav>
+
+        <div className={bottomClassName}>
+          <div className="rounded-2xl border border-[#eadfca] bg-white/80 p-3">
+            <p className="truncate text-sm font-semibold text-slate-900">
+              {memberName}
+            </p>
+            <p className="mt-1 text-xs text-slate-500">{memberRole}</p>
+          </div>
+        </div>
+      </div>
+    </aside>
+  );
+}
+
 function SectionIcon({ id }: { id: SectionId }) {
   const common = "h-4 w-4";
   if (id === "overview")
@@ -747,6 +883,7 @@ export function DashboardCard({ section }: DashboardCardProps) {
 
   const activeSection = activeId ? SECTION_LIBRARY[activeId] : null;
   const navSections = allowedIds.map((id) => SECTION_LIBRARY[id]);
+  const bottomTabs = navSections.slice(0, 5);
 
   // ── Orders derived ──────────────────────────────────────────────────────────
   const liveOrders = (ordersPayload?.items || []).slice(0, 6).map((order) => ({
@@ -880,18 +1017,9 @@ export function DashboardCard({ section }: DashboardCardProps) {
   const memberName =
     tentantProfile?.user?.name || user?.name || "Restaurant User";
   const memberRole = roleLabel(role);
+  const subscriptionPlan =
+    tentantProfile?.subscription?.planCode || "No active plan";
   const tenantSlug = tentantProfile?.tenant?.slug || tenant?.slug || "";
-  const bottomTabs = navSections.slice(0, 5);
-  const accountSectionId = allowedIds.includes("profile")
-    ? "profile"
-    : allowedIds.includes("settings")
-      ? "settings"
-      : null;
-
-  const handleDrawerNavigate = (target: SectionId) => {
-    setDrawerOpen(false);
-    router.push(`/dashboard/${target}`);
-  };
 
   const getNavBadge = (id: SectionId): string | undefined => {
     if (id === "orders") return `${activeOrderCount}`;
@@ -984,34 +1112,34 @@ export function DashboardCard({ section }: DashboardCardProps) {
                 tone: "amber" as const,
               },
             ]
-          // : activeSection.id === "reports"
-          //   ? [
-          //       {
-          //         label: "Today Sales",
-          //         value: formatMoney(todayDay?.sales ?? 0),
-          //         tone: "amber" as const,
-          //       },
-          //       {
-          //         label: "7-Day Sales",
-          //         value: formatMoney(totals?.sales ?? 0),
-          //         tone: "green" as const,
-          //       },
-          //       {
-          //         label: "This Month",
-          //         value: formatMoney(thisMonth?.sales ?? 0),
-          //         tone: "blue" as const,
-          //       },
-          //       {
-          //         label: "Net Profit",
-          //         value: formatMoney(totals?.profit ?? 0),
-          //         tone:
-          //           (totals?.profit ?? 0) >= 0
-          //             ? ("green" as const)
-          //             : ("red" as const),
-          //       },
-          //     ]
-            : activeSection.kpis;
- 
+          : // : activeSection.id === "reports"
+            //   ? [
+            //       {
+            //         label: "Today Sales",
+            //         value: formatMoney(todayDay?.sales ?? 0),
+            //         tone: "amber" as const,
+            //       },
+            //       {
+            //         label: "7-Day Sales",
+            //         value: formatMoney(totals?.sales ?? 0),
+            //         tone: "green" as const,
+            //       },
+            //       {
+            //         label: "This Month",
+            //         value: formatMoney(thisMonth?.sales ?? 0),
+            //         tone: "blue" as const,
+            //       },
+            //       {
+            //         label: "Net Profit",
+            //         value: formatMoney(totals?.profit ?? 0),
+            //         tone:
+            //           (totals?.profit ?? 0) >= 0
+            //             ? ("green" as const)
+            //             : ("red" as const),
+            //       },
+            //     ]
+            activeSection.kpis;
+
   //   switch (tone) {
   //     case "amber":
   //       return "#f59e0b";
@@ -1033,51 +1161,19 @@ export function DashboardCard({ section }: DashboardCardProps) {
 
       <div className="mx-auto flex w-full max-w-[1460px] gap-4 px-3 py-3 md:px-4 md:py-4 lg:gap-6 lg:px-6 lg:py-6">
         {/* ── Sidebar ── */}
-        <aside className="hidden h-[calc(100vh-3rem)] w-[258px] shrink-0 rounded-[28px] border border-[#e6dfd1] bg-[#fffdf9] p-3.5 shadow-sm lg:sticky lg:top-3 lg:flex lg:flex-col">
-          <div className="border-b border-[#eee7d8] pb-4">
-            <div className="flex items-start justify-between gap-3">
-              <div className="inline-flex h-10 w-10 items-center justify-center rounded-2xl bg-amber-500 text-sm font-bold text-white shadow-lg shadow-amber-500/20">
-                BD
-              </div>
-              <span className="rounded-full border border-[#eadfc9] bg-[#fff6e7] px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-amber-800">
-                {APP_VERSION}
-              </span>
-            </div>
-            <h2 className="mt-3 truncate text-base font-semibold text-slate-900">
-              {tenantName}
-            </h2>
-            {accountSectionId ? (
-              <button
-                type="button"
-                onClick={() => router.push(`/dashboard/${accountSectionId}`)}
-                className="mt-2 block text-left"
-              >
-                <p className="truncate text-sm font-medium text-slate-800">
-                  {memberName}
-                </p>
-                <p className="mt-0.5 text-xs text-slate-500">{memberRole}</p>
-              </button>
-            ) : (
-              <div className="mt-2">
-                <p className="truncate text-sm font-medium text-slate-800">
-                  {memberName}
-                </p>
-                <p className="mt-0.5 text-xs text-slate-500">{memberRole}</p>
-              </div>
-            )}
-          </div>
-          <nav className="no-scrollbar mt-4 flex-1 space-y-1 overflow-y-auto pr-1">
-            {navSections.map((item) => (
-              <NavItem
-                key={item.id}
-                item={item}
-                href={`/dashboard/${item.id}`}
-                active={item.id === activeSection.id}
-                badge={getNavBadge(item.id)}
-              />
-            ))}
-          </nav>
-        </aside>
+        <DashboardSidebar
+          variant="desktop"
+          tenantName={tenantName}
+          subscriptionPlan={subscriptionPlan}
+          memberName={memberName}
+          memberRole={memberRole}
+          version={APP_VERSION}
+          navSections={navSections}
+          activeSectionId={activeSection.id}
+          getNavBadge={getNavBadge}
+          onLogout={onLogout}
+          isLoggingOut={isLoggingOut}
+        />
 
         {/* ── Main Content ── */}
         <div className="min-w-0 flex-1 lg:flex lg:h-[calc(100vh-3rem)] lg:flex-col">
@@ -1119,44 +1215,47 @@ export function DashboardCard({ section }: DashboardCardProps) {
           {/* Scrollable Body */}
           <div className="no-scrollbar pb-[calc(env(safe-area-inset-bottom)+5.5rem)] lg:min-h-0 lg:flex-1 lg:overflow-y-auto lg:pr-1 lg:pb-0">
             {/* KPI Strip */}
-            {(activeSection.id === "overview" 
-            // ||
-            //   activeSection.id === "tables" ||
-            //   activeSection.id === "menu" 
+            {activeSection.id === "overview" && (
+              // ||
+              //   activeSection.id === "tables" ||
+              //   activeSection.id === "menu"
               // activeSection.id === "reports") && (
-           ) && (
               <section className="no-scrollbar mt-4 flex gap-2 overflow-x-auto px-1 sm:gap-3">
                 {activeSectionKpis.map((kpi) => (
                   <article
                     key={kpi.label}
                     className="w-[150px] shrink-0 rounded-xl border border-[#e6dfd1] bg-[#fffdf9] p-2 shadow-sm sm:w-[190px] sm:rounded-2xl sm:p-3 md:w-[220px] md:p-4"
                   >
-                    <div className={`mb-1 inline-flex rounded-full border px-2 py-0.5 text-[9px] font-semibold uppercase tracking-wide sm:mb-2 sm:px-2.5 sm:py-1 sm:text-[10px] ${toneClasses(kpi.tone)}`}>
+                    <div
+                      className={`mb-1 inline-flex rounded-full border px-2 py-0.5 text-[9px] font-semibold uppercase tracking-wide sm:mb-2 sm:px-2.5 sm:py-1 sm:text-[10px] ${toneClasses(kpi.tone)}`}
+                    >
                       {kpi.label}
                     </div>
-                    <p className="text-base font-semibold text-slate-900 sm:text-xl md:text-2xl">{kpi.value}</p>
+                    <p className="text-base font-semibold text-slate-900 sm:text-xl md:text-2xl">
+                      {kpi.value}
+                    </p>
                   </article>
                 ))}
               </section>
-//             <section className="no-scrollbar mt-2 flex gap-1.5 overflow-x-auto px-2 pb-1 sm:mt-3 sm:gap-2 sm:px-3 lg:overflow-x-visible lg:flex-wrap lg:justify-between">
-//   {activeSectionKpis.map((kpi) => (
-//     <article
-//       key={kpi.label}
-//       className="flex min-w-[110px] flex-col shrink-0 items-center justify-between gap-1 rounded-lg bg-[#fffdf9] px-2 py-1.5 transition-all duration-200 hover:scale-[1.02] sm:min-w-[140px] sm:gap-2 sm:rounded-xl sm:px-3 sm:py-2 lg:flex-1 lg:min-w-0"
-//       style={{
-//         boxShadow: `0 4px 12px -8px ${getToneColor(kpi.tone)}`,
-//         border: `1px solid ${getToneColor(kpi.tone)}20`
-//       }}
-//     >
-//       <span className="text-sm font-bold text-slate-900 sm:text-base md:text-lg">
-//         {kpi.value}
-//       </span>
-//    <span className={`mb-1 inline-flex rounded-full border px-2 py-0.5 text-[9px] font-semibold uppercase tracking-wide sm:mb-2 sm:px-2.5 sm:py-1 sm:text-[10px] ${toneClasses(kpi.tone)}`}>
-//         {kpi.label}
-//       </span>
-//     </article>
-//   ))}
-// </section>
+              //             <section className="no-scrollbar mt-2 flex gap-1.5 overflow-x-auto px-2 pb-1 sm:mt-3 sm:gap-2 sm:px-3 lg:overflow-x-visible lg:flex-wrap lg:justify-between">
+              //   {activeSectionKpis.map((kpi) => (
+              //     <article
+              //       key={kpi.label}
+              //       className="flex min-w-[110px] flex-col shrink-0 items-center justify-between gap-1 rounded-lg bg-[#fffdf9] px-2 py-1.5 transition-all duration-200 hover:scale-[1.02] sm:min-w-[140px] sm:gap-2 sm:rounded-xl sm:px-3 sm:py-2 lg:flex-1 lg:min-w-0"
+              //       style={{
+              //         boxShadow: `0 4px 12px -8px ${getToneColor(kpi.tone)}`,
+              //         border: `1px solid ${getToneColor(kpi.tone)}20`
+              //       }}
+              //     >
+              //       <span className="text-sm font-bold text-slate-900 sm:text-base md:text-lg">
+              //         {kpi.value}
+              //       </span>
+              //    <span className={`mb-1 inline-flex rounded-full border px-2 py-0.5 text-[9px] font-semibold uppercase tracking-wide sm:mb-2 sm:px-2.5 sm:py-1 sm:text-[10px] ${toneClasses(kpi.tone)}`}>
+              //         {kpi.label}
+              //       </span>
+              //     </article>
+              //   ))}
+              // </section>
             )}
 
             {/* ── OVERVIEW ── */}
@@ -1497,87 +1596,30 @@ export function DashboardCard({ section }: DashboardCardProps) {
 
       {/* ── Mobile Drawer ── */}
       {drawerOpen ? (
-        <div className="fixed inset-0 z-40 lg:hidden">
+        <div className="fixed inset-0 z-50 lg:hidden">
           <button
             type="button"
             className="absolute inset-0 bg-slate-900/35"
             onClick={() => setDrawerOpen(false)}
             aria-label="Close menu"
           />
-          <aside className="no-scrollbar absolute left-0 top-0 h-full w-[88%] max-w-[340px] overflow-y-auto border-r border-[#e6dfd1] bg-[#fffdf9] p-4 shadow-2xl">
-            <div className="rounded-[28px] border border-[#eadfca] bg-[linear-gradient(145deg,#fff8eb_0%,#fffdf9_55%,#f5fbf8_100%)] p-4 shadow-sm">
-              <div className="flex items-start justify-between gap-3">
-                <div className="flex items-center gap-3">
-                  <div className="inline-flex h-11 w-11 items-center justify-center rounded-2xl bg-amber-500 text-sm font-bold text-white shadow-lg shadow-amber-500/20">
-                    BD
-                  </div>
-                  <div className="min-w-0">
-                    <h2 className="truncate text-lg font-semibold text-slate-900">
-                      {tenantName}
-                    </h2>
-                    <p className="mt-1 text-xs text-slate-500">{APP_VERSION}</p>
-                  </div>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setDrawerOpen(false)}
-                  className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-[#e6dfd1] bg-white text-slate-700"
-                >
-                  <svg
-                    viewBox="0 0 24 24"
-                    className="h-4 w-4"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                  >
-                    <path d="M6 6l12 12M18 6 6 18" />
-                  </svg>
-                </button>
-              </div>
-              <div className="mt-4">
-                {accountSectionId ? (
-                  <button
-                    type="button"
-                    onClick={() => handleDrawerNavigate(accountSectionId)}
-                    className="block w-full rounded-2xl border border-white/70 bg-white/80 p-3 text-left"
-                  >
-                    <p className="truncate text-sm font-semibold text-slate-900">
-                      {memberName}
-                    </p>
-                    <p className="mt-1 text-xs text-slate-500">{memberRole}</p>
-                  </button>
-                ) : (
-                  <div className="rounded-2xl border border-white/70 bg-white/80 p-3">
-                    <p className="truncate text-sm font-semibold text-slate-900">
-                      {memberName}
-                    </p>
-                    <p className="mt-1 text-xs text-slate-500">{memberRole}</p>
-                  </div>
-                )}
-              </div>
-            </div>
-            <div className="mt-5">
-              <p className="mb-2 px-1 text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-400">
-                Navigation
-              </p>
-              <nav className="space-y-1">
-                {navSections.map((item) => (
-                  <NavItem
-                    key={item.id}
-                    item={item}
-                    href={`/dashboard/${item.id}`}
-                    active={item.id === activeSection.id}
-                    onClick={() => setDrawerOpen(false)}
-                    badge={getNavBadge(item.id)}
-                  />
-                ))}
-              </nav>
-            </div>
-          </aside>
+          <DashboardSidebar
+            variant="drawer"
+            tenantName={tenantName}
+            subscriptionPlan={subscriptionPlan}
+            memberName={memberName}
+            memberRole={memberRole}
+            version={APP_VERSION}
+            navSections={navSections}
+            activeSectionId={activeSection.id}
+            getNavBadge={getNavBadge}
+            onLogout={onLogout}
+            onClose={() => setDrawerOpen(false)}
+            isLoggingOut={isLoggingOut}
+          />
         </div>
       ) : null}
 
-      {/* ── Bottom Tab Bar (Mobile) ── */}
       <nav className="fixed inset-x-0 bottom-0 z-30 border-t border-[#e6dfd1] bg-[#fffdf9] px-2 py-2 lg:hidden">
         <div
           className="no-scrollbar grid gap-1"
@@ -1613,6 +1655,53 @@ export function DashboardCard({ section }: DashboardCardProps) {
           })}
         </div>
       </nav>
+
+      <div className="fixed bottom-[calc(env(safe-area-inset-bottom)+5.25rem)] right-3 z-40 flex flex-col items-end gap-2 sm:right-4 lg:bottom-[calc(env(safe-area-inset-bottom)+1.25rem)]">
+        <button
+          type="button"
+          onClick={() =>
+            router.push("/dashboard/orders/new")
+          }
+          className="inline-flex h-12 w-fit items-center gap-2 rounded-full border border-[#1f6a57] bg-[#2f8a70] px-4 pr-5 text-sm font-semibold text-white shadow-xl shadow-emerald-900/20 ring-2 ring-emerald-200/80 transition-all hover:-translate-y-0.5 hover:bg-[#27745d] hover:shadow-2xl focus:outline-none focus:ring-4 focus:ring-emerald-300/60"
+          aria-label="Create dine in order"
+        >
+          <span className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-white/15">
+            <svg
+              viewBox="0 0 24 24"
+              className="h-4 w-4"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+            >
+              <path d="M4 8h16M5 8v8a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8" />
+              <path d="M8 4v4M16 4v4" />
+            </svg>
+          </span>
+          <span className="whitespace-nowrap">Dine In</span>
+        </button>
+        <button
+          type="button"
+          onClick={() =>
+            router.push("/dashboard/orders/new?new=1&service=takeaway")
+          }
+          className="inline-flex h-12 w-fit items-center gap-2 rounded-full border border-[#b56f24] bg-[#c98533] px-4 pr-5 text-sm font-semibold text-white shadow-xl shadow-amber-900/20 ring-2 ring-amber-200/80 transition-all hover:-translate-y-0.5 hover:bg-[#b37227] hover:shadow-2xl focus:outline-none focus:ring-4 focus:ring-amber-300/60"
+          aria-label="Create take away order"
+        >
+          <span className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-white/15">
+            <svg
+              viewBox="0 0 24 24"
+              className="h-4 w-4"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+            >
+              <path d="M7 4h10l2 6H5l2-6z" />
+              <path d="M6 10h12l-1 10H7L6 10z" />
+            </svg>
+          </span>
+          <span className="whitespace-nowrap">Take Away</span>
+        </button>
+      </div>
     </main>
   );
 }

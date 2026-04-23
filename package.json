@@ -3,7 +3,7 @@
   "version": "0.1.17",
   "private": true,
   "scripts": {
-    "dev": "next dev --webpack",
+    "dev": "C:\\Progra~1\\nodejs\\node.exe scripts/dev-server.js",
     "build": "next build --webpack",
     "start": "next start",
     "lint": "eslint"
