@@ -68,6 +68,7 @@ export type OrderRecord = {
   customerName?: string;
   customerPhone?: string;
   source?: "STAFF" | "QR" | string;
+  serviceMode?: "DINE_IN" | "TAKEAWAY" | "WALK_IN" | string;
   sessionToken?: string;
   sourceLabel?: string;
   itemsSummary?: string;
@@ -112,6 +113,9 @@ export type OrderResponse = {
 export type OrdersQueryParams = {
   tableId?: string;
   status?: string | string[];
+  serviceMode?: string | string[];
+  from?: string;
+  to?: string;
   page?: number;
   limit?: number;
 };
@@ -166,7 +170,8 @@ export type OrderItemPayload = {
 };
 
 export type CreateOrderPayload = {
-  tableId: string;
+  tableId?: string;
+  serviceMode?: "DINE_IN" | "TAKEAWAY" | "WALK_IN";
   note?: string;
   customerName?: string;
   customerPhone?: string;

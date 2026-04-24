@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
@@ -22,6 +22,9 @@ import {
 } from "@/store/api/invoicesApi";
 import { useGetTablesQuery } from "@/store/api/tablesApi";
 import { useGetMenuAggregateQuery } from "@/store/api/menuApi";
+import { TakeawayView } from "@/components/takeaway-view";
+import { OrdersBoardView } from "@/components/orders-board-view";
+import { OrdersHistoryView } from "@/components/orders-history-view";
 import { useAppSelector } from "@/store/hooks";
 import { selectAuthToken } from "@/store/slices/authSlice";
 import type {
@@ -2154,6 +2157,10 @@ function WaiterView({
     () =>
       orders.filter((order) => {
         if (invoicedOrderIds.has(order.id)) return false;
+        // Only dine-in: must have a table, not TAKEAWAY mode
+        const hasTbl = Boolean(order.tableId || order.table?.id);
+        const isTakeaway = (order.serviceMode || "").toUpperCase() === "TAKEAWAY";
+        if (!hasTbl || isTakeaway) return false;
         return ["PLACED", "IN_PROGRESS", "READY", "SERVED"].includes(
           normalizeStatus(order.status),
         );
@@ -3480,7 +3487,6 @@ function ManagerView({ role }: { role: RoleKey }) {
           table?.name || (table?.number ? `Table ${table.number}` : "a table");
         showInfo(`New order - ${label}`);
         setOrdersPage(1);
-        setOrdersFeed([]);
         refetch();
       } else if (event.type === "updated") {
         const status = (event.order?.status || "").toUpperCase();
@@ -3491,11 +3497,9 @@ function ManagerView({ role }: { role: RoleKey }) {
         else if (status === "IN_PROGRESS") showInfo(`${label} cooking started`);
         else showInfo(`${label} order updated`);
         setOrdersPage(1);
-        setOrdersFeed([]);
         refetch();
       } else {
         setOrdersPage(1);
-        setOrdersFeed([]);
         refetch();
       }
     },
@@ -4336,12 +4340,18 @@ export function OrdersWorkspace({ rawRole }: Props) {
   const role = normalizeRole(rawRole);
   const routeTableId = searchParams.get("tableId")?.trim() || undefined;
   const routeNewOrder = searchParams.get("new") === "1";
+  const routeTab = searchParams.get("tab");
   const routeSelectTablePage = pathname === "/dashboard/orders/new";
   const routeSelectItemsPage = pathname === "/dashboard/orders/items";
-  const [toast, setToast] = useState<{
-    msg: string;
-    type: "ok" | "err";
-  } | null>(null);
+  const routeTakeawayPage = pathname === "/dashboard/orders/takeaway";
+
+  const [toast, setToast] = useState<{ msg: string; type: "ok" | "err" } | null>(null);
+
+  // Which main tab: "live" | "history"  (not shown on dedicated route pages)
+  const [activeTab, setActiveTab] = useState<"live" | "history">(
+    routeTab === "history" ? "history" : "live",
+  );
+
   const isWaiter = role === "waiter";
   const isKitchen = role === "kitchen";
   const splitComposerMode = routeSelectTablePage
@@ -4351,31 +4361,23 @@ export function OrdersWorkspace({ rawRole }: Props) {
       : isWaiter
         ? "live-board"
         : "board";
+
   const forceOrderComposer =
     !isKitchen &&
     (routeNewOrder ||
       Boolean(routeTableId) ||
       routeSelectTablePage ||
       routeSelectItemsPage);
-  const showWaiterView = isWaiter || forceOrderComposer;
+
+  // Only show WaiterView when explicitly on a route that requires order creation
+  const isCreatingOrder = forceOrderComposer;
 
   const handleOrderPlaced = useCallback(() => {
     setToast({ msg: "Order placed!", type: "ok" });
-    if (
-      routeNewOrder ||
-      routeTableId ||
-      routeSelectTablePage ||
-      routeSelectItemsPage
-    ) {
+    if (routeNewOrder || routeTableId || routeSelectTablePage || routeSelectItemsPage) {
       router.push("/dashboard/orders");
     }
-  }, [
-    routeNewOrder,
-    routeSelectItemsPage,
-    routeSelectTablePage,
-    routeTableId,
-    router,
-  ]);
+  }, [routeNewOrder, routeSelectItemsPage, routeSelectTablePage, routeTableId, router]);
 
   useEffect(() => {
     if (!toast) return;
@@ -4386,48 +4388,97 @@ export function OrdersWorkspace({ rawRole }: Props) {
   }, [toast]);
 
   return (
-    <div className="h-full">
-      {showWaiterView ? (
-        <>
-          {/* <div className="mb-4">
-            <h2 className="text-lg font-bold text-slate-900">
-              {routeSelectTablePage
-                ? "Select Table"
-                : routeSelectItemsPage
-                  ? "Select Items"
-                  : isWaiter
-                    ? "Waiter Orders"
-                    : forceOrderComposer && !isWaiter
-                      ? "Create / Update Order"
-                      : "Take Order"}
-            </h2>
-            <p className="text-xs text-slate-500">
-              {routeSelectTablePage
-                ? "Open table picker on its own page, then continue to menu selection."
-                : routeSelectItemsPage
-                  ? "Choose item variants, add them quickly, and place the order."
-                  : isWaiter
-                    ? "Ready, cooking, aur billing-wale waiter orders ko is page se handle karo."
-                    : routeTableId
-                      ? "Selected table opened. Add items to append in the same active order."
-                      : "Pick a table, add items, and place the order in 3 taps."}
-            </p>
-          </div> */}
-          <WaiterView
-            onOrderPlaced={handleOrderPlaced}
-            initialTableId={routeTableId}
-            mode={splitComposerMode}
-          />
-        </>
-      ) : isKitchen ? (
-        <>
-        
-          <KitchenView />
-        </>
+    <div className="flex h-full flex-col">
+      {isKitchen ? (
+        <KitchenView />
+      ) : routeTakeawayPage ? (
+        /* Dedicated takeaway page */
+        <TakeawayView />
+      ) : isCreatingOrder && !routeTakeawayPage ? (
+        /* Dine-in order creation (WaiterView) */
+        <WaiterView
+          onOrderPlaced={handleOrderPlaced}
+          initialTableId={routeTableId}
+          mode={splitComposerMode}
+        />
       ) : (
+        /* Main orders page: 2 tabs + action buttons */
         <>
-         
-          <ManagerView role={role} />
+          {/* Top bar: tabs + action buttons */}
+          <div className="mb-4 flex flex-wrap items-center gap-2">
+            {/* Tabs */}
+            <div className="flex gap-1 rounded-xl border border-slate-200 bg-slate-100 p-1">
+              <button
+                id="orders-tab-live"
+                type="button"
+                onClick={() => setActiveTab("live")}
+                className={`flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold transition ${
+                  activeTab === "live"
+                    ? "bg-white text-slate-900 shadow-sm"
+                    : "text-slate-500 hover:text-slate-700"
+                }`}
+              >
+                <span className={`h-2 w-2 rounded-full ${activeTab === "live" ? "bg-emerald-500 animate-pulse" : "bg-slate-300"}`} />
+                Live Orders
+              </button>
+              <button
+                id="orders-tab-history"
+                type="button"
+                onClick={() => setActiveTab("history")}
+                className={`flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold transition ${
+                  activeTab === "history"
+                    ? "bg-white text-slate-900 shadow-sm"
+                    : "text-slate-500 hover:text-slate-700"
+                }`}
+              >
+                <svg viewBox="0 0 16 16" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="2">
+                  <rect x="2" y="3" width="12" height="11" rx="1.5" />
+                  <path d="M5 7h6M5 10h4" />
+                  <path d="M5 1v3M11 1v3" />
+                </svg>
+                History
+              </button>
+            </div>
+
+            {/* Action buttons */}
+            <div className="ml-auto flex gap-2">
+              <button
+                id="orders-btn-new-dine-in"
+                type="button"
+                onClick={() => router.push("/dashboard/orders/new")}
+                className="flex items-center gap-2 rounded-xl border border-amber-300 bg-amber-50 px-4 py-2 text-sm font-bold text-amber-900 shadow-sm transition hover:bg-amber-100 active:scale-95"
+              >
+                <svg viewBox="0 0 16 16" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2">
+                  <rect x="2" y="4" width="12" height="7" rx="1" />
+                  <path d="M5 11v2M11 11v2" />
+                  <path d="M8 1v4" />
+                </svg>
+                <span className="hidden sm:inline">New </span>Dine-In
+              </button>
+              <button
+                id="orders-btn-new-takeaway"
+                type="button"
+                onClick={() => router.push("/dashboard/orders/takeaway")}
+                className="flex items-center gap-2 rounded-xl border border-violet-300 bg-violet-50 px-4 py-2 text-sm font-bold text-violet-900 shadow-sm transition hover:bg-violet-100 active:scale-95"
+              >
+                <svg viewBox="0 0 16 16" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M3 2L1.5 5v8a1 1 0 001 1h11a1 1 0 001-1V5L12 2z" />
+                  <line x1="1.5" y1="5" x2="14.5" y2="5" />
+                  <path d="M10 7a2 2 0 01-4 0" />
+                </svg>
+                Takeaway
+              </button>
+            </div>
+          </div>
+
+          {/* Tab content */}
+          <div className="min-h-0 flex-1">
+            {activeTab === "live" ? (
+              <OrdersBoardView />
+            ) : (
+              <OrdersHistoryView />
+            )}
+          </div>
         </>
       )}
     </div>

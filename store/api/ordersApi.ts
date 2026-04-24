@@ -148,6 +148,7 @@ function parseOrder(value: unknown): OrderRecord | null {
     customerName,
     customerPhone,
     source: (asString(r.source) as OrderRecord["source"]) || undefined,
+    serviceMode: (asString(r.serviceMode) || asString(r.service_mode) || asString(r.mode)) as OrderRecord["serviceMode"] || undefined,
     sessionToken: asString(r.sessionToken),
     sourceLabel:
       asString(r.sourceLabel) ||
@@ -416,6 +417,11 @@ export const ordersApi = createApi({
           status: Array.isArray(params?.status)
             ? params.status.join(",")
             : (params?.status ?? undefined),
+          serviceMode: Array.isArray(params?.serviceMode)
+            ? params.serviceMode.join(",")
+            : (params?.serviceMode ?? undefined),
+          from: params?.from || undefined,
+          to: params?.to || undefined,
           page: params?.page ?? 1,
           limit: params?.limit ?? 100,
         },

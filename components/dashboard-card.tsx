@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import packageInfo from "@/package.json";
 import { clearStoredSession } from "@/lib/auth-session";
 import { getErrorMessage } from "@/lib/error";
@@ -31,6 +31,7 @@ import {
   selectAuthUser,
 } from "@/store/slices/authSlice";
 import { useGetTablesQuery } from "@/store/api/tablesApi";
+
 
 type DashboardCardProps = {
   section?: string;
@@ -829,6 +830,7 @@ function SectionIcon({ id }: { id: SectionId }) {
 // ─── Main Component ───────────────────────────────────────────────────────────
 export function DashboardCard({ section }: DashboardCardProps) {
   const router = useRouter();
+  const pathname = usePathname();
   const dispatch = useAppDispatch();
   const user = useAppSelector(selectAuthUser);
   const tenant = useAppSelector(selectAuthTenant);
@@ -884,6 +886,8 @@ export function DashboardCard({ section }: DashboardCardProps) {
   const activeSection = activeId ? SECTION_LIBRARY[activeId] : null;
   const navSections = allowedIds.map((id) => SECTION_LIBRARY[id]);
   const bottomTabs = navSections.slice(0, 5);
+  const hideQuickOrderActions =
+    pathname?.startsWith("/dashboard/orders") ?? false;
 
   // ── Orders derived ──────────────────────────────────────────────────────────
   const liveOrders = (ordersPayload?.items || []).slice(0, 6).map((order) => ({
@@ -1655,53 +1659,52 @@ export function DashboardCard({ section }: DashboardCardProps) {
           })}
         </div>
       </nav>
+     
 
-      <div className="fixed bottom-[calc(env(safe-area-inset-bottom)+5.25rem)] right-3 z-40 flex flex-col items-end gap-2 sm:right-4 lg:bottom-[calc(env(safe-area-inset-bottom)+1.25rem)]">
-        <button
-          type="button"
-          onClick={() =>
-            router.push("/dashboard/orders/new")
-          }
-          className="inline-flex h-12 w-fit items-center gap-2 rounded-full border border-[#1f6a57] bg-[#2f8a70] px-4 pr-5 text-sm font-semibold text-white shadow-xl shadow-emerald-900/20 ring-2 ring-emerald-200/80 transition-all hover:-translate-y-0.5 hover:bg-[#27745d] hover:shadow-2xl focus:outline-none focus:ring-4 focus:ring-emerald-300/60"
-          aria-label="Create dine in order"
-        >
-          <span className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-white/15">
-            <svg
-              viewBox="0 0 24 24"
-              className="h-4 w-4"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-            >
-              <path d="M4 8h16M5 8v8a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8" />
-              <path d="M8 4v4M16 4v4" />
-            </svg>
-          </span>
-          <span className="whitespace-nowrap">Dine In</span>
-        </button>
-        <button
-          type="button"
-          onClick={() =>
-            router.push("/dashboard/orders/new?new=1&service=takeaway")
-          }
-          className="inline-flex h-12 w-fit items-center gap-2 rounded-full border border-[#b56f24] bg-[#c98533] px-4 pr-5 text-sm font-semibold text-white shadow-xl shadow-amber-900/20 ring-2 ring-amber-200/80 transition-all hover:-translate-y-0.5 hover:bg-[#b37227] hover:shadow-2xl focus:outline-none focus:ring-4 focus:ring-amber-300/60"
-          aria-label="Create take away order"
-        >
-          <span className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-white/15">
-            <svg
-              viewBox="0 0 24 24"
-              className="h-4 w-4"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-            >
-              <path d="M7 4h10l2 6H5l2-6z" />
-              <path d="M6 10h12l-1 10H7L6 10z" />
-            </svg>
-          </span>
-          <span className="whitespace-nowrap">Take Away</span>
-        </button>
-      </div>
+      {!hideQuickOrderActions ? (
+        <div className="fixed bottom-[calc(env(safe-area-inset-bottom)+5.25rem)] right-3 z-40 flex flex-col items-end gap-2 sm:right-4 lg:bottom-[calc(env(safe-area-inset-bottom)+1.25rem)]">
+          <button
+            type="button"
+            onClick={() => router.push("/dashboard/orders/new")}
+            className="inline-flex h-12 w-fit items-center gap-2 rounded-full border border-[#1f6a57] bg-[#2f8a70] px-4 pr-5 text-sm font-semibold text-white shadow-xl shadow-emerald-900/20 ring-2 ring-emerald-200/80 transition-all hover:-translate-y-0.5 hover:bg-[#27745d] hover:shadow-2xl focus:outline-none focus:ring-4 focus:ring-emerald-300/60"
+            aria-label="Create dine in order"
+          >
+            <span className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-white/15">
+              <svg
+                viewBox="0 0 24 24"
+                className="h-4 w-4"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+              >
+                <path d="M4 8h16M5 8v8a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8" />
+                <path d="M8 4v4M16 4v4" />
+              </svg>
+            </span>
+            <span className="whitespace-nowrap">Dine In</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => router.push("/dashboard/orders/takeaway")}
+            className="inline-flex h-12 w-fit items-center gap-2 rounded-full border border-[#b56f24] bg-[#c98533] px-4 pr-5 text-sm font-semibold text-white shadow-xl shadow-amber-900/20 ring-2 ring-amber-200/80 transition-all hover:-translate-y-0.5 hover:bg-[#b37227] hover:shadow-2xl focus:outline-none focus:ring-4 focus:ring-amber-300/60"
+            aria-label="Create take away order"
+          >
+            <span className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-white/15">
+              <svg
+                viewBox="0 0 24 24"
+                className="h-4 w-4"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+              >
+                <path d="M7 4h10l2 6H5l2-6z" />
+                <path d="M6 10h12l-1 10H7L6 10z" />
+              </svg>
+            </span>
+            <span className="whitespace-nowrap">Take Away</span>
+          </button>
+        </div>
+      ) : null}
     </main>
   );
 }
