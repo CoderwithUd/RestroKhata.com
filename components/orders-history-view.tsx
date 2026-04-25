@@ -93,12 +93,48 @@ const DEFAULT_FILTER: FilterState = { status: [], serviceMode: [], from: "", to:
 
 // ── Stat Card ────────────────────────────────────────────────────────────────
 
-function StatCard({ label, value, sub, color }: { label: string; value: string | number; sub?: string; color: string }) {
+
+function StatCard({
+  label,
+  value,
+  sub,
+  color,
+}: {
+  label: string;
+  value: string | number;
+  sub?: string;
+  color: string;
+}) {
+  // 👉 format large numbers (1Cr, 1L, etc.)
+  const formatValue = (val: string | number) => {
+    if (typeof val === "number") {
+      if (val >= 10000000) return (val / 10000000).toFixed(1) + "Cr";
+      if (val >= 100000) return (val / 100000).toFixed(1) + "L";
+      if (val >= 1000) return (val / 1000).toFixed(1) + "K";
+    }
+    return val;
+  };
+
   return (
-    <div className={`flex min-w-0 flex-1 flex-col gap-1 rounded-2xl border p-4 ${color}`}>
-      <p className="text-xs font-semibold uppercase tracking-wide opacity-60">{label}</p>
-      <p className="text-2xl font-bold leading-none">{value}</p>
-      {sub && <p className="text-xs opacity-70">{sub}</p>}
+    <div
+      className={`flex min-w-[120px] sm:min-w-[140px] flex-1 flex-col gap-1 rounded-xl sm:rounded-2xl border p-2 sm:p-3 md:p-2 ${color}`}
+    >
+      {/* Label */}
+      <p className="text-[10px] sm:text-xs md:text-sm font-semibold uppercase tracking-wide opacity-60 truncate">
+        {label}
+      </p>
+
+      {/* Value (AUTO RESPONSIVE + NO OVERFLOW) */}
+      <p className="font-bold leading-tight truncate text-[clamp(14px,4vw,24px)]">
+        {formatValue(value)}
+      </p>
+
+      {/* Sub */}
+      {sub && (
+        <p className="text-[10px] sm:text-xs md:text-sm opacity-70 truncate">
+          {sub}
+        </p>
+      )}
     </div>
   );
 }
@@ -238,8 +274,7 @@ function FilterDrawer({
 }
 
 // ── Order Row ─────────────────────────────────────────────────────────────────
-
-function OrderRow({ order, invoiced }: { order: OrderRecord; invoiced: boolean }) {
+function OrderRow({ order, invoiced ,index}: { order: OrderRecord; invoiced: boolean ,index:number}) {
   const [expanded, setExpanded] = useState(false);
   const tableLabel = order.table?.name || (order.table?.number ? `Table ${order.table.number}` : null);
   const tokenLabel = order.orderNumber ? `#${order.orderNumber}` : `#${order.id.slice(-6)}`;
@@ -257,10 +292,11 @@ function OrderRow({ order, invoiced }: { order: OrderRecord; invoiced: boolean }
         className="flex w-full flex-wrap items-center gap-2 px-4 py-3 text-left hover:bg-slate-50 transition"
       >
         {/* Order number */}
-        <span className="text-sm font-bold text-slate-900 min-w-[60px]">{tokenLabel}</span>
+        {/* <span className="text-[10px] font-bold text-slate-500 min-w-[60px]">{tokenLabel}</span> */}
 
+  <span className="text-xs font-bold text-slate-500 min-w-[60px]">{index + 1}</span>
         {/* Table / customer */}
-        <span className="text-xs text-slate-500 flex-1 truncate min-w-[80px]">
+        <span className="text-sm text-slate-900 flex-1 truncate min-w-[80px]">
           {tableLabel || order.customerName || "—"}
         </span>
 
@@ -346,6 +382,7 @@ export function OrdersHistoryView() {
   const [page, setPage] = useState(1);
   const [feed, setFeed] = useState<OrderRecord[]>([]);
   const loadMoreRef = useRef<HTMLDivElement | null>(null);
+  console.log(feed)
 
   // Derive API params from quickFilter + custom filter
   const queryParams = useMemo(() => {
@@ -454,13 +491,33 @@ export function OrdersHistoryView() {
       </div>
 
       {/* Stats row */}
-      <div className="flex flex-wrap gap-2">
-        <StatCard label="Orders" value={ordersData?.pagination?.total ?? feed.length} color="border-slate-200 bg-white text-slate-800" />
-        <StatCard label="Revenue" value={fmtCurrency(totalAmount)} sub={`${completedCount} completed`} color="border-emerald-200 bg-emerald-50 text-emerald-800" />
-        <StatCard label="Dine-In" value={dineInCount} color="border-amber-200 bg-amber-50 text-amber-800" />
-        <StatCard label="Takeaway" value={takeawayCount} color="border-violet-200 bg-violet-50 text-violet-800" />
-      </div>
+    
 
+<div className="flex gap-2 overflow-x-auto no-scrollbar sm:flex-wrap">
+  <div className="flex gap-2 min-w-max sm:min-w-0 w-full">
+    <StatCard
+      label="Orders"
+      value={ordersData?.pagination?.total ?? feed.length}
+      color="border-slate-200 bg-white text-slate-800"
+    />
+    <StatCard
+      label="Revenue"
+      value={fmtCurrency(totalAmount)}
+      sub={`${completedCount} completed`}
+      color="border-emerald-200 bg-emerald-50 text-emerald-800"
+    />
+    <StatCard
+      label="Dine-In"
+      value={dineInCount}
+      color="border-amber-200 bg-amber-50 text-amber-800"
+    />
+    <StatCard
+      label="Takeaway"
+      value={takeawayCount}
+      color="border-violet-200 bg-violet-50 text-violet-800"
+    />
+  </div>
+</div>
       {/* Orders list */}
       <div className="no-scrollbar min-h-0 flex-1 overflow-y-auto">
         {isFetching && feed.length === 0 ? (
@@ -481,8 +538,8 @@ export function OrdersHistoryView() {
           </div>
         ) : (
           <div className="space-y-2 pb-4">
-            {feed.map((order) => (
-              <OrderRow key={order.id} order={order} invoiced={invoicedOrderIds.has(order.id)} />
+            {feed.map((order,index) => (
+              <OrderRow  index={index} key={order.id} order={order} invoiced={invoicedOrderIds.has(order.id)} />
             ))}
             {/* Load more sentinel */}
             <div ref={loadMoreRef} className="h-4" />

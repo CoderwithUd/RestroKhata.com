@@ -555,7 +555,7 @@ export function OrdersBoardView() {
   return (
     <div className="flex h-full flex-col gap-4">
       {/* Header */}
-      <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-[#e8e0d0] bg-white px-4 py-3 shadow-sm">
+      <div className="flex  items-center justify-between gap-3 rounded-2xl border border-[#e8e0d0] bg-white px-4 py-3 shadow-sm">
         <div className="flex items-center gap-3">
           <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-blue-100">
             <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="#2563eb" strokeWidth="2">
@@ -564,7 +564,7 @@ export function OrdersBoardView() {
           </div>
           <div>
             <p className="text-sm font-bold text-slate-900">Live Orders</p>
-            <p className="text-xs text-slate-500">All active orders — update status, serve, invoice</p>
+            {/* <p className="text-xs text-slate-500">All active orders — update status, serve, invoice</p> */}
           </div>
         </div>
         <div className="flex items-center gap-2">
@@ -577,13 +577,23 @@ export function OrdersBoardView() {
       </div>
 
       {/* Stats bar */}
-      <div className="flex flex-wrap gap-2">
+      
+      {/* <div className="flex flex-wrap gap-2">
         <StatPill label="Kitchen" count={cookingCount} color="border-rose-200 bg-rose-50 text-rose-800" />
         <StatPill label="Ready" count={readyCount} color="border-emerald-200 bg-emerald-50 text-emerald-800" />
         <StatPill label="Billing" count={billingCount} color="border-sky-200 bg-sky-50 text-sky-800" />
         <StatPill label="Dine-In" count={dineInOrders.length} color="border-amber-200 bg-amber-50 text-amber-800" />
         <StatPill label="Takeaway" count={takeawayOrders.length} color="border-violet-200 bg-violet-50 text-violet-800" />
-      </div>
+      </div> */}
+      <div className="overflow-x-auto no-scrollbar sm:overflow-visible">
+  <div className="flex gap-2 min-w-max sm:min-w-0 sm:flex-wrap">
+    <StatPill label="Kitchen" count={cookingCount} color="border-rose-200 bg-rose-50 text-rose-800" />
+    <StatPill label="Ready" count={readyCount} color="border-emerald-200 bg-emerald-50 text-emerald-800" />
+    <StatPill label="Billing" count={billingCount} color="border-sky-200 bg-sky-50 text-sky-800" />
+    <StatPill label="Dine-In" count={dineInOrders.length} color="border-amber-200 bg-amber-50 text-amber-800" />
+    <StatPill label="Takeaway" count={takeawayOrders.length} color="border-violet-200 bg-violet-50 text-violet-800" />
+  </div>
+</div>
 
       {/* Orders list — all in one */}
       {activeOrders.length === 0 ? (

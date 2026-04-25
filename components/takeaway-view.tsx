@@ -551,7 +551,7 @@ export function TakeawayView() {
       <button
         type="button"
         onClick={() => setCartDrawerOpen(true)}
-        className="fixed bottom-4 right-4 z-40 flex items-center gap-2 rounded-2xl bg-violet-600 px-4 py-3 text-sm font-bold text-white shadow-xl shadow-violet-300 md:hidden"
+        className="fixed bottom-[15%] right-4 z-40 flex items-center gap-2 rounded-2xl bg-violet-600 px-4 py-3 text-sm font-bold text-white shadow-xl shadow-violet-300 md:hidden"
       >
         🛒
         {cartCount > 0 && <span className="rounded-full bg-white px-1.5 py-0.5 text-[10px] font-bold text-violet-700">{cartCount}</span>}
