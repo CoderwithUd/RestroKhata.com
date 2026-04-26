@@ -583,7 +583,7 @@ function DashboardSidebar({
   const rootClassName = isDrawer
     ? "no-scrollbar absolute left-0 top-0 h-full w-[90%] max-w-[360px] overflow-hidden bg-[#fffdf9] p-1 shadow-2xl"
     : // ? "no-scrollbar absolute left-0 top-0 h-full w-[90%] max-w-[360px] overflow-hidden border-r border-[#e6dfd1] bg-[#fffdf9] p-4 shadow-2xl"
-      "hidden h-[calc(100vh-3rem)] w-[25%] shrink-0 rounded-[28px] border border-[#e6dfd1] bg-[#fffdf9] p-3.5 shadow-sm lg:sticky lg:top-3 lg:flex lg:flex-col";
+      "hidden h-[calc(100vh-1.5rem)] w-[25%] shrink-0 rounded-[20px] border border-[#e6dfd1] bg-[#fffdf9] p-2.5 shadow-sm lg:sticky lg:top-2 lg:flex lg:flex-col";
   const shellClassName = isDrawer
     ? "flex h-full flex-col  bg-[linear-gradient(145deg,#fff8eb_0%,#fffdf9_55%,#f5fbf8_100%)] p-1 shadow-sm"
     : // ? "flex h-full flex-col rounded-[28px] border border-[#eadfca] bg-[linear-gradient(145deg,#fff8eb_0%,#fffdf9_55%,#f5fbf8_100%)] p-4 shadow-sm"
@@ -592,8 +592,8 @@ function DashboardSidebar({
   const desktopVersionClassName =
     "rounded-full border border-[#eadfc9] bg-[#fff6e7] px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-amber-800";
   const topBlockClassName = isDrawer
-    ? "shrink-0 border-b border-[#eee7d8] pb-4"
-    : "shrink-0 border-b border-[#eee7d8] pb-4";
+    ? "shrink-0 border-b border-[#eee7d8] pb-3"
+    : "shrink-0 border-b border-[#eee7d8] pb-3";
   const navClassName =
     "no-scrollbar min-h-0 flex-1 space-y-1 overflow-y-auto pr-1 pt-1";
   const bottomClassName = "shrink-0 border-t border-[#eee7d8] pt-1";
@@ -1163,7 +1163,7 @@ export function DashboardCard({ section }: DashboardCardProps) {
     <main className="min-h-screen overflow-x-hidden bg-[#f6f4ef] text-slate-900 lg:h-screen lg:overflow-hidden">
       <div className="fixed inset-0 -z-10 bg-[radial-gradient(circle_at_top_right,#fbe8c6_0%,transparent_38%),radial-gradient(circle_at_bottom_left,#e4efe7_0%,transparent_35%)]" />
 
-      <div className="mx-auto flex w-full max-w-[1460px] gap-4 px-3 py-3 md:px-4 md:py-4 lg:gap-6 lg:px-6 lg:py-6">
+      <div className="mx-auto flex w-full max-w-[1460px] gap-2 px-2 py-2 md:px-2 md:py-2 lg:gap-3 lg:px-3 lg:py-3">
         {/* ── Sidebar ── */}
         <DashboardSidebar
           variant="desktop"
@@ -1180,44 +1180,49 @@ export function DashboardCard({ section }: DashboardCardProps) {
         />
 
         {/* ── Main Content ── */}
-        <div className="min-w-0 flex-1 lg:flex lg:h-[calc(100vh-3rem)] lg:flex-col">
+        <div className="min-w-0 flex-1 lg:flex lg:h-[calc(100vh-1.5rem)] lg:flex-col">
           {/* Header */}
-          <header className="sticky top-0 z-20 rounded-[26px] border border-[#e6dfd1] bg-[#fffdf9]/95 px-3 py-3 shadow-sm backdrop-blur sm:top-3 md:px-4 lg:px-5">
-            <div className="flex items-center justify-between gap-3">
-              <div className="flex min-w-0 items-center gap-3">
-                <button
-                  type="button"
-                  onClick={() => setDrawerOpen(true)}
-                  className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-[#e6dfd1] bg-white text-slate-700 shadow-sm lg:hidden"
-                  aria-label="Open menu"
+          <header className="fixed inset-x-0 top-0 z-40 rounded-b-[16px] border-b border-[#e6dfd1] bg-[#fffdf9]/95 px-2 py-1.5 shadow-sm backdrop-blur md:px-3 lg:hidden">
+            <div className="relative flex items-center justify-between gap-3">
+              <button
+                type="button"
+                onClick={() => setDrawerOpen(true)}
+                className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-[#e6dfd1] bg-white text-slate-700 shadow-sm lg:hidden"
+                aria-label="Open menu"
+              >
+                <svg
+                  viewBox="0 0 24 24"
+                  className="h-4 w-4"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
                 >
-                  <svg
-                    viewBox="0 0 24 24"
-                    className="h-4 w-4"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                  >
-                    <path d="M4 7h16M4 12h16M4 17h16" />
-                  </svg>
-                </button>
-                <div className="min-w-0">
-                  <h1 className="truncate text-lg font-semibold sm:text-xl">
-                    {activeSection.label}
-                  </h1>
-                  <p className="mt-0.5 truncate text-xs text-slate-500 sm:text-sm">
-                    {activeSection.subtitle}
-                  </p>
-                  <p className="hidden">
-                    {todayCompact} · {memberName}
-                  </p>
+                  <path d="M4 7h16M4 12h16M4 17h16" />
+                </svg>
+              </button>
+
+              <div className="absolute left-1/2 min-w-0 -translate-x-1/2 lg:static lg:translate-x-0 lg:flex-1">
+                <div className="flex items-center justify-center gap-3 lg:justify-start">
+                  <div className="hidden h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-slate-900 text-[11px] font-bold tracking-wide text-white lg:inline-flex">
+                    RK
+                  </div>
+                  <div className="min-w-0 text-center lg:text-left">
+                    <h1 className="truncate text-sm font-semibold text-slate-900 sm:text-base lg:text-lg">
+                      {tenantName}
+                    </h1>
+                  </div>
                 </div>
               </div>
+
+              <div className="h-10 w-10 lg:hidden" aria-hidden="true" />
+              <p className="hidden">
+                {todayCompact} · {memberName}
+              </p>
             </div>
           </header>
 
           {/* Scrollable Body */}
-          <div className="no-scrollbar pb-[calc(env(safe-area-inset-bottom)+5.5rem)] lg:min-h-0 lg:flex-1 lg:overflow-y-auto lg:pr-1 lg:pb-0">
+          <div className="no-scrollbar pb-[calc(env(safe-area-inset-bottom)+5.5rem)] pt-[3.5rem] lg:min-h-0 lg:flex-1 lg:overflow-y-auto lg:pr-1 lg:pb-0 lg:pt-0">
             {/* KPI Strip */}
             {activeSection.id === "overview" && (
               // ||

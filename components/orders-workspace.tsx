@@ -1088,7 +1088,7 @@ function MenuBrowser({
                   No items found
                 </div>
               ) : (
-                <div className="grid grid-cols-1 gap-3 px-1 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
+                <div className="grid grid-cols-2 gap-2.5 px-1 sm:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
                   {displayedItems.map((item) => {
                     const variants = availableMenuVariants(item);
                     const selectedVariant = resolveSelectedVariant(item);
@@ -1098,92 +1098,72 @@ function MenuBrowser({
                     return (
                       <div
                         key={item.id}
-                        className={`rounded-2xl border p-3 shadow-sm transition ${qty > 0 ? "border-amber-300 bg-amber-50/70 shadow-amber-100" : "border-slate-200 bg-white"}`}
+                        className={`group relative flex flex-col rounded-2xl border p-3 shadow-sm transition-all ${qty > 0 ? "border-amber-300 bg-amber-50/70 shadow-amber-100 ring-1 ring-amber-200" : "border-slate-200 bg-white hover:border-amber-200 hover:shadow-md"}`}
                       >
-                        <div className="flex items-start justify-between gap-2">
-                          <div className="min-w-0">
-                            <p className="text-sm font-semibold leading-snug text-slate-900 line-clamp-2">
-                              {item.name}
-                            </p>
-                            <p className="mt-1 text-xs font-semibold text-amber-700">
-                              {fmtCurrency(price)}
-                            </p>
-                            <p className="mt-1 text-[11px] text-slate-500">
-                              {item.catName}
-                            </p>
-                          </div>
-                          {qty > 0 ? (
-                            <span className="rounded-full border border-amber-300 bg-amber-100 px-2 py-0.5 text-[10px] font-bold text-amber-900">
-                              {qty} in cart
-                            </span>
-                          ) : null}
+                        {qty > 0 && (
+                          <span className="absolute right-2 top-2 rounded-full bg-amber-500 px-1.5 py-0.5 text-[10px] font-bold text-white">
+                            {qty}
+                          </span>
+                        )}
+
+                        <div className="min-w-0 flex-1">
+                          <p className="line-clamp-2 text-[13px] font-semibold leading-snug text-slate-900">
+                            {item.name}
+                          </p>
+                          <p className="mt-1 text-[10px] text-slate-400">
+                            {item.catName}
+                          </p>
                         </div>
-                        {variants.length > 0 ? (
-                          <div className="mt-3 space-y-2">
-                            <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
-                              {variants.length > 1
-                                ? "Choose variant"
-                                : "Variant"}
-                            </p>
-                            <div className="flex flex-wrap gap-1.5">
-                              {variants.map((variant) => {
-                                const active = variant.id === variantId;
-                                const variantQty = getQty(item.id, variant.id);
-                                return (
-                                  <button
-                                    key={variant.id}
-                                    type="button"
-                                    onClick={() =>
-                                      setItemVariant(item.id, variant.id)
-                                    }
-                                    className={`rounded-full border px-2.5 py-1 text-[11px] font-semibold transition ${
-                                      active
-                                        ? "border-amber-400 bg-amber-100 text-amber-900"
-                                        : "border-slate-200 bg-white text-slate-600"
-                                    }`}
-                                  >
-                                    {variant.name} |{" "}
-                                    {fmtCurrency(variant.price)}
-                                    {variantQty > 0 ? ` (${variantQty})` : ""}
-                                  </button>
-                                );
-                              })}
-                            </div>
+
+                        {variants.length > 1 && (
+                          <div className="mt-2 flex flex-wrap gap-1">
+                            {variants.map((variant) => (
+                              <button
+                                key={variant.id}
+                                type="button"
+                                onClick={() =>
+                                  setItemVariant(item.id, variant.id)
+                                }
+                                className={`rounded-full border px-2 py-0.5 text-[10px] font-semibold transition ${
+                                  variant.id === variantId
+                                    ? "border-amber-400 bg-amber-100 text-amber-900"
+                                    : "border-slate-200 bg-white text-slate-600"
+                                }`}
+                              >
+                                {variant.name}
+                              </button>
+                            ))}
                           </div>
-                        ) : null}
-                        <div className="mt-3 flex items-center justify-between gap-2 border-t border-slate-100 pt-3">
-                          <div className="min-w-0">
-                            <p className="text-[11px] font-semibold text-slate-500">
-                              Selected
-                            </p>
-                            <p className="truncate text-xs text-slate-700">
-                              {selectedVariant?.name || "Regular"}
-                            </p>
-                          </div>
+                        )}
+
+                        <div className="mt-2.5 flex items-center justify-between gap-1 pt-2 border-t border-slate-100">
+                          <p className="text-sm font-bold text-amber-700">
+                            {fmtCurrency(price)}
+                          </p>
                           {qty === 0 ? (
                             <button
                               type="button"
                               onClick={() => addItem(item, variantId)}
-                              className="min-w-[112px] rounded-xl bg-amber-500 px-4 py-2 text-xs font-bold text-white active:scale-95"
+                              className="rounded-xl bg-amber-500 px-3 py-1.5 text-[12px] font-bold text-white transition active:scale-95 hover:bg-amber-600"
                             >
-                              Add to Cart
+                              Add
                             </button>
                           ) : (
-                            <div className="flex min-w-[112px] items-center justify-between gap-1 rounded-xl border border-amber-200 bg-white px-1 py-1">
+                            <div className="flex items-center gap-1 rounded-xl border border-amber-200 bg-white px-1 py-0.5">
                               <button
                                 type="button"
                                 onClick={() => removeItem(item.id, variantId)}
-                                className="flex h-8 w-8 items-center justify-center rounded-lg border border-slate-300 bg-white text-slate-700 font-bold"
+                                className="flex h-6 w-6 items-center justify-center rounded-lg border border-slate-200 text-sm font-bold text-slate-600"
                               >
                                 −
                               </button>
-                              <span className="text-sm font-bold text-amber-700">
+                              <span className="min-w-[14px] text-center text-sm font-bold text-amber-700">
                                 {qty}
                               </span>
                               <button
                                 type="button"
                                 onClick={() => addItem(item, variantId)}
-                                className="flex h-8 w-8 items-center justify-center rounded-lg bg-amber-500 text-white font-bold"
+                                className="flex h-6 w-6 items-center justify-center rounded-lg bg-amber-500 text-sm font-bold text-white"
                               >
                                 +
                               </button>
@@ -4441,7 +4421,7 @@ export function OrdersWorkspace({ rawRole }: Props) {
             </div>
 
             {/* Action buttons */}
-            <div className="ml-auto flex gap-2">
+            <div className="ml-auto hidden sm:flex flex gap-2">
               <button
                 id="orders-btn-new-dine-in"
                 type="button"
@@ -4481,6 +4461,52 @@ export function OrdersWorkspace({ rawRole }: Props) {
           </div>
         </>
       )}
+
+
+<div className="fixed bottom-[calc(env(safe-area-inset-bottom)+5.25rem)] right-3 z-40 flex flex-col items-end gap-2 sm:hidden sm:right-4 lg:bottom-[calc(env(safe-area-inset-bottom)+1.25rem)]">
+          <button
+            type="button"
+            onClick={() => router.push("/dashboard/orders/new")}
+            className="inline-flex h-12 w-fit items-center gap-2 rounded-full border border-[#1f6a57] bg-[#2f8a70] px-4 pr-5 text-sm font-semibold text-white shadow-xl shadow-emerald-900/20 ring-2 ring-emerald-200/80 transition-all hover:-translate-y-0.5 hover:bg-[#27745d] hover:shadow-2xl focus:outline-none focus:ring-4 focus:ring-emerald-300/60"
+            aria-label="Create dine in order"
+          >
+            <span className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-white/15">
+              <svg
+                viewBox="0 0 24 24"
+                className="h-4 w-4"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+              >
+                <path d="M4 8h16M5 8v8a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8" />
+                <path d="M8 4v4M16 4v4" />
+              </svg>
+            </span>
+            <span className="whitespace-nowrap">Dine In</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => router.push("/dashboard/orders/takeaway")}
+            className="inline-flex h-12 w-fit items-center gap-2 rounded-full border border-[#b56f24] bg-[#c98533] px-4 pr-5 text-sm font-semibold text-white shadow-xl shadow-amber-900/20 ring-2 ring-amber-200/80 transition-all hover:-translate-y-0.5 hover:bg-[#b37227] hover:shadow-2xl focus:outline-none focus:ring-4 focus:ring-amber-300/60"
+            aria-label="Create take away order"
+          >
+            <span className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-white/15">
+              <svg
+                viewBox="0 0 24 24"
+                className="h-4 w-4"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+              >
+                <path d="M7 4h10l2 6H5l2-6z" />
+                <path d="M6 10h12l-1 10H7L6 10z" />
+              </svg>
+            </span>
+            <span className="whitespace-nowrap">Take Away</span>
+          </button>
+        </div>
+
+      
     </div>
   );
 }

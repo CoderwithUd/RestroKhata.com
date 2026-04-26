@@ -458,7 +458,7 @@ export function OrdersHistoryView() {
   return (
     <div className="flex h-full flex-col gap-4">
       {/* Quick filters + filter button */}
-      <div className="flex flex-wrap items-center gap-2">
+      <div className="flex items-center gap-2">
         <div className="no-scrollbar flex gap-1.5 overflow-x-auto">
           {quickFilters.map(({ key, label }) => (
             <button

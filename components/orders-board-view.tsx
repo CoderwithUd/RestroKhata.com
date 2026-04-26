@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { useConfirm } from "@/components/confirm-provider";
 import { getErrorMessage } from "@/lib/error";
 import { showError, showSuccess } from "@/lib/feedback";
 import { useOrderSocket } from "@/lib/use-order-socket";
@@ -10,6 +11,7 @@ import {
   useMoveOrderItemMutation,
   useRemoveOrderItemMutation,
   useUpdateOrderMutation,
+  useDeleteOrderMutation,
 } from "@/store/api/ordersApi";
 import { useCreateInvoiceMutation, useGetInvoicesQuery } from "@/store/api/invoicesApi";
 import { useGetTablesQuery } from "@/store/api/tablesApi";
@@ -95,6 +97,55 @@ function orderActionKey(orderId: string, lineId: string, status?: string): strin
   return `${orderId}:${lineId}:${status || ""}`;
 }
 
+function orderHeaderActionKey(orderId: string, action: "COMPLETE" | "DELETE"): string {
+  return `${orderId}:${action}`;
+}
+
+function getBulkOrderAction(order: OrderRecord): {
+  label: string;
+  count: number;
+  targetStatus: OrderStatus | null;
+  sourceStatus: OrderStatus | null;
+} {
+  const items = activeItems(order);
+  const readyItems = items.filter((item) => ns(item.status) === "READY");
+  if (readyItems.length > 0) {
+    return {
+      label: "Serve",
+      count: readyItems.length,
+      targetStatus: "SERVED",
+      sourceStatus: "READY",
+    };
+  }
+
+  const cookingItems = items.filter((item) => ns(item.status) === "IN_PROGRESS");
+  if (cookingItems.length > 0) {
+    return {
+      label: "Ready",
+      count: cookingItems.length,
+      targetStatus: "READY",
+      sourceStatus: "IN_PROGRESS",
+    };
+  }
+
+  const placedItems = items.filter((item) => ns(item.status) === "PLACED");
+  if (placedItems.length > 0) {
+    return {
+      label: "Start",
+      count: placedItems.length,
+      targetStatus: "IN_PROGRESS",
+      sourceStatus: "PLACED",
+    };
+  }
+
+  return {
+    label: "Complete",
+    count: 0,
+    targetStatus: null,
+    sourceStatus: null,
+  };
+}
+
 function correctionQty(item: OrderItem, qty?: number): number {
   if (!item.quantity) return 1;
   if (!qty || !Number.isFinite(qty)) return 1;
@@ -150,8 +201,11 @@ function OrderCard({
   correctingLineKey,
   correctionQuantities,
   creatingInvoiceOrderId,
+  processingOrderKey,
   onMarkItemServed,
   onMarkReadyAll,
+  onAdvanceOrder,
+  onDeleteOrder,
   onRemoveItem,
   onCancelItem,
   onMoveItem,
@@ -164,8 +218,11 @@ function OrderCard({
   correctingLineKey: string | null;
   correctionQuantities: Record<string, number>;
   creatingInvoiceOrderId: string | null;
+  processingOrderKey: string | null;
   onMarkItemServed: (order: OrderRecord, item: OrderItem) => void;
   onMarkReadyAll: (order: OrderRecord) => void;
+  onAdvanceOrder: (order: OrderRecord) => void;
+  onDeleteOrder: (order: OrderRecord) => void;
   onRemoveItem: (order: OrderRecord, item: OrderItem, qty: number) => void;
   onCancelItem: (order: OrderRecord, item: OrderItem) => void;
   onMoveItem: (order: OrderRecord, item: OrderItem, target: { targetOrderId?: string; targetTableId?: string }, qty: number) => void;
@@ -189,6 +246,11 @@ function OrderCard({
   const tokenLabel = order.orderNumber ? `#${order.orderNumber}` : `#${order.id.slice(-6)}`;
   const tableLabel = order.table?.name || (order.table?.number ? `Table ${order.table.number}` : null);
   const customerLabel = [order.customerName, order.customerPhone].filter(Boolean).join(" · ") || null;
+  const bulkAction = getBulkOrderAction(order);
+  const completeKey = orderHeaderActionKey(order.id, "COMPLETE");
+  const deleteKey = orderHeaderActionKey(order.id, "DELETE");
+  const canComplete = ns(order.status) !== "COMPLETED" && ns(order.status) !== "CANCELLED";
+  const canDelete = ns(order.status) !== "CANCELLED";
 
   return (
     <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-[0_4px_14px_rgba(15,23,42,0.04)]">
@@ -237,6 +299,30 @@ function OrderCard({
 
         {/* Header actions */}
         <div className="flex flex-wrap items-center gap-1.5">
+          {canComplete && (
+            <button
+              type="button"
+              onClick={() => onAdvanceOrder(order)}
+              disabled={processingOrderKey === completeKey}
+              className="rounded-xl border border-emerald-300 bg-emerald-50 px-3 py-1.5 text-xs font-semibold text-emerald-800 transition hover:bg-emerald-100 disabled:opacity-50"
+            >
+              {processingOrderKey === completeKey
+                ? "Updating..."
+                : bulkAction.count > 0
+                  ? `${bulkAction.label} ${bulkAction.count}`
+                  : "Complete"}
+            </button>
+          )}
+          {canDelete && (
+            <button
+              type="button"
+              onClick={() => onDeleteOrder(order)}
+              disabled={processingOrderKey === deleteKey}
+              className="rounded-xl border border-rose-300 bg-rose-50 px-3 py-1.5 text-xs font-semibold text-rose-700 transition hover:bg-rose-100 disabled:opacity-50"
+            >
+              {processingOrderKey === deleteKey ? "Deleting..." : "Delete"}
+            </button>
+          )}
           {readyItems.length > 0 && (
             <button
               type="button"
@@ -397,6 +483,7 @@ function OrderCard({
 
 export function OrdersBoardView() {
   const token = useAppSelector(selectAuthToken);
+  const confirm = useConfirm();
 
   const { data: ordersData, refetch: refetchOrders } = useGetOrdersQuery({
     status: ["PLACED", "IN_PROGRESS", "READY", "SERVED"],
@@ -406,6 +493,7 @@ export function OrdersBoardView() {
   const { data: tablesData } = useGetTablesQuery({ isActive: true });
   const [createInvoice] = useCreateInvoiceMutation();
   const [updateOrder] = useUpdateOrderMutation();
+  const [deleteOrder] = useDeleteOrderMutation();
   const [removeOrderItem] = useRemoveOrderItemMutation();
   const [cancelOrderItem] = useCancelOrderItemMutation();
   const [moveOrderItem] = useMoveOrderItemMutation();
@@ -415,6 +503,7 @@ export function OrdersBoardView() {
   const [correctingLineKey, setCorrectingLineKey] = useState<string | null>(null);
   const [correctionQuantities] = useState<Record<string, number>>({});
   const [creatingInvoiceOrderId, setCreatingInvoiceOrderId] = useState<string | null>(null);
+  const [processingOrderKey, setProcessingOrderKey] = useState<string | null>(null);
   const [sectionFilter, setSectionFilter] = useState<"all" | "dine-in" | "takeaway">("all");
 
   useOrderSocket({
@@ -510,6 +599,70 @@ export function OrdersBoardView() {
     finally { setCreatingInvoiceOrderId(null); }
   }
 
+  async function handleAdvanceOrder(order: OrderRecord) {
+    const key = orderHeaderActionKey(order.id, "COMPLETE");
+    const bulkAction = getBulkOrderAction(order);
+    const items = activeItems(order);
+    const targetItems =
+      bulkAction.sourceStatus && bulkAction.targetStatus
+        ? items.filter((item) => ns(item.status) === bulkAction.sourceStatus)
+        : [];
+    const willCompleteOrder =
+      bulkAction.targetStatus === "SERVED" &&
+      items.length > 0 &&
+      items.every((item) => ["READY", "SERVED"].includes(ns(item.status)));
+
+    try {
+      setProcessingOrderKey(key);
+      if (targetItems.length > 0 && bulkAction.targetStatus) {
+        await updateOrder({
+          orderId: order.id,
+          payload: {
+            itemStatusUpdates: targetItems
+              .filter((item): item is OrderItem & { lineId: string } => Boolean(item.lineId))
+              .map((item) => ({ lineId: item.lineId, status: bulkAction.targetStatus as OrderStatus })),
+            ...(willCompleteOrder ? { status: "COMPLETED" as OrderStatus } : {}),
+          },
+        }).unwrap();
+        showSuccess(
+          `${bulkAction.label} ${targetItems.length}${willCompleteOrder ? " and completed" : ""}`,
+        );
+      } else if (items.length === 0) {
+        await updateOrder({ orderId: order.id, payload: { status: "COMPLETED" } }).unwrap();
+        showSuccess("Order completed");
+      }
+      refetchOrders();
+      refetchInvoices();
+    } catch (e) {
+      showError(getErrorMessage(e));
+    } finally {
+      setProcessingOrderKey(null);
+    }
+  }
+
+  async function handleDeleteOrder(order: OrderRecord) {
+    const key = orderHeaderActionKey(order.id, "DELETE");
+    const approved = await confirm({
+      title: "Delete Order",
+      message: "Delete this live order?",
+      confirmText: "Delete Order",
+      cancelText: "Keep Order",
+      tone: "danger",
+    });
+    if (!approved) return;
+    try {
+      setProcessingOrderKey(key);
+      const response = await deleteOrder(order.id).unwrap();
+      showSuccess(response.message || "Order deleted");
+      refetchOrders();
+      refetchInvoices();
+    } catch (e) {
+      showError(getErrorMessage(e));
+    } finally {
+      setProcessingOrderKey(null);
+    }
+  }
+
   async function handleRemoveItem(order: OrderRecord, item: OrderItem, qty: number) {
     if (!item.lineId) return;
     const q = correctionQty(item, qty);
@@ -555,7 +708,7 @@ export function OrdersBoardView() {
   return (
     <div className="flex h-full flex-col gap-4">
       {/* Header */}
-      <div className="flex  items-center justify-between gap-3 rounded-2xl border border-[#e8e0d0] bg-white px-4 py-3 shadow-sm">
+      {/* <div className="flex  items-center justify-between gap-3 rounded-2xl border border-[#e8e0d0] bg-white px-4 py-3 shadow-sm">
         <div className="flex items-center gap-3">
           <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-blue-100">
             <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="#2563eb" strokeWidth="2">
@@ -564,7 +717,7 @@ export function OrdersBoardView() {
           </div>
           <div>
             <p className="text-sm font-bold text-slate-900">Live Orders</p>
-            {/* <p className="text-xs text-slate-500">All active orders — update status, serve, invoice</p> */}
+            <p className="text-xs text-slate-500">All active orders — update status, serve, invoice</p>
           </div>
         </div>
         <div className="flex items-center gap-2">
@@ -574,6 +727,13 @@ export function OrdersBoardView() {
             Refresh
           </button>
         </div>
+      </div> */}
+      <div className="flex items-center justify-between">
+         <LiveBadge connected={socketConnected} />
+          <button type="button" onClick={() => { refetchOrders(); refetchInvoices(); }}
+            className="rounded-lg border border-[#e0d8c9] bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 transition">
+            Refresh
+          </button>
       </div>
 
       {/* Stats bar */}
@@ -618,8 +778,11 @@ export function OrdersBoardView() {
                 correctingLineKey={correctingLineKey}
                 correctionQuantities={correctionQuantities}
                 creatingInvoiceOrderId={creatingInvoiceOrderId}
+                processingOrderKey={processingOrderKey}
                 onMarkItemServed={handleMarkItemServed}
                 onMarkReadyAll={handleMarkReadyAll}
+                onAdvanceOrder={handleAdvanceOrder}
+                onDeleteOrder={handleDeleteOrder}
                 onRemoveItem={handleRemoveItem}
                 onCancelItem={handleCancelItem}
                 onMoveItem={handleMoveItem}

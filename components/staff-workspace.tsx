@@ -14,7 +14,7 @@ import {
 import type { TenantStaffMember } from "@/store/types/auth";
 
 type Props = { tenantName?: string };
-type StaffListViewMode = "grid" | "table";
+type ViewMode = "grid" | "list";
 
 type CreateStaffForm = {
   name: string;
@@ -35,9 +35,43 @@ type EditDraft = {
 
 const FALLBACK_ROLES = ["MANAGER", "KITCHEN", "WAITER"];
 
+const ROLE_META: Record<string, { bg: string; text: string; border: string; dot: string; lightBg: string }> = {
+  MANAGER: {
+    bg: "bg-violet-100",
+    text: "text-violet-800",
+    border: "border-violet-200",
+    dot: "bg-violet-500",
+    lightBg: "bg-violet-50",
+  },
+  KITCHEN: {
+    bg: "bg-orange-100",
+    text: "text-orange-800",
+    border: "border-orange-200",
+    dot: "bg-orange-500",
+    lightBg: "bg-orange-50",
+  },
+  WAITER: {
+    bg: "bg-sky-100",
+    text: "text-sky-800",
+    border: "border-sky-200",
+    dot: "bg-sky-500",
+    lightBg: "bg-sky-50",
+  },
+  DEFAULT: {
+    bg: "bg-slate-100",
+    text: "text-slate-700",
+    border: "border-slate-200",
+    dot: "bg-slate-400",
+    lightBg: "bg-slate-50",
+  },
+};
+
+function getRoleMeta(role: string) {
+  return ROLE_META[normalizeRole(role)] ?? ROLE_META.DEFAULT;
+}
+
 function normalizeRole(role?: string): string {
-  const value = (role || "").trim().toUpperCase();
-  return value || "WAITER";
+  return (role || "").trim().toUpperCase() || "WAITER";
 }
 
 function normalizePhone(value: string): string {
@@ -45,13 +79,7 @@ function normalizePhone(value: string): string {
 }
 
 function defaultCreateForm(roles: string[]): CreateStaffForm {
-  return {
-    name: "",
-    whatsappNumber: "",
-    email: "",
-    password: "",
-    role: roles[0] || "WAITER",
-  };
+  return { name: "", whatsappNumber: "", email: "", password: "", role: roles[0] || "WAITER" };
 }
 
 function toSafeEmail(value: string): string {
@@ -66,6 +94,305 @@ function isValidEmail(value: string): boolean {
   return /^\S+@\S+\.\S+$/.test(value);
 }
 
+function getInitials(name: string): string {
+  return name
+    .split(" ")
+    .map((w) => w[0] || "")
+    .join("")
+    .toUpperCase()
+    .slice(0, 2) || "??";
+}
+
+// ─── Minimal Icon Set ────────────────────────────────────────────────────────
+const Icon = {
+  Close: () => (
+    <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+    </svg>
+  ),
+  Plus: () => (
+    <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={2.5} viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
+    </svg>
+  ),
+  Search: () => (
+    <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+    </svg>
+  ),
+  Grid: () => (
+    <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+      <rect x="3" y="3" width="7" height="7" rx="1" /><rect x="14" y="3" width="7" height="7" rx="1" />
+      <rect x="3" y="14" width="7" height="7" rx="1" /><rect x="14" y="14" width="7" height="7" rx="1" />
+    </svg>
+  ),
+  List: () => (
+    <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" d="M4 6h16M4 12h16M4 18h16" />
+    </svg>
+  ),
+  Edit: () => (
+    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+    </svg>
+  ),
+  Trash: () => (
+    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+    </svg>
+  ),
+  Refresh: () => (
+    <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+    </svg>
+  ),
+  Phone: () => (
+    <svg className="w-3 h-3" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" />
+    </svg>
+  ),
+  Mail: () => (
+    <svg className="w-3 h-3" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+    </svg>
+  ),
+  Lock: () => (
+    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+    </svg>
+  ),
+  Users: () => (
+    <svg className="w-8 h-8" fill="none" stroke="currentColor" strokeWidth={1.5} viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" />
+    </svg>
+  ),
+  ChevronRight: () => (
+    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth={2.5} viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+    </svg>
+  ),
+};
+
+// ─── Sub-components ──────────────────────────────────────────────────────────
+
+function Avatar({ name, role, size = "md" }: { name: string; role: string; size?: "sm" | "md" | "lg" }) {
+  const m = getRoleMeta(role);
+  const sz =
+    size === "sm"
+      ? "w-8 h-8 text-xs"
+      : size === "lg"
+      ? "w-12 h-12 text-base"
+      : "w-9 h-9 text-xs";
+  return (
+    <div
+      className={`${sz} rounded-xl ${m.bg} ${m.border} border-[1.5px] flex items-center justify-center flex-shrink-0`}
+    >
+      <span className={`font-bold tracking-tight ${m.text}`}>{getInitials(name)}</span>
+    </div>
+  );
+}
+
+function RoleBadge({ role }: { role: string }) {
+  const m = getRoleMeta(role);
+  return (
+    <span
+      className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[10px] font-semibold tracking-wide ${m.lightBg} ${m.text}`}
+    >
+      <span className={`w-1 h-1 rounded-full ${m.dot}`} />
+      {normalizeRole(role)}
+    </span>
+  );
+}
+
+function StatusDot({ active }: { active: boolean }) {
+  return (
+    <span
+      className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[10px] font-semibold ${
+        active
+          ? "bg-emerald-50 text-emerald-700"
+          : "bg-slate-100 text-slate-500"
+      }`}
+    >
+      <span
+        className={`w-1 h-1 rounded-full ${
+          active ? "bg-emerald-500" : "bg-slate-400"
+        }`}
+      />
+      {active ? "Active" : "Inactive"}
+    </span>
+  );
+}
+
+function Modal({
+  onClose,
+  children,
+  title,
+  subtitle,
+}: {
+  onClose: () => void;
+  children: React.ReactNode;
+  title: string;
+  subtitle?: string;
+}) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center">
+      <div
+        className="absolute inset-0 bg-black/40 backdrop-blur-[2px]"
+        onClick={onClose}
+      />
+      <div className="relative z-10 w-full max-w-md max-h-[90dvh] overflow-y-auto bg-white rounded-t-2xl sm:rounded-2xl shadow-xl">
+        {/* Modal Header */}
+        <div className="sticky top-0 z-10 bg-white border-b border-slate-100 px-5 py-4 flex items-center justify-between rounded-t-2xl sm:rounded-t-2xl">
+          <div>
+            <h2 className="text-sm font-bold text-slate-900 leading-tight">{title}</h2>
+            {subtitle && <p className="text-xs text-slate-400 mt-0.5">{subtitle}</p>}
+          </div>
+          <button
+            onClick={onClose}
+            className="h-8 w-8 rounded-lg border border-slate-200 flex items-center justify-center text-slate-400 hover:bg-slate-50 transition-all"
+          >
+            <Icon.Close />
+          </button>
+        </div>
+        <div className="p-5">{children}</div>
+      </div>
+    </div>
+  );
+}
+
+function FormField({
+  label,
+  icon,
+  children,
+  required,
+}: {
+  label: string;
+  icon?: React.ReactNode;
+  children: React.ReactNode;
+  required?: boolean;
+}) {
+  return (
+    <div className="space-y-1">
+      <label className="flex items-center gap-1.5 text-[11px] font-semibold text-slate-500 uppercase tracking-wider">
+        {icon && <span className="opacity-60">{icon}</span>}
+        {label}
+        {required && <span className="text-red-400 normal-case font-normal">*</span>}
+      </label>
+      {children}
+    </div>
+  );
+}
+
+const inputCls =
+  "w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-900 placeholder-slate-400 focus:bg-white focus:border-amber-400 focus:ring-2 focus:ring-amber-100 focus:outline-none transition-all";
+
+function RoleSelector({
+  options,
+  value,
+  onChange,
+}: {
+  options: string[];
+  value: string;
+  onChange: (r: string) => void;
+}) {
+  return (
+    <div className="flex flex-wrap gap-1.5">
+      {options.map((role) => {
+        const m = getRoleMeta(role);
+        const active = value === role;
+        return (
+          <button
+            key={role}
+            type="button"
+            onClick={() => onChange(role)}
+            className={`flex items-center gap-1.5 h-8 px-3 rounded-lg text-xs font-semibold border transition-all ${
+              active
+                ? `${m.bg} ${m.text} ${m.border} ring-1 ring-offset-0 ring-current/40`
+                : "bg-white text-slate-600 border-slate-200 hover:border-slate-300 hover:bg-slate-50"
+            }`}
+          >
+            <span className={`w-1.5 h-1.5 rounded-full ${active ? m.dot : "bg-slate-300"}`} />
+            {role}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+function ToggleSwitch({
+  value,
+  onChange,
+}: {
+  value: boolean;
+  onChange: (v: boolean) => void;
+}) {
+  return (
+    <div
+      onClick={() => onChange(!value)}
+      className={`flex items-center justify-between px-4 py-3 rounded-xl border cursor-pointer select-none transition-all ${
+        value
+          ? "bg-emerald-50 border-emerald-200"
+          : "bg-slate-50 border-slate-200"
+      }`}
+    >
+      <div>
+        <p
+          className={`text-sm font-semibold ${
+            value ? "text-emerald-700" : "text-slate-600"
+          }`}
+        >
+          {value ? "Active" : "Inactive"}
+        </p>
+        <p className="text-xs text-slate-400 mt-0.5">
+          {value ? "Member can log in and use the system" : "Access is currently suspended"}
+        </p>
+      </div>
+      <div
+        className={`relative w-10 h-5 rounded-full transition-colors flex-shrink-0 ${
+          value ? "bg-emerald-500" : "bg-slate-300"
+        }`}
+      >
+        <div
+          className={`absolute top-0.5 w-4 h-4 bg-white rounded-full shadow-sm transition-transform ${
+            value ? "translate-x-5" : "translate-x-0.5"
+          }`}
+        />
+      </div>
+    </div>
+  );
+}
+
+function ActionButtons({
+  onEdit,
+  onDelete,
+  disabled,
+}: {
+  onEdit: () => void;
+  onDelete: () => void;
+  disabled?: boolean;
+}) {
+  return (
+    <div className="flex items-center gap-1.5">
+      <button
+        onClick={onEdit}
+        className="flex items-center gap-1 h-7 px-2.5 rounded-lg border border-slate-200 text-slate-600 text-xs font-medium hover:bg-slate-50 hover:border-slate-300 transition-all"
+      >
+        <Icon.Edit />
+        <span>Edit</span>
+      </button>
+      <button
+        onClick={onDelete}
+        disabled={disabled}
+        className="h-7 w-7 rounded-lg border border-red-100 flex items-center justify-center text-red-400 hover:bg-red-50 hover:border-red-200 transition-all disabled:opacity-40"
+      >
+        <Icon.Trash />
+      </button>
+    </div>
+  );
+}
+
+// ─── Main ─────────────────────────────────────────────────────────────────────
 export function StaffWorkspace({ tenantName }: Props) {
   const confirm = useConfirm();
   const { data: rolesPayload } = useStaffRolesQuery();
@@ -75,7 +402,7 @@ export function StaffWorkspace({ tenantName }: Props) {
   const [deleteStaff, { isLoading: isDeleting }] = useDeleteTenantStaffMutation();
 
   const roleOptions = useMemo(() => {
-    const list = (rolesPayload?.roles || []).map((role) => normalizeRole(role)).filter(Boolean);
+    const list = (rolesPayload?.roles || []).map((r) => normalizeRole(r)).filter(Boolean);
     return Array.from(new Set(list.length ? list : FALLBACK_ROLES));
   }, [rolesPayload?.roles]);
 
@@ -83,87 +410,73 @@ export function StaffWorkspace({ tenantName }: Props) {
     () =>
       (staffPayload?.items || [])
         .slice()
-        .sort((a, b) => `${a.role || ""}-${a.user.name || ""}`.localeCompare(`${b.role || ""}-${b.user.name || ""}`)),
-    [staffPayload?.items],
+        .sort((a, b) =>
+          `${a.role}-${a.user.name}`.localeCompare(`${b.role}-${b.user.name}`)
+        ),
+    [staffPayload?.items]
   );
 
-  const [createForm, setCreateForm] = useState<CreateStaffForm>(() => defaultCreateForm(FALLBACK_ROLES));
-  const [isCreateStaffOpen, setIsCreateStaffOpen] = useState(false);
-  const [staffListViewMode, setStaffListViewMode] = useState<StaffListViewMode>("grid");
+  const [createForm, setCreateForm] = useState<CreateStaffForm>(() =>
+    defaultCreateForm(FALLBACK_ROLES)
+  );
+  const [createOpen, setCreateOpen] = useState(false);
+  const [viewMode, setViewMode] = useState<ViewMode>("list");
   const [editingMember, setEditingMember] = useState<TenantStaffMember | null>(null);
   const [edits, setEdits] = useState<Record<string, EditDraft>>({});
-  const [searchText, setSearchText] = useState("");
+  const [search, setSearch] = useState("");
   const [roleFilter, setRoleFilter] = useState("all");
   const [statusFilter, setStatusFilter] = useState<"all" | "active" | "inactive">("all");
 
-  const filteredStaff = useMemo(() => {
-    const q = searchText.trim().toLowerCase();
-    return staffItems.filter((member) => {
-      const role = normalizeRole(member.role);
-      const isActive = member.isActive ?? true;
-
-      if (roleFilter !== "all" && role !== roleFilter) return false;
-      if (statusFilter === "active" && !isActive) return false;
-      if (statusFilter === "inactive" && isActive) return false;
-      if (!q) return true;
-
-      const content = `${member.user.name || ""} ${member.user.email || ""} ${member.user.whatsappNumber || ""} ${role}`.toLowerCase();
-      return content.includes(q);
-    });
-  }, [roleFilter, searchText, staffItems, statusFilter]);
-
-  const activeCount = staffItems.filter((member) => member.isActive ?? true).length;
+  const activeCount = staffItems.filter((m) => m.isActive ?? true).length;
   const inactiveCount = staffItems.length - activeCount;
 
-  function getDraft(member: TenantStaffMember): EditDraft {
+  const filteredStaff = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return staffItems.filter((m) => {
+      const role = normalizeRole(m.role);
+      const active = m.isActive ?? true;
+      if (roleFilter !== "all" && role !== roleFilter) return false;
+      if (statusFilter === "active" && !active) return false;
+      if (statusFilter === "inactive" && active) return false;
+      if (!q) return true;
+      return `${m.user.name} ${m.user.email} ${m.user.whatsappNumber} ${role}`
+        .toLowerCase()
+        .includes(q);
+    });
+  }, [roleFilter, search, staffItems, statusFilter]);
+
+  function getDraft(m: TenantStaffMember): EditDraft {
     return (
-      edits[member.membershipId] || {
-        name: member.user.name || "",
-        whatsappNumber: member.user.whatsappNumber || "",
-        email: member.user.email || "",
+      edits[m.membershipId] || {
+        name: m.user.name || "",
+        whatsappNumber: m.user.whatsappNumber || "",
+        email: m.user.email || "",
         password: "",
-        role: normalizeRole(member.role),
-        isActive: member.isActive ?? true,
+        role: normalizeRole(m.role),
+        isActive: m.isActive ?? true,
       }
     );
   }
 
-  function setMemberDraft(membershipId: string, next: Partial<EditDraft>, member: TenantStaffMember) {
-    setEdits((prev) => {
-      const base = prev[membershipId] || getDraft(member);
-      return {
-        ...prev,
-        [membershipId]: { ...base, ...next },
-      };
-    });
+  function setDraft(membershipId: string, next: Partial<EditDraft>, m: TenantStaffMember) {
+    setEdits((p) => ({ ...p, [membershipId]: { ...getDraft(m), ...next } }));
   }
 
-  function openMemberEditor(member: TenantStaffMember) {
-    setMemberDraft(member.membershipId, {}, member);
-    setEditingMember(member);
+  function openEdit(m: TenantStaffMember) {
+    setDraft(m.membershipId, {}, m);
+    setEditingMember(m);
   }
 
-  async function submitCreate(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    if (!createForm.name.trim()) {
-      showError("Staff name is required");
-      return;
-    }
-    if (!isValidPhone(createForm.whatsappNumber)) {
-      showError("Valid WhatsApp number is required");
-      return;
-    }
-    if (createForm.email.trim() && !isValidEmail(toSafeEmail(createForm.email))) {
-      showError("Enter a valid email address");
-      return;
-    }
-    if (!createForm.password.trim() || createForm.password.trim().length < 6) {
-      showError("Password minimum 6 chars");
-      return;
-    }
-
+  async function submitCreate(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    if (!createForm.name.trim()) return showError("Staff name is required");
+    if (!isValidPhone(createForm.whatsappNumber)) return showError("Valid WhatsApp number required");
+    if (createForm.email.trim() && !isValidEmail(toSafeEmail(createForm.email)))
+      return showError("Enter a valid email");
+    if (!createForm.password.trim() || createForm.password.trim().length < 6)
+      return showError("Password must be at least 6 characters");
     try {
-      const response = await createStaff({
+      const res = await createStaff({
         name: createForm.name.trim(),
         whatsappNumber: createForm.whatsappNumber.trim(),
         email: createForm.email.trim() ? toSafeEmail(createForm.email) : undefined,
@@ -171,36 +484,25 @@ export function StaffWorkspace({ tenantName }: Props) {
         role: normalizeRole(createForm.role),
       }).unwrap();
       setCreateForm(defaultCreateForm(roleOptions));
-      setIsCreateStaffOpen(false);
-      showSuccess(response.message || "Staff created");
+      setCreateOpen(false);
+      showSuccess(res.message || "Staff member added");
     } catch (e) {
       showError(getErrorMessage(e));
     }
   }
 
-  async function saveMember(member: TenantStaffMember) {
-    const draft = getDraft(member);
-    if (!draft.name.trim()) {
-      showError("Staff name is required");
-      return;
-    }
-    if (!isValidPhone(draft.whatsappNumber)) {
-      showError("Valid WhatsApp number is required");
-      return;
-    }
-    if (draft.email.trim() && !isValidEmail(toSafeEmail(draft.email))) {
-      showError("Enter a valid email address");
-      return;
-    }
-    if (draft.password.trim() && draft.password.trim().length < 6) {
-      showError("New password minimum 6 chars");
-      return;
-    }
-
+  async function saveMember(m: TenantStaffMember) {
+    const draft = getDraft(m);
+    if (!draft.name.trim()) return showError("Name is required");
+    if (!isValidPhone(draft.whatsappNumber)) return showError("Valid WhatsApp number required");
+    if (draft.email.trim() && !isValidEmail(toSafeEmail(draft.email)))
+      return showError("Enter a valid email");
+    if (draft.password.trim() && draft.password.trim().length < 6)
+      return showError("Password must be at least 6 characters");
     try {
-      const response = await updateStaff({
-        membershipId: member.membershipId,
-        userId: member.user.id,
+      const res = await updateStaff({
+        membershipId: m.membershipId,
+        userId: m.user.id,
         payload: {
           name: draft.name.trim(),
           whatsappNumber: draft.whatsappNumber.trim(),
@@ -210,40 +512,34 @@ export function StaffWorkspace({ tenantName }: Props) {
           isActive: draft.isActive,
         },
       }).unwrap();
-      showSuccess(response.message || "Staff updated");
+      showSuccess(res.message || "Changes saved");
+      setEditingMember(null);
+      setEdits((p) => {
+        const n = { ...p };
+        delete n[m.membershipId];
+        return n;
+      });
     } catch (e) {
       showError(getErrorMessage(e));
-      return;
     }
-
-    setEditingMember(null);
-    setEdits((prev) => {
-      const next = { ...prev };
-      delete next[member.membershipId];
-      return next;
-    });
   }
 
-  async function removeMember(member: TenantStaffMember) {
-    const approved = await confirm({
-      title: "Delete Staff",
-      message: `Delete ${member.user.name || member.user.whatsappNumber || "this staff"}? Access for this account will be removed from this tenant.`,
-      confirmText: "Delete Staff",
-      cancelText: "Keep Staff",
+  async function removeMember(m: TenantStaffMember) {
+    const ok = await confirm({
+      title: "Remove Staff Member",
+      message: `Remove ${m.user.name || "this member"}? They'll immediately lose system access.`,
+      confirmText: "Remove",
+      cancelText: "Cancel",
       tone: "danger",
     });
-    if (!approved) return;
-
+    if (!ok) return;
     try {
-      const response = await deleteStaff({
-        membershipId: member.membershipId,
-        userId: member.user.id,
-      }).unwrap();
-      showSuccess(response.message || "Staff deleted");
-      setEdits((prev) => {
-        const next = { ...prev };
-        delete next[member.membershipId];
-        return next;
+      const res = await deleteStaff({ membershipId: m.membershipId, userId: m.user.id }).unwrap();
+      showSuccess(res.message || "Staff member removed");
+      setEdits((p) => {
+        const n = { ...p };
+        delete n[m.membershipId];
+        return n;
       });
     } catch (e) {
       showError(getErrorMessage(e));
@@ -252,430 +548,496 @@ export function StaffWorkspace({ tenantName }: Props) {
 
   return (
     <>
-      <section className="mt-1 grid gap-3 sm:mt-2 sm:gap-4">
-        {isCreateStaffOpen ? (
-          <div className="fixed inset-0 z-30 flex items-center justify-center p-3 sm:p-6">
-            <button
-              type="button"
-              aria-label="Close create staff panel"
-              className="absolute inset-0 bg-slate-900/35"
-              onClick={() => setIsCreateStaffOpen(false)}
-            />
-            <article className="relative z-10 max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-3xl border border-[#e6dfd1] bg-[#fffdf9] p-3 shadow-2xl sm:p-5">
-              <div className="mb-3 flex items-center justify-between sm:mb-4">
-                <div>
-                  <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">Quick Add</p>
-                  <h4 className="text-lg font-semibold text-slate-900">Add Staff</h4>
+      <div className="min-h-screen bg-slate-50">
+
+        {/* ── Sticky Header ─────────────────────────────────────────────────── */}
+        <div className="sticky top-0 z-30 bg-white/95 backdrop-blur-sm border-b border-slate-100">
+          <div className="px-4 pt-3.5 pb-2 space-y-2.5">
+
+            {/* Row 1: Title + Actions */}
+            <div className="flex items-center justify-between gap-2">
+              <div className="min-w-0">
+                <div className="flex items-baseline gap-2">
+                  <h1 className="text-base font-bold text-slate-900 tracking-tight">Staff</h1>
+                  <span className="text-xs text-slate-400 font-medium truncate">{tenantName}</span>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => setIsCreateStaffOpen(false)}
-                  className="h-8 w-8 rounded-full border border-[#e0d8c9] bg-white text-lg leading-none text-slate-700"
-                  aria-label="Close popup"
-                >
-                  x
-                </button>
-              </div>
-              <form onSubmit={submitCreate} className="space-y-3">
-                <input
-                  value={createForm.name}
-                  onChange={(event) => setCreateForm((prev) => ({ ...prev, name: event.target.value }))}
-                  className="h-11 w-full rounded-xl border border-[#ddd4c1] bg-white px-3 text-sm outline-none ring-amber-200 focus:ring-2"
-                  placeholder="Full name"
-                />
-                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                  <input
-                    value={createForm.whatsappNumber}
-                    onChange={(event) =>
-                      setCreateForm((prev) => ({ ...prev, whatsappNumber: normalizePhone(event.target.value) }))
-                    }
-                    className="h-11 w-full rounded-xl border border-[#ddd4c1] bg-white px-3 text-sm outline-none ring-amber-200 focus:ring-2"
-                    placeholder="WhatsApp number"
-                    inputMode="tel"
-                  />
-                  <input
-                    type="email"
-                    value={createForm.email}
-                    onChange={(event) => setCreateForm((prev) => ({ ...prev, email: event.target.value }))}
-                    className="h-11 w-full rounded-xl border border-[#ddd4c1] bg-white px-3 text-sm outline-none ring-amber-200 focus:ring-2"
-                    placeholder="Email optional"
-                  />
-                </div>
-                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                  <select
-                    value={createForm.role}
-                    onChange={(event) => setCreateForm((prev) => ({ ...prev, role: normalizeRole(event.target.value) }))}
-                    className="h-11 rounded-xl border border-[#ddd4c1] bg-white px-3 text-sm"
-                  >
-                    {roleOptions.map((role) => (
-                      <option key={role} value={role}>
-                        {role}
-                      </option>
-                    ))}
-                  </select>
-                  <input
-                    type="password"
-                    value={createForm.password}
-                    onChange={(event) => setCreateForm((prev) => ({ ...prev, password: event.target.value }))}
-                    className="h-11 rounded-xl border border-[#ddd4c1] bg-white px-3 text-sm outline-none ring-amber-200 focus:ring-2"
-                    placeholder="Password"
-                  />
-                </div>
-
-                <button
-                  type="submit"
-                  disabled={isCreating}
-                  className="w-full rounded-xl bg-amber-500 px-4 py-2.5 text-sm font-semibold text-white shadow-lg shadow-amber-500/25 disabled:opacity-60"
-                >
-                  {isCreating ? "Creating..." : "Create Staff"}
-                </button>
-
-                <div className="grid grid-cols-3 gap-2 text-xs">
-                  <div className="rounded-xl border border-[#ebdfc8] bg-white p-2">
-                    <p className="text-slate-500">Total</p>
-                    <p className="mt-1 text-base font-semibold">{staffItems.length}</p>
-                  </div>
-                  <div className="rounded-xl border border-[#ebdfc8] bg-white p-2">
-                    <p className="text-slate-500">Active</p>
-                    <p className="mt-1 text-base font-semibold">{activeCount}</p>
-                  </div>
-                  <div className="rounded-xl border border-[#ebdfc8] bg-white p-2">
-                    <p className="text-slate-500">Inactive</p>
-                    <p className="mt-1 text-base font-semibold">{inactiveCount}</p>
-                  </div>
-                </div>
-              </form>
-            </article>
-          </div>
-        ) : null}
-
-        <article
-          aria-label={`${tenantName || "Restaurant"} staff workspace`}
-          className="min-w-0 rounded-2xl border border-[#e6dfd1] bg-[#fffdf9] shadow-sm"
-        >
-          <div className="border-b border-[#eee7d8] px-2.5 py-2.5 sm:px-4 sm:py-3">
-            <div className="mt-2.5 rounded-xl border border-[#eadfc9] bg-[#fffaf1] p-2.5 sm:mt-3 sm:p-3">
-              <div className="flex items-center gap-2">
-                <div className="flex shrink-0 flex-col items-center leading-none">
-                  <span className="text-lg font-bold text-slate-700">{isLoading ? "..." : filteredStaff.length}</span>
-                  <span className="text-[10px] font-medium text-slate-700">staff</span>
-                </div>
-                <input
-                  value={searchText}
-                  onChange={(event) => setSearchText(event.target.value)}
-                  placeholder="Search..."
-                  className="h-10 min-w-0 flex-1 rounded-xl border border-[#dcccaf] bg-white px-3 text-sm outline-none ring-amber-200 focus:ring-2"
-                />
-                <div className="flex shrink-0 items-center rounded-lg border border-[#dccfb8] bg-white p-0.5">
-                  <button
-                    type="button"
-                    onClick={() => setStaffListViewMode("grid")}
-                    className={`rounded-md px-2 py-1 text-[11px] font-semibold ${
-                      staffListViewMode === "grid" ? "bg-[#f6ead4] text-[#7a5a34]" : "text-slate-600"
-                    }`}
-                  >
-                    Grid
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setStaffListViewMode("table")}
-                    className={`rounded-md px-2 py-1 text-[11px] font-semibold ${
-                      staffListViewMode === "table" ? "bg-[#f6ead4] text-[#7a5a34]" : "text-slate-600"
-                    }`}
-                  >
-                    Table
-                  </button>
-                </div>
-              </div>
-
-              <div className="mt-2 grid grid-cols-1 gap-2 md:grid-cols-10 md:items-center">
-                <div className="md:col-span-7">
-                  <div className="flex items-center gap-2 overflow-x-auto whitespace-nowrap no-scrollbar">
-                    <span className="shrink-0 text-[11px] font-semibold uppercase tracking-wide text-slate-500">Role</span>
-                    <button
-                      type="button"
-                      onClick={() => setRoleFilter("all")}
-                      className={`shrink-0 rounded-full border px-3 py-1 text-[11px] font-semibold ${
-                        roleFilter === "all"
-                          ? "border-amber-300 bg-amber-100 text-amber-800"
-                          : "border-[#ddcfb7] bg-white text-slate-700"
-                      }`}
-                    >
-                      All
-                    </button>
-                    {roleOptions.map((role) => (
-                      <button
-                        key={`staff-role-chip-${role}`}
-                        type="button"
-                        onClick={() => setRoleFilter(role)}
-                        className={`shrink-0 rounded-full border px-3 py-1 text-[11px] font-semibold ${
-                          roleFilter === role
-                            ? "border-amber-300 bg-amber-100 text-amber-800"
-                            : "border-[#ddcfb7] bg-white text-slate-700"
-                        }`}
-                      >
-                        {role}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-                <div className="md:col-span-3">
-                  <div className="flex items-center justify-start gap-2 overflow-x-auto whitespace-nowrap no-scrollbar md:justify-end">
-                    <button
-                      type="button"
-                      onClick={() => setStatusFilter((prev) => (prev === "active" ? "all" : "active"))}
-                      className={`shrink-0 rounded-full border px-3 py-1 text-[11px] font-semibold ${
-                        statusFilter === "active"
-                          ? "border-emerald-300 bg-emerald-100 text-emerald-800"
-                          : "border-[#ddcfb7] bg-white text-slate-700"
-                      }`}
-                    >
-                      Active
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setStatusFilter((prev) => (prev === "inactive" ? "all" : "inactive"))}
-                      className={`shrink-0 rounded-full border px-3 py-1 text-[11px] font-semibold ${
-                        statusFilter === "inactive"
-                          ? "border-slate-300 bg-slate-100 text-slate-700"
-                          : "border-[#ddcfb7] bg-white text-slate-700"
-                      }`}
-                    >
-                      Inactive
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => refetch()}
-                      className="shrink-0 rounded-lg border border-[#e0d8c9] bg-white px-3 py-1.5 text-xs font-semibold text-slate-700"
-                    >
-                      {isFetching ? "Refreshing..." : "Refresh"}
-                    </button>
-                  </div>
-                </div>
-              </div>
-
-              <button
-                type="button"
-                onClick={() => setIsCreateStaffOpen(true)}
-                className="mt-3 w-full rounded-xl border-2 border-dashed border-amber-300 bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-700 shadow-sm transition-all hover:border-amber-400 hover:bg-amber-100 hover:shadow-md active:scale-[0.98]"
-              >
-                + Add Staff
-              </button>
-            </div>
-          </div>
-
-          <div className="p-2.5 sm:p-4">
-            {filteredStaff.length ? (
-              staffListViewMode === "grid" ? (
-                <div className="space-y-2">
-                  {filteredStaff.map((member) => {
-                    const role = normalizeRole(member.role);
-                    const isActive = member.isActive ?? true;
-                    return (
-                      <article
-                        key={member.membershipId}
-                        className="rounded-xl border border-[#eadfc9] bg-[linear-gradient(160deg,#fffcf6_0%,#fff7e8_100%)] p-2.5 sm:p-3"
-                      >
-                        <div className="grid gap-2 lg:grid-cols-[1.4fr_.8fr_.7fr_.8fr]">
-                          <div className="min-w-0">
-                            <p className="truncate text-sm font-semibold text-slate-900">{member.user.name || "No name"}</p>
-                            <p className="truncate text-xs text-slate-500">{member.user.whatsappNumber || "No WhatsApp"}</p>
-                            <p className="truncate text-xs text-slate-400">{member.user.email || "No email"}</p>
-                          </div>
-
-                          <p className="inline-flex h-10 items-center rounded-lg border border-[#ddd4c1] bg-white px-2.5 text-xs font-semibold text-slate-700">
-                            {role}
-                          </p>
-
-                          <p
-                            className={`inline-flex h-10 items-center justify-center rounded-lg border px-2.5 text-xs font-semibold ${
-                              isActive ? "border-emerald-200 bg-emerald-50 text-emerald-700" : "border-slate-300 bg-slate-100 text-slate-700"
-                            }`}
-                          >
-                            {isActive ? "Active" : "Inactive"}
-                          </p>
-
-                          <div className="grid grid-cols-2 gap-1.5">
-                            <button
-                              type="button"
-                              onClick={() => openMemberEditor(member)}
-                              className="rounded-lg border border-blue-200 bg-blue-50 px-2 py-2 text-[11px] font-semibold text-blue-700"
-                            >
-                              Update
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => removeMember(member)}
-                              disabled={isDeleting}
-                              className="rounded-lg border border-rose-200 bg-rose-50 px-2 py-2 text-[11px] font-semibold text-rose-700 disabled:opacity-60"
-                            >
-                              Delete
-                            </button>
-                          </div>
-                        </div>
-                      </article>
-                    );
+                {/* Compact stat pills */}
+                <div className="flex items-center gap-2 mt-1">
+                  <span className="text-[11px] font-semibold text-slate-700">
+                    {staffItems.length} total
+                  </span>
+                  <span className="text-slate-300">·</span>
+                  <span className="text-[11px] font-medium text-emerald-600">
+                    {activeCount} active
+                  </span>
+                  {inactiveCount > 0 && (
+                    <>
+                      <span className="text-slate-300">·</span>
+                      <span className="text-[11px] font-medium text-slate-400">
+                        {inactiveCount} inactive
+                      </span>
+                    </>
+                  )}
+                  {roleOptions.map((r) => {
+                    const count = staffItems.filter((m) => normalizeRole(m.role) === r).length;
+                    const meta = getRoleMeta(r);
+                    return count > 0 ? (
+                      <span key={r} className="text-slate-300">·</span>
+                    ) : null;
                   })}
                 </div>
-              ) : (
-                <div className="no-scrollbar -mx-1 overflow-x-auto overscroll-x-contain px-1 sm:mx-0 sm:px-0">
-                  <table className="w-full min-w-[860px] divide-y divide-[#efe4d3] rounded-xl border border-[#eadfc9] bg-white text-left text-xs whitespace-nowrap sm:min-w-full">
-                    <thead className="bg-[#fff8ec]">
-                      <tr className="text-slate-700">
-                        <th className="px-2.5 py-2 font-semibold sm:px-3">Name</th>
-                        <th className="px-2.5 py-2 font-semibold sm:px-3">WhatsApp</th>
-                        <th className="px-2.5 py-2 font-semibold sm:px-3">Email</th>
-                        <th className="px-2.5 py-2 font-semibold sm:px-3">Role</th>
-                        <th className="px-2.5 py-2 font-semibold sm:px-3">Status</th>
-                        <th className="px-2.5 py-2 font-semibold text-right sm:px-3">Actions</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-[#f1e7d9] bg-white">
-                      {filteredStaff.map((member) => {
-                        const role = normalizeRole(member.role);
-                        const isActive = member.isActive ?? true;
-                        return (
-                          <tr key={`staff-row-${member.membershipId}`}>
-                            <td className="px-2.5 py-2 font-semibold text-slate-900 sm:px-3">{member.user.name || "No name"}</td>
-                            <td className="px-2.5 py-2 text-slate-700 sm:px-3">{member.user.whatsappNumber || "-"}</td>
-                            <td className="px-2.5 py-2 text-slate-700 sm:px-3">{member.user.email || "No email"}</td>
-                            <td className="px-2.5 py-2 text-slate-700 sm:px-3">{role}</td>
-                            <td className="px-2.5 py-2 sm:px-3">
-                              <span
-                                className={`inline-flex rounded-full border px-2 py-0.5 text-[10px] font-semibold ${
-                                  isActive ? "border-emerald-200 bg-emerald-50 text-emerald-700" : "border-slate-300 bg-slate-100 text-slate-700"
-                                }`}
-                              >
-                                {isActive ? "Active" : "Inactive"}
-                              </span>
-                            </td>
-                            <td className="px-2.5 py-2 sm:px-3">
-                              <div className="flex justify-end gap-1.5">
-                                <button
-                                  type="button"
-                                  onClick={() => openMemberEditor(member)}
-                                  className="rounded-md border border-blue-200 bg-blue-50 px-2 py-1 text-[11px] font-semibold text-blue-700"
-                                >
-                                  Update
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={() => removeMember(member)}
-                                  disabled={isDeleting}
-                                  className="rounded-md border border-rose-200 bg-rose-50 px-2 py-1 text-[11px] font-semibold text-rose-700 disabled:opacity-60"
-                                >
-                                  Delete
-                                </button>
-                              </div>
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-              )
-            ) : (
-              <div className="rounded-2xl border border-dashed border-[#e0d6c4] bg-[#fffcf7] px-4 py-10 text-center text-sm text-slate-600">
-                No staff found for selected filters.
               </div>
-            )}
-          </div>
-        </article>
-      </section>
 
-      {editingMember ? (
-        <div className="fixed inset-0 z-40 flex items-center justify-center p-3 sm:p-6">
-          <button type="button" className="absolute inset-0 bg-slate-900/40" onClick={() => setEditingMember(null)} />
-          <section className="relative z-10 max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-3xl border border-[#e6dfd1] bg-[#fffdf9] p-3 shadow-2xl sm:p-5">
-            <div className="mb-3 flex items-center justify-between sm:mb-4">
-              <div>
-                <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">Quick Edit</p>
-                <h4 className="text-lg font-semibold text-slate-900">Update Staff</h4>
+              <div className="flex items-center gap-1.5 flex-shrink-0">
+                <button
+                  onClick={() => refetch()}
+                  disabled={isFetching}
+                  className="h-8 w-8 rounded-lg border border-slate-200 flex items-center justify-center text-slate-400 hover:bg-slate-50 disabled:opacity-40 transition-all"
+                >
+                  <Icon.Refresh />
+                </button>
+                <button
+                  onClick={() => setCreateOpen(true)}
+                  className="flex items-center gap-1 h-8 px-3 rounded-lg bg-amber-500 hover:bg-amber-600 text-white text-xs font-semibold shadow-sm shadow-amber-200/60 transition-all active:scale-95"
+                >
+                  <Icon.Plus />
+                  <span>Add Staff</span>
+                </button>
               </div>
+            </div>
+
+            {/* Row 2: Search + View toggle */}
+            <div className="flex items-center gap-2">
+              <div className="relative flex-1">
+                <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none">
+                  <Icon.Search />
+                </span>
+                <input
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  placeholder="Search name, phone, role…"
+                  className="w-full h-8 pl-8 pr-3 rounded-lg border border-slate-200 bg-slate-50 text-xs text-slate-900 placeholder-slate-400 focus:bg-white focus:border-amber-400 focus:ring-1 focus:ring-amber-100 focus:outline-none transition-all"
+                />
+              </div>
+              <div className="flex bg-slate-100 rounded-lg p-0.5 gap-0.5 flex-shrink-0">
+                <button
+                  onClick={() => setViewMode("grid")}
+                  className={`h-7 w-7 rounded-md flex items-center justify-center transition-all ${
+                    viewMode === "grid"
+                      ? "bg-white shadow-sm text-amber-600"
+                      : "text-slate-400 hover:text-slate-600"
+                  }`}
+                >
+                  <Icon.Grid />
+                </button>
+                <button
+                  onClick={() => setViewMode("list")}
+                  className={`h-7 w-7 rounded-md flex items-center justify-center transition-all ${
+                    viewMode === "list"
+                      ? "bg-white shadow-sm text-amber-600"
+                      : "text-slate-400 hover:text-slate-600"
+                  }`}
+                >
+                  <Icon.List />
+                </button>
+              </div>
+            </div>
+
+            {/* Row 3: Compact filter chips */}
+            <div className="flex gap-1.5 overflow-x-auto no-scrollbar -mx-1 px-1 pb-0.5">
+              {/* Status filters */}
+              {(["all", "active", "inactive"] as const).map((f) => (
+                <button
+                  key={f}
+                  onClick={() => setStatusFilter(f)}
+                  className={`flex-shrink-0 h-6 px-2.5 rounded-full text-[11px] font-semibold border transition-all capitalize ${
+                    statusFilter === f
+                      ? "bg-amber-500 text-white border-amber-500"
+                      : "bg-white text-slate-600 border-slate-200 hover:border-slate-300"
+                  }`}
+                >
+                  {f === "all"
+                    ? `All · ${staffItems.length}`
+                    : f === "active"
+                    ? `Active · ${activeCount}`
+                    : `Inactive · ${inactiveCount}`}
+                </button>
+              ))}
+
+              <span className="h-6 w-px bg-slate-200 flex-shrink-0 self-center" />
+
+              {/* Role filters */}
+              <button
+                onClick={() => setRoleFilter("all")}
+                className={`flex-shrink-0 h-6 px-2.5 rounded-full text-[11px] font-semibold border transition-all ${
+                  roleFilter === "all"
+                    ? "bg-slate-800 text-white border-slate-800"
+                    : "bg-white text-slate-600 border-slate-200 hover:border-slate-300"
+                }`}
+              >
+                All roles
+              </button>
+              {roleOptions.map((role) => {
+                const m = getRoleMeta(role);
+                const isActive = roleFilter === role;
+                return (
+                  <button
+                    key={role}
+                    onClick={() => setRoleFilter(role)}
+                    className={`flex-shrink-0 h-6 px-2.5 rounded-full text-[11px] font-semibold border transition-all flex items-center gap-1 ${
+                      isActive
+                        ? `${m.bg} ${m.text} ${m.border}`
+                        : "bg-white text-slate-600 border-slate-200 hover:border-slate-300"
+                    }`}
+                  >
+                    <span className={`w-1 h-1 rounded-full ${isActive ? m.dot : "bg-slate-300"}`} />
+                    {role}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+
+        {/* ── Content Area ──────────────────────────────────────────────────── */}
+        <div className="p-3">
+          {/* Results count */}
+          {!isLoading && staffItems.length > 0 && (
+            <p className="text-[11px] text-slate-400 font-medium mb-2 px-0.5">
+              {filteredStaff.length === staffItems.length
+                ? `${staffItems.length} members`
+                : `${filteredStaff.length} of ${staffItems.length} shown`}
+            </p>
+          )}
+
+          {/* Loading */}
+          {isLoading ? (
+            <div className="space-y-1.5">
+              {Array.from({ length: 6 }).map((_, i) => (
+                <div key={i} className="h-14 rounded-xl bg-slate-100 animate-pulse" />
+              ))}
+            </div>
+          ) : filteredStaff.length === 0 ? (
+            /* Empty state */
+            <div className="flex flex-col items-center justify-center py-16 text-center">
+              <div className="w-16 h-16 rounded-2xl bg-slate-100 flex items-center justify-center mb-3 text-slate-300">
+                <Icon.Users />
+              </div>
+              <p className="text-sm font-semibold text-slate-600">No staff found</p>
+              <p className="text-xs text-slate-400 mt-1">
+                {search ? "Try a different search term" : "Add your first staff member"}
+              </p>
+              {!search && (
+                <button
+                  onClick={() => setCreateOpen(true)}
+                  className="mt-4 flex items-center gap-1.5 h-8 px-4 rounded-lg bg-amber-500 text-white text-xs font-semibold hover:bg-amber-600 transition-all"
+                >
+                  <Icon.Plus />
+                  Add Staff
+                </button>
+              )}
+            </div>
+          ) : viewMode === "grid" ? (
+            /* ── Horizontal Card Rows ─────────────────────────────────────── */
+            <div className="space-y-1.5">
+              {filteredStaff.map((member) => {
+                const role = normalizeRole(member.role);
+                const isActive = member.isActive ?? true;
+                return (
+                  <div
+                    key={member.membershipId}
+                    className={`bg-white rounded-xl border border-slate-100 flex items-center gap-3 px-3.5 py-2.5 hover:border-slate-200 hover:shadow-sm transition-all group ${
+                      !isActive ? "opacity-55" : ""
+                    }`}
+                    onClick={() => openEdit(member)}
+                  >
+                    <Avatar name={member.user.name || "?"} role={role} size="md" />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-semibold text-slate-900 truncate leading-tight">
+                        {member.user.name || "Unnamed"}
+                      </p>
+                      <p className="text-[11px] text-slate-400 mt-0.5 truncate">
+                        {normalizeRole(role)}{member.user.whatsappNumber ? ` · ${member.user.whatsappNumber}` : ""}
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-2 flex-shrink-0">
+                      <span className={`w-2 h-2 rounded-full ${isActive ? "bg-emerald-500" : "bg-slate-300"}`} />
+                      <RoleBadge role={role} />
+                      <div className="flex items-center gap-1 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
+                        <button onClick={() => openEdit(member)} className="h-7 w-7 rounded-lg flex items-center justify-center text-slate-400 hover:bg-slate-100 hover:text-slate-700 transition-all">
+                          <Icon.Edit />
+                        </button>
+                        <button onClick={() => removeMember(member)} disabled={isDeleting} className="h-7 w-7 rounded-lg flex items-center justify-center text-red-300 hover:bg-red-50 hover:text-red-500 transition-all disabled:opacity-40">
+                          <Icon.Trash />
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
+            /* ── List View ────────────────────────────────────────────────── */
+            <div className="bg-white rounded-xl border border-slate-100 overflow-hidden">
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead>
+                    <tr className="border-b border-slate-100 bg-slate-50/60">
+                      <th className="text-left px-3 py-2 text-[10px] font-semibold text-slate-400 uppercase tracking-wider">
+                        Member
+                      </th>
+                      <th className="text-left px-3 py-2 text-[10px] font-semibold text-slate-400 uppercase tracking-wider hidden sm:table-cell">
+                        Contact
+                      </th>
+                      <th className="text-left px-3 py-2 text-[10px] font-semibold text-slate-400 uppercase tracking-wider">
+                        Role
+                      </th>
+                      <th className="text-right px-3 py-2 text-[10px] font-semibold text-slate-400 uppercase tracking-wider">
+                        Actions
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-50">
+                    {filteredStaff.map((member) => {
+                      const role = normalizeRole(member.role);
+                      const isActive = member.isActive ?? true;
+                      return (
+                        <tr
+                          key={member.membershipId}
+                          className={`hover:bg-slate-50/60 transition-colors ${
+                            !isActive ? "opacity-60" : ""
+                          }`}
+                        >
+                          <td className="px-3 py-2.5">
+                            <div className="flex items-center gap-2">
+                              <Avatar name={member.user.name || "?"} role={role} size="sm" />
+                              <div className="min-w-0">
+                                <p className="text-xs font-semibold text-slate-900 truncate">
+                                  {member.user.name || "Unnamed"}
+                                </p>
+                                <div className="flex items-center gap-1 mt-0.5">
+                                  <StatusDot active={isActive} />
+                                </div>
+                              </div>
+                            </div>
+                          </td>
+                          <td className="px-3 py-2.5 hidden sm:table-cell">
+                            <div className="space-y-0.5">
+                              {member.user.whatsappNumber && (
+                                <div className="flex items-center gap-1 text-[11px] text-slate-600">
+                                  <Icon.Phone />
+                                  {member.user.whatsappNumber}
+                                </div>
+                              )}
+                              {member.user.email && (
+                                <div className="flex items-center gap-1 text-[11px] text-slate-400">
+                                  <Icon.Mail />
+                                  {member.user.email}
+                                </div>
+                              )}
+                            </div>
+                          </td>
+                          <td className="px-3 py-2.5">
+                            <RoleBadge role={role} />
+                          </td>
+                          <td className="px-3 py-2.5">
+                            <div className="flex justify-end">
+                              <ActionButtons
+                                onEdit={() => openEdit(member)}
+                                onDelete={() => removeMember(member)}
+                                disabled={isDeleting}
+                              />
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* ── Create Modal ───────────────────────────────────────────────────── */}
+      {createOpen && (
+        <Modal
+          onClose={() => setCreateOpen(false)}
+          title="Add Staff Member"
+          subtitle="New member will be able to log in immediately"
+        >
+          <form onSubmit={submitCreate} className="space-y-3.5">
+            <FormField label="Full Name" required>
+              <input
+                value={createForm.name}
+                onChange={(e) => setCreateForm((p) => ({ ...p, name: e.target.value }))}
+                placeholder="e.g. Rahul Sharma"
+                className={inputCls}
+                required
+              />
+            </FormField>
+
+            <div className="grid grid-cols-2 gap-3">
+              <FormField label="WhatsApp" icon={<Icon.Phone />} required>
+                <input
+                  value={createForm.whatsappNumber}
+                  onChange={(e) =>
+                    setCreateForm((p) => ({ ...p, whatsappNumber: normalizePhone(e.target.value) }))
+                  }
+                  placeholder="+91 98765…"
+                  inputMode="tel"
+                  className={inputCls}
+                />
+              </FormField>
+              <FormField label="Email" icon={<Icon.Mail />}>
+                <input
+                  type="email"
+                  value={createForm.email}
+                  onChange={(e) => setCreateForm((p) => ({ ...p, email: e.target.value }))}
+                  placeholder="Optional"
+                  className={inputCls}
+                />
+              </FormField>
+            </div>
+
+            <FormField label="Role">
+              <RoleSelector
+                options={roleOptions}
+                value={createForm.role}
+                onChange={(role) => setCreateForm((p) => ({ ...p, role }))}
+              />
+            </FormField>
+
+            <FormField label="Password" icon={<Icon.Lock />} required>
+              <input
+                type="password"
+                value={createForm.password}
+                onChange={(e) => setCreateForm((p) => ({ ...p, password: e.target.value }))}
+                placeholder="Min 6 characters"
+                className={inputCls}
+              />
+            </FormField>
+
+            <div className="flex gap-2 pt-1">
               <button
                 type="button"
-                onClick={() => setEditingMember(null)}
-                className="h-8 w-8 rounded-full border border-[#e0d8c9] bg-white text-lg leading-none text-slate-700"
-                aria-label="Close popup"
+                onClick={() => setCreateOpen(false)}
+                className="flex-1 h-10 rounded-xl border border-slate-200 text-sm font-semibold text-slate-600 hover:bg-slate-50 transition-all"
               >
-                x
+                Cancel
+              </button>
+              <button
+                type="submit"
+                disabled={isCreating}
+                className="flex-1 h-10 rounded-xl bg-amber-500 hover:bg-amber-600 text-white text-sm font-semibold shadow-sm shadow-amber-200/70 transition-all active:scale-[0.98] disabled:opacity-50"
+              >
+                {isCreating ? "Adding…" : "Add Member"}
               </button>
             </div>
-            <div className="space-y-3">
+          </form>
+        </Modal>
+      )}
+
+      {/* ── Edit Modal ─────────────────────────────────────────────────────── */}
+      {editingMember && (
+        <Modal
+          onClose={() => setEditingMember(null)}
+          title={editingMember.user.name || "Staff Member"}
+          subtitle={`Edit · ${normalizeRole(editingMember.role)}`}
+        >
+          <div className="space-y-3.5">
+            <FormField label="Full Name" required>
               <input
                 value={getDraft(editingMember).name}
-                onChange={(event) => setMemberDraft(editingMember.membershipId, { name: event.target.value }, editingMember)}
-                className="h-11 w-full rounded-xl border border-[#ddd4c1] bg-white px-3 text-sm outline-none ring-amber-200 focus:ring-2"
+                onChange={(e) =>
+                  setDraft(editingMember.membershipId, { name: e.target.value }, editingMember)
+                }
                 placeholder="Full name"
+                className={inputCls}
               />
-              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+            </FormField>
+
+            <div className="grid grid-cols-2 gap-3">
+              <FormField label="WhatsApp" icon={<Icon.Phone />} required>
                 <input
                   value={getDraft(editingMember).whatsappNumber}
-                  onChange={(event) =>
-                    setMemberDraft(
+                  onChange={(e) =>
+                    setDraft(
                       editingMember.membershipId,
-                      { whatsappNumber: normalizePhone(event.target.value) },
-                      editingMember,
+                      { whatsappNumber: normalizePhone(e.target.value) },
+                      editingMember
                     )
                   }
-                  className="h-11 w-full rounded-xl border border-[#ddd4c1] bg-white px-3 text-sm outline-none ring-amber-200 focus:ring-2"
-                  placeholder="WhatsApp number"
+                  placeholder="+91…"
                   inputMode="tel"
+                  className={inputCls}
                 />
+              </FormField>
+              <FormField label="Email" icon={<Icon.Mail />}>
                 <input
                   type="email"
                   value={getDraft(editingMember).email}
-                  onChange={(event) => setMemberDraft(editingMember.membershipId, { email: event.target.value }, editingMember)}
-                  className="h-11 w-full rounded-xl border border-[#ddd4c1] bg-white px-3 text-sm outline-none ring-amber-200 focus:ring-2"
-                  placeholder="Email optional"
-                />
-              </div>
-              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                <select
-                  value={getDraft(editingMember).role}
-                  onChange={(event) =>
-                    setMemberDraft(editingMember.membershipId, { role: normalizeRole(event.target.value) }, editingMember)
+                  onChange={(e) =>
+                    setDraft(editingMember.membershipId, { email: e.target.value }, editingMember)
                   }
-                  className="h-11 w-full rounded-xl border border-[#ddd4c1] bg-white px-3 text-sm"
-                >
-                  {roleOptions.map((role) => (
-                    <option key={role} value={role}>
-                      {role}
-                    </option>
-                  ))}
-                </select>
-                <input
-                  type="password"
-                  value={getDraft(editingMember).password}
-                  onChange={(event) => setMemberDraft(editingMember.membershipId, { password: event.target.value }, editingMember)}
-                  className="h-11 w-full rounded-xl border border-[#ddd4c1] bg-white px-3 text-sm outline-none ring-amber-200 focus:ring-2"
-                  placeholder="New password optional"
+                  placeholder="Optional"
+                  className={inputCls}
                 />
-              </div>
-              <label className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-xl border border-[#ddd4c1] bg-white px-3 text-xs">
-                <input
-                  type="checkbox"
-                  checked={getDraft(editingMember).isActive}
-                  onChange={(event) =>
-                    setMemberDraft(editingMember.membershipId, { isActive: event.target.checked }, editingMember)
-                  }
-                  className="h-4 w-4 rounded border-slate-300 text-amber-500"
-                />
-                {getDraft(editingMember).isActive ? "Active" : "Inactive"}
-              </label>
+              </FormField>
+            </div>
+
+            <FormField label="Role">
+              <RoleSelector
+                options={roleOptions}
+                value={getDraft(editingMember).role}
+                onChange={(role) =>
+                  setDraft(editingMember.membershipId, { role }, editingMember)
+                }
+              />
+            </FormField>
+
+            <FormField label="New Password" icon={<Icon.Lock />}>
+              <input
+                type="password"
+                value={getDraft(editingMember).password}
+                onChange={(e) =>
+                  setDraft(editingMember.membershipId, { password: e.target.value }, editingMember)
+                }
+                placeholder="Leave blank to keep current"
+                className={inputCls}
+              />
+            </FormField>
+
+            <FormField label="Status">
+              <ToggleSwitch
+                value={getDraft(editingMember).isActive}
+                onChange={(isActive) =>
+                  setDraft(editingMember.membershipId, { isActive }, editingMember)
+                }
+              />
+            </FormField>
+
+            <div className="flex gap-2 pt-1">
+              <button
+                type="button"
+                onClick={() => setEditingMember(null)}
+                className="flex-1 h-10 rounded-xl border border-slate-200 text-sm font-semibold text-slate-600 hover:bg-slate-50 transition-all"
+              >
+                Cancel
+              </button>
               <button
                 type="button"
                 onClick={() => saveMember(editingMember)}
                 disabled={isUpdating}
-                className="w-full rounded-xl bg-amber-500 px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-60"
+                className="flex-1 h-10 rounded-xl bg-amber-500 hover:bg-amber-600 text-white text-sm font-semibold shadow-sm shadow-amber-200/70 transition-all active:scale-[0.98] disabled:opacity-50"
               >
-                {isUpdating ? "Saving..." : "Update Staff"}
+                {isUpdating ? "Saving…" : "Save Changes"}
               </button>
             </div>
-          </section>
-        </div>
-      ) : null}
+          </div>
+        </Modal>
+      )}
     </>
   );
 }
