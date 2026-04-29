@@ -78,7 +78,7 @@ function invoiceAmt(inv: InvoiceRecord): number {
 }
 function totalItemCount(inv: InvoiceRecord): number {
   if (!inv.items?.length) return 0;
-  return inv.items.reduce((s: number, it: any) => s + (it.quantity ?? it.qty ?? 1), 0);
+  return inv.items.reduce((s: number, it: { quantity?: number; qty?: number }) => s + (it.quantity ?? it.qty ?? 1), 0);
 }
 function crop(v: string, max: number): string {
   const s = v.replace(/\s+/g, " ").trim();

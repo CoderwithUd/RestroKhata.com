@@ -117,7 +117,7 @@ function buildReservationPayload(form: ReservationFormState, customerId?: string
   const note = form.note.trim();
   const reservedFor = form.reservedFor ? new Date(form.reservedFor).toISOString() : undefined;
   if (!customerName && !customerPhone && !note && !reservedFor) return undefined;
-  const payload: any = {
+  const payload: Record<string, unknown> = {
     customerName: customerName || undefined,
     customerPhone: customerPhone || undefined,
     partySize: norm(form.partySize, 1),

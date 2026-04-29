@@ -1,8 +1,9 @@
-﻿import {
+import {
   type BaseQueryFn,
   fetchBaseQuery,
   type FetchArgs,
   type FetchBaseQueryError,
+  type BaseQueryApi,
 } from "@reduxjs/toolkit/query/react";
 import { parseAuthPayload } from "@/lib/auth-payload";
 import { clearStoredSession, readStoredSession, writeStoredSession } from "@/lib/auth-session";
@@ -70,13 +71,13 @@ function isPublicMenuPath(pathname: string): boolean {
   return !reserved.has(segments[0]?.toLowerCase() || "");
 }
 
-async function performRefresh(api: any, extraOptions: any): Promise<boolean> {
+async function performRefresh(api: BaseQueryApi, extraOptions: {}): Promise<boolean> {
   for (const path of refreshCandidates) {
-    const refreshResult = (await rawBaseQuery(buildRefreshRequest(path), api, extraOptions)) as any;
+    const refreshResult = (await rawBaseQuery(buildRefreshRequest(path), api, extraOptions)) as { data?: unknown; error?: FetchBaseQueryError };
     const refreshStatus = getStatusCode(refreshResult.error);
 
     if (!refreshResult.error) {
-      const parsed = parseAuthPayload(refreshResult.data);
+      const parsed = parseAuthPayload(refreshResult.data as Record<string, unknown>);
       const nextToken = parsed.token || null;
       const nextRefreshToken = parsed.refreshToken || null;
 

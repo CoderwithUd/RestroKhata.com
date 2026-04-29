@@ -528,7 +528,7 @@ function CurrentOrderPanel({
                     </div>
                     <div className="mt-0.5 flex items-center gap-2">
                       <span className="text-[12px] text-stone-400">{formatMoney(lineAmount(item))}</span>
-                      {item.note && <span className="text-[11px] italic text-amber-600">"{item.note}"</span>}
+                      {item.note && <span className="text-[11px] italic text-amber-600">&quot;{item.note}&quot;</span>}
                     </div>
                   </div>
                   {placed && !invoice && (
