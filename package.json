@@ -1,6 +1,6 @@
 {
   "name": "restro-khata-auth",
-  "version": "0.1.18",
+  "version": "0.1.19",
   "private": true,
   "scripts": {
     "dev": "C:\\Progra~1\\nodejs\\node.exe scripts/dev-server.js",
