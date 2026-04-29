@@ -21,6 +21,10 @@ type PublicItem = {
   image?: string;
   isAvailable: boolean;
   variants: PublicVariant[];
+  foodType?: string;
+  prepTime?: number;
+  tags?: string[];
+  isFeatured?: boolean;
 };
 
 type PublicCategory = {
@@ -138,6 +142,10 @@ function parseItem(v: unknown): PublicItem | null {
     image: asString(r.image) || asString(r.imageUrl) || asString(r.thumbnail),
     isAvailable: asBoolean(r.isAvailable) ?? asBoolean(r.isActive) ?? (resolvedVariants.length ? resolvedVariants.some(x => x.isAvailable) : true),
     variants: resolvedVariants,
+    foodType: asString(r.foodType),
+    prepTime: asNumber(r.prepTime),
+    tags: asArray(r.tags).map(asString).filter((t): t is string => Boolean(t)),
+    isFeatured: asBoolean(r.isFeatured),
   };
 }
 
@@ -637,7 +645,7 @@ function MenuItemCard({
   const canAdd = item.isAvailable && Boolean(chosenVariant || !item.variants.length);
 
   return (
-    <div className={`group relative flex gap-3.5 rounded-[18px] border bg-white p-3.5 transition-all hover:shadow-[0_4px_20px_rgba(0,0,0,0.08)] ${!item.isAvailable ? "opacity-60" : "border-stone-200/70 shadow-[0_1px_6px_rgba(0,0,0,0.04)]"}`}>
+    <div className={`group relative flex gap-3.5 rounded-[18px] border p-3.5 transition-all ${!item.isAvailable ? "border-stone-200/50 bg-stone-50/50 opacity-[0.65] grayscale-[0.8]" : "bg-white border-stone-200/70 shadow-[0_1px_6px_rgba(0,0,0,0.04)] hover:shadow-[0_4px_20px_rgba(0,0,0,0.08)]"}`}>
       {/* Image or placeholder */}
       <div className="shrink-0">
         {item.image ? (
@@ -657,15 +665,30 @@ function MenuItemCard({
         <div className="flex items-start justify-between gap-2">
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-1.5 mb-0.5">
-              <VegIndicator veg={true} /> {/* pass actual veg from API if available */}
+              {item.foodType && (
+                <VegIndicator veg={item.foodType === "VEG" || item.foodType === "VEGAN"} />
+              )}
               {!item.isAvailable && (
                 <span className="rounded-full bg-stone-100 px-2 py-0.5 text-[10px] font-medium text-stone-500">Unavailable</span>
+              )}
+              {item.isFeatured && (
+                <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-medium text-amber-700">Featured</span>
               )}
             </div>
             <h3 className="text-[14px] font-semibold leading-snug text-stone-900">{item.name}</h3>
             {item.description && (
               <p className="mt-0.5 line-clamp-2 text-[12px] leading-relaxed text-stone-400">{item.description}</p>
             )}
+            {(item.tags?.length || item.prepTime) ? (
+              <div className="mt-1.5 flex flex-wrap gap-1.5">
+                {item.prepTime && (
+                  <span className="rounded bg-stone-100 px-1.5 py-0.5 text-[10px] font-medium text-stone-500">⏱ {item.prepTime} min</span>
+                )}
+                {item.tags?.slice(0, 2).map((t, i) => (
+                  <span key={i} className="rounded bg-stone-100 px-1.5 py-0.5 text-[10px] font-medium text-stone-500">{t}</span>
+                ))}
+              </div>
+            ) : null}
           </div>
         </div>
 

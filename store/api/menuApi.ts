@@ -27,6 +27,7 @@ import type {
   UpdateMenuOptionGroupArgs,
   UpdateMenuCategoryArgs,
   UpdateMenuItemArgs,
+  UpdateMenuItemPayload,
 } from "@/store/types/menu";
 
 function asRecord(value: unknown): Record<string, unknown> | null {
@@ -140,6 +141,15 @@ function parseItem(value: unknown): MenuItemRecord | null {
     name: asString(record.name) || "Untitled Item",
     description: asString(record.description),
     image: asString(record.image),
+    images: asArray(record.images).map(asString).filter((img): img is string => Boolean(img)),
+    sku: asString(record.sku),
+    basePrice: asNumber(record.basePrice),
+    foodType: asString(record.foodType),
+    prepTime: asNumber(record.prepTime),
+    tags: asArray(record.tags).map(asString).filter((t): t is string => Boolean(t)),
+    stock: asNumber(record.stock),
+    isFeatured: asBoolean(record.isFeatured),
+    isDeleted: asBoolean(record.isDeleted),
     taxPercentage: asNumber(record.taxPercentage),
     sortOrder: asNumber(record.sortOrder),
     categoryId,
@@ -428,6 +438,16 @@ function normalizeItemPayload(payload: CreateMenuItemPayload): CreateMenuItemPay
   };
 }
 
+function normalizeUpdateItemPayload(payload: UpdateMenuItemPayload): UpdateMenuItemPayload {
+  const normalized: UpdateMenuItemPayload = { ...payload };
+  if (normalized.name !== undefined) normalized.name = normalized.name.trim();
+  if (normalized.description !== undefined) normalized.description = normalized.description.trim() || undefined;
+  if (normalized.image !== undefined) normalized.image = normalized.image.trim() || undefined;
+  if (normalized.variants) normalized.variants = normalizeVariantsForPayload(normalized.variants);
+  if (normalized.optionGroupIds) normalized.optionGroupIds = normalized.optionGroupIds.filter((id) => Boolean(id?.trim()));
+  return normalized;
+}
+
 function normalizeOptionGroupPayload(payload: CreateMenuOptionGroupPayload): CreateMenuOptionGroupPayload {
   const maxBase =
     Number.isFinite(payload.maxSelect) && (payload.maxSelect as number) >= 0
@@ -613,9 +633,9 @@ export const menuApi = createApi({
     updateMenuItem: builder.mutation<MenuMutationResponse, UpdateMenuItemArgs>({
       query: ({ itemId, payload }) => ({
         url: `/menu/items/${itemId}`,
-        method: "PUT",
+        method: "PATCH",
         credentials: "include",
-        body: normalizeItemPayload(payload),
+        body: normalizeUpdateItemPayload(payload),
       }),
       transformResponse: (response: unknown) => parseItemMutation(response, "Menu item updated"),
       invalidatesTags: (_result, _error, { itemId }) => [

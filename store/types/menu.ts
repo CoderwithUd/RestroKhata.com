@@ -40,6 +40,15 @@ export type MenuItemRecord = {
   name: string;
   description?: string;
   image?: string;
+  images?: string[];
+  sku?: string;
+  basePrice?: number;
+  foodType?: string;
+  prepTime?: number;
+  tags?: string[];
+  stock?: number;
+  isFeatured?: boolean;
+  isDeleted?: boolean;
   taxPercentage?: number;
   sortOrder?: number;
   categoryId?: string;
@@ -117,6 +126,14 @@ export type CreateMenuItemPayload = {
   name: string;
   description?: string;
   image?: string;
+  images?: string[];
+  sku?: string;
+  basePrice?: number;
+  foodType?: string;
+  prepTime?: number;
+  tags?: string[];
+  stock?: number;
+  isFeatured?: boolean;
   taxPercentage?: number;
   sortOrder?: number;
   variants: MenuVariantPayload[];
@@ -125,13 +142,22 @@ export type CreateMenuItemPayload = {
 };
 
 export type UpdateMenuItemPayload = {
-  categoryId: string;
-  name: string;
+  categoryId?: string;
+  name?: string;
   description?: string;
   image?: string;
+  images?: string[];
+  sku?: string;
+  basePrice?: number;
+  foodType?: string;
+  prepTime?: number;
+  tags?: string[];
+  stock?: number;
+  isFeatured?: boolean;
+  isDeleted?: boolean;
   taxPercentage?: number;
   sortOrder?: number;
-  variants: MenuVariantPayload[];
+  variants?: MenuVariantPayload[];
   optionGroupIds?: string[];
   fulfillmentType?: string;
   isAvailable?: boolean;

@@ -37,7 +37,6 @@ type VariantForm = {
   price: string;
   isAvailable: boolean;
 };
-
 type ItemForm = {
   name: string;
   mainCategoryId: string;
@@ -48,6 +47,11 @@ type ItemForm = {
   variants: VariantForm[];
   optionGroupIds: string[];
   fulfillmentType: string;
+  foodType: string;
+  prepTime: string;
+  tags: string;
+  stock: string;
+  isFeatured: boolean;
 };
 
 type OptionGroupForm = {
@@ -321,6 +325,11 @@ function createEmptyForm(): ItemForm {
     variants: [createVariant(0)],
     optionGroupIds: [],
     fulfillmentType: "KITCHEN",
+    foodType: "VEG",
+    prepTime: "",
+    tags: "",
+    stock: "",
+    isFeatured: false,
   };
 }
 
@@ -408,6 +417,11 @@ function toCreatePayload(form: ItemForm): CreateMenuItemPayload {
     optionGroupIds: form.optionGroupIds,
     variants: toVariantsPayload(form.variants),
     fulfillmentType: form.fulfillmentType,
+    foodType: form.foodType || undefined,
+    prepTime: form.prepTime ? toNumber(form.prepTime, 0) : undefined,
+    tags: form.tags ? form.tags.split(",").map(t => t.trim()).filter(Boolean) : undefined,
+    stock: form.stock ? toNumber(form.stock, 0) : undefined,
+    isFeatured: form.isFeatured,
   };
 }
 
@@ -415,20 +429,57 @@ function toUpdatePayload(
   item: MenuItemRecord,
   form: ItemForm,
 ): UpdateMenuItemPayload {
-  return {
-    categoryId: resolveSelectedCategoryId(form),
-    name: form.name.trim(),
-    description: form.description.trim() || undefined,
-    image: form.image.trim() || undefined,
-    taxPercentage: Math.min(
-      100,
-      Math.max(0, toNumber(form.taxPercentage, item.taxPercentage ?? 0)),
-    ),
-    sortOrder: item.sortOrder ?? 0,
-    optionGroupIds: form.optionGroupIds,
-    variants: toVariantsPayload(form.variants),
-    fulfillmentType: form.fulfillmentType,
-  };
+  const payload: UpdateMenuItemPayload = {};
+
+  const categoryId = resolveSelectedCategoryId(form);
+  if (categoryId !== item.categoryId) payload.categoryId = categoryId;
+
+  const name = form.name.trim();
+  if (name !== item.name) payload.name = name;
+
+  const description = form.description.trim() || undefined;
+  if (description !== item.description) payload.description = description;
+
+  const image = form.image.trim() || undefined;
+  if (image !== item.image) payload.image = image;
+
+  const taxPercentage = Math.min(100, Math.max(0, toNumber(form.taxPercentage, item.taxPercentage ?? 0)));
+  if (taxPercentage !== item.taxPercentage) payload.taxPercentage = taxPercentage;
+
+  const sortedFormGroups = [...form.optionGroupIds].sort();
+  const sortedItemGroups = [...(item.optionGroupIds || [])].sort();
+  if (sortedFormGroups.join(",") !== sortedItemGroups.join(",")) {
+    payload.optionGroupIds = form.optionGroupIds;
+  }
+
+  const mappedVariants = toVariantsPayload(form.variants);
+  const oldVariants = item.variants.map((v, i) => ({
+    name: v.name, price: v.price, isAvailable: v.isAvailable, sortOrder: i
+  }));
+  if (JSON.stringify(mappedVariants) !== JSON.stringify(oldVariants)) {
+    payload.variants = mappedVariants;
+  }
+
+  if (form.fulfillmentType !== item.fulfillmentType) payload.fulfillmentType = form.fulfillmentType;
+
+  const foodType = form.foodType || undefined;
+  if (foodType !== item.foodType) payload.foodType = foodType;
+
+  const prepTime = form.prepTime ? toNumber(form.prepTime, 0) : undefined;
+  if (prepTime !== item.prepTime) payload.prepTime = prepTime;
+
+  const formTags = form.tags ? form.tags.split(",").map(t => t.trim()).filter(Boolean) : undefined;
+  const itemTags = item.tags?.length ? item.tags : undefined;
+  if (JSON.stringify(formTags) !== JSON.stringify(itemTags)) {
+    payload.tags = formTags;
+  }
+
+  const stock = form.stock ? toNumber(form.stock, 0) : undefined;
+  if (stock !== item.stock) payload.stock = stock;
+
+  if (form.isFeatured !== item.isFeatured) payload.isFeatured = form.isFeatured;
+
+  return payload;
 }
 
 function toOptionGroupPayload(form: OptionGroupForm) {
@@ -1114,6 +1165,11 @@ export function MenuWorkspace({ tenantSlug }: Props) {
       variants: ensureVariants(item),
       optionGroupIds: item.optionGroupIds || [],
       fulfillmentType: item.fulfillmentType || "KITCHEN",
+      foodType: item.foodType || "VEG",
+      prepTime: item.prepTime !== undefined ? String(item.prepTime) : "",
+      tags: (item.tags || []).join(", "),
+      stock: item.stock !== undefined ? String(item.stock) : "",
+      isFeatured: !!item.isFeatured,
     });
     setEditingItem(item);
     setItemModalStep(1);
@@ -1634,7 +1690,12 @@ async function toggleAvailability(item: MenuItemRecord) {
               {filteredItems.map((item) => (
                 <article
                   key={item.id}
-                  className="rounded-2xl border border-[#ead9b8] bg-gradient-to-br from-[#fffcf6] to-[#fff7e8] p-3.5"
+                  className={[
+                    "relative rounded-2xl border p-3.5 transition-all cursor-pointer hover:shadow-sm",
+                    item.isAvailable
+                      ? "border-[#ead9b8] bg-gradient-to-br from-[#fffcf6] to-[#fff7e8]"
+                      : "border-slate-200 bg-slate-50 opacity-[0.65] grayscale-[0.5]",
+                  ].join(" ")}
                   onClick={() => openEditItem(item)}
                 >
                   <div className="flex items-start justify-between gap-2 mb-2">
@@ -2357,6 +2418,7 @@ async function toggleAvailability(item: MenuItemRecord) {
                           placeholder="https://..."
                         />
                       </div>
+
                       <PrimaryBtn onClick={() => setItemModalStep(2)}>
                         Next: Variants & Pricing →
                       </PrimaryBtn>
@@ -2467,7 +2529,48 @@ async function toggleAvailability(item: MenuItemRecord) {
                           )}
                         </div>
                       )}
-                      <div className="flex gap-2">
+                      <div className="grid grid-cols-2 gap-3">
+                        <div>
+                          <FieldLabel>Prep Time (mins) (optional)</FieldLabel>
+                          <NumberInput value={itemForm.prepTime} onChange={(v) => setItemForm(p => ({ ...p, prepTime: v }))} placeholder="e.g. 15" />
+                        </div>
+                        <div>
+                          <FieldLabel>Food Type</FieldLabel>
+                          <ChipScroll>
+                            {[
+                              { id: "VEG", label: "Veg" },
+                              { id: "NON_VEG", label: "Non-Veg" },
+                              { id: "EGG", label: "Egg" },
+                              { id: "VEGAN", label: "Vegan" },
+                            ].map((ft) => (
+                              <Chip
+                                key={ft.id}
+                                label={ft.label}
+                                active={itemForm.foodType === ft.id}
+                                onClick={() => setItemForm((p) => ({ ...p, foodType: ft.id }))}
+                              />
+                            ))}
+                          </ChipScroll>
+                        </div>
+                      </div>
+                      <div className="grid grid-cols-2 gap-3">
+                        <div>
+                          <FieldLabel>Stock (optional)</FieldLabel>
+                          <NumberInput value={itemForm.stock} onChange={(v) => setItemForm(p => ({ ...p, stock: v }))} placeholder="Empty = ∞" />
+                        </div>
+                        <div>
+                          <FieldLabel>Tags (optional)</FieldLabel>
+                          <TextInput value={itemForm.tags} onChange={(v) => setItemForm(p => ({ ...p, tags: v }))} placeholder="e.g. spicy, best seller" />
+                        </div>
+                      </div>
+                      <div className="flex items-center justify-between rounded-xl border border-[#ddd4c1] bg-white px-4 py-3">
+                        <div>
+                          <p className="text-sm font-semibold text-slate-800">Featured Item</p>
+                          <p className="text-[11px] text-slate-500">Highlight on public menu</p>
+                        </div>
+                        <Toggle checked={itemForm.isFeatured} onChange={(v) => setItemForm(p => ({ ...p, isFeatured: v }))} />
+                      </div>
+                      <div className="flex gap-2 pt-2">
                         <GhostBtn
                           onClick={() => setItemModalStep(2)}
                           className="flex-1"
@@ -2567,6 +2670,8 @@ async function toggleAvailability(item: MenuItemRecord) {
                     />
                   </div>
 
+
+
                   {/* Variants */}
                   <VariantFields
                     variants={itemForm.variants}
@@ -2640,6 +2745,49 @@ async function toggleAvailability(item: MenuItemRecord) {
                       </ChipScroll>
                     </div>
                   )}
+
+                  <div className="grid grid-cols-2 gap-3 pt-2">
+                    <div>
+                      <FieldLabel>Prep Time (mins) (optional)</FieldLabel>
+                      <NumberInput value={itemForm.prepTime} onChange={(v) => setItemForm(p => ({ ...p, prepTime: v }))} placeholder="e.g. 15" />
+                    </div>
+                    <div>
+                      <FieldLabel>Food Type</FieldLabel>
+                      <ChipScroll>
+                        {[
+                          { id: "VEG", label: "Veg" },
+                          { id: "NON_VEG", label: "Non-Veg" },
+                          { id: "EGG", label: "Egg" },
+                          { id: "VEGAN", label: "Vegan" },
+                        ].map((ft) => (
+                          <Chip
+                            key={ft.id}
+                            label={ft.label}
+                            active={itemForm.foodType === ft.id}
+                            onClick={() => setItemForm((p) => ({ ...p, foodType: ft.id }))}
+                          />
+                        ))}
+                      </ChipScroll>
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <FieldLabel>Stock (optional)</FieldLabel>
+                      <NumberInput value={itemForm.stock} onChange={(v) => setItemForm(p => ({ ...p, stock: v }))} placeholder="Empty = ∞" />
+                    </div>
+                    <div>
+                      <FieldLabel>Tags (optional)</FieldLabel>
+                      <TextInput value={itemForm.tags} onChange={(v) => setItemForm(p => ({ ...p, tags: v }))} placeholder="e.g. spicy, best seller" />
+                    </div>
+                  </div>
+                  <div className="flex items-center justify-between rounded-xl border border-[#ddd4c1] bg-white px-4 py-3">
+                    <div>
+                      <p className="text-sm font-semibold text-slate-800">Featured Item</p>
+                      <p className="text-[11px] text-slate-500">Highlight on public menu</p>
+                    </div>
+                    <Toggle checked={itemForm.isFeatured} onChange={(v) => setItemForm(p => ({ ...p, isFeatured: v }))} />
+                  </div>
+
 
                   {/* Action Buttons for Edit Mode */}
                   <div className="flex gap-3 pt-4">
