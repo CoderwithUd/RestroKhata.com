@@ -1,6 +1,7 @@
 "use client";
 
-import { FormEvent, useMemo, useState } from "react";
+import { useCallback, FormEvent, useMemo, useState } from "react";
+import { sanitizePhone } from "@/lib/phone";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { useConfirm } from "@/components/confirm-provider";
@@ -765,7 +766,7 @@ export function TablesWorkspace({ tenantName, tenantSlug }: Props) {
 
               <div className="grid grid-cols-2 gap-3">
                 <Field label="Phone">
-                  <input type="tel" value={reservationForm.customerPhone} onChange={(e) => setReservationForm((p) => ({ ...p, customerPhone: e.target.value }))} placeholder="+91 9876…" className={inputCls} />
+                  <input type="tel" value={reservationForm.customerPhone} onChange={(e) => setReservationForm((p) => ({ ...p, customerPhone: sanitizePhone(e.target.value) }))} placeholder="9876543210" maxLength={10} className={inputCls} />
                 </Field>
                 <Field label="Party Size">
                   <input type="number" min={1} value={reservationForm.partySize} onChange={(e) => setReservationForm((p) => ({ ...p, partySize: norm(Number(e.target.value), 1) }))} className={inputCls} />
@@ -793,10 +794,10 @@ export function TablesWorkspace({ tenantName, tenantSlug }: Props) {
                   <div className="space-y-3 pt-1">
                     <div className="grid grid-cols-2 gap-3">
                       <Field label="Total Amount">
-                        <input type="number" min={0} value={reservationForm.advanceAmount} onChange={(e) => setReservationForm((p) => ({ ...p, advanceAmount: Math.max(0, Number(e.target.value)) }))} placeholder="0" className={inputCls} />
+                        <input type="number" min={0} value={reservationForm.advanceAmount || ""} onFocus={(e) => e.target.select()} onChange={(e) => setReservationForm((p) => ({ ...p, advanceAmount: Math.max(0, Number(e.target.value)) }))} placeholder="0" className={inputCls} />
                       </Field>
                       <Field label="Paid Amount">
-                        <input type="number" min={0} value={reservationForm.advancePaidAmount} onChange={(e) => setReservationForm((p) => ({ ...p, advancePaidAmount: Math.max(0, Number(e.target.value)) }))} placeholder="0" className={inputCls} />
+                        <input type="number" min={0} value={reservationForm.advancePaidAmount || ""} onFocus={(e) => e.target.select()} onChange={(e) => setReservationForm((p) => ({ ...p, advancePaidAmount: Math.max(0, Number(e.target.value)) }))} placeholder="0" className={inputCls} />
                       </Field>
                     </div>
                     <Field label="Payment Method">

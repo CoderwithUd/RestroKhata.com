@@ -134,6 +134,7 @@ export type UpdateMenuItemPayload = {
   variants: MenuVariantPayload[];
   optionGroupIds?: string[];
   fulfillmentType?: string;
+  isAvailable?: boolean;
 };
 
 export type UpdateMenuItemArgs = {

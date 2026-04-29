@@ -2,6 +2,7 @@
 
 import { useCallback, useMemo, useState } from "react";
 import { getErrorMessage } from "@/lib/error";
+import { sanitizePhone, isValidIndianPhone } from "@/lib/phone";
 import { showError, showSuccess } from "@/lib/feedback";
 import { useOrderSocket } from "@/lib/use-order-socket";
 import {
@@ -36,9 +37,7 @@ function fmtCurrency(n?: number): string {
   return `₹${Number(n).toLocaleString("en-IN")}`;
 }
 
-function normalizePhoneInput(v: string): string {
-  return v.replace(/[^\d+]/g, "");
-}
+// normalizePhoneInput is replaced by the shared sanitizePhone helper from @/lib/phone
 
 function availableMenuVariants(item: MenuItemRecord) {
   const available = (item.variants || []).filter((v) => v.isAvailable);
@@ -197,18 +196,15 @@ export function TakeawayView() {
     if (cart.length === 0) return;
 
     const nameVal = customerName.trim();
-    const phoneVal = normalizePhoneInput(customerPhone.trim());
+    const phoneVal = customerPhone.trim(); // already sanitized on input
 
     if ((nameVal && !phoneVal) || (!nameVal && phoneVal)) {
       showError("Customer name aur phone dono saath de, ya dono blank rakhte hai.");
       return;
     }
-    if (phoneVal) {
-      const digits = phoneVal.replace(/\D/g, "").length;
-      if (digits < 7 || digits > 15) {
-        showError("Phone number me 7 se 15 digits hone chahiye.");
-        return;
-      }
+    if (phoneVal && !isValidIndianPhone(phoneVal)) {
+      showError("Valid Indian mobile number chahiye (10 digits, 6-9 se shuru).");
+      return;
     }
 
     const payload = {
@@ -295,8 +291,9 @@ export function TakeawayView() {
             <input
               id="ta-customer-phone"
               value={customerPhone}
-              onChange={(e) => setCustomerPhone(e.target.value)}
+              onChange={(e) => setCustomerPhone(sanitizePhone(e.target.value))}
               placeholder="9876543210 (optional)"
+              maxLength={10}
               inputMode="tel"
               className="h-10 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 text-sm font-medium text-slate-900 outline-none placeholder:font-normal placeholder:text-slate-400 focus:border-violet-300 focus:bg-white focus:ring-2 focus:ring-violet-100 transition"
             />

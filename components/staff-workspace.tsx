@@ -4,13 +4,13 @@ import { FormEvent, useMemo, useState } from "react";
 import { useConfirm } from "@/components/confirm-provider";
 import { getErrorMessage } from "@/lib/error";
 import { showError, showSuccess } from "@/lib/feedback";
-import {
-  useCreateTenantStaffMutation,
+import { useCreateTenantStaffMutation,
   useDeleteTenantStaffMutation,
   useStaffRolesQuery,
   useTenantStaffQuery,
   useUpdateTenantStaffMutation,
 } from "@/store/api/authApi";
+import { sanitizePhone, isValidIndianPhone } from "@/lib/phone";
 import type { TenantStaffMember } from "@/store/types/auth";
 
 type Props = { tenantName?: string };
@@ -74,9 +74,7 @@ function normalizeRole(role?: string): string {
   return (role || "").trim().toUpperCase() || "WAITER";
 }
 
-function normalizePhone(value: string): string {
-  return value.replace(/[^\d+]/g, "");
-}
+// normalizePhone and isValidPhone are replaced by sanitizePhone / isValidIndianPhone from @/lib/phone
 
 function defaultCreateForm(roles: string[]): CreateStaffForm {
   return { name: "", whatsappNumber: "", email: "", password: "", role: roles[0] || "WAITER" };
@@ -84,10 +82,6 @@ function defaultCreateForm(roles: string[]): CreateStaffForm {
 
 function toSafeEmail(value: string): string {
   return value.trim().toLowerCase();
-}
-
-function isValidPhone(value: string): boolean {
-  return value.replace(/\D/g, "").length >= 10;
 }
 
 function isValidEmail(value: string): boolean {
@@ -470,7 +464,7 @@ export function StaffWorkspace({ tenantName }: Props) {
   async function submitCreate(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     if (!createForm.name.trim()) return showError("Staff name is required");
-    if (!isValidPhone(createForm.whatsappNumber)) return showError("Valid WhatsApp number required");
+    if (!isValidIndianPhone(createForm.whatsappNumber)) return showError("Valid Indian WhatsApp number chahiye (10 digits, 6-9 se shuru).");
     if (createForm.email.trim() && !isValidEmail(toSafeEmail(createForm.email)))
       return showError("Enter a valid email");
     if (!createForm.password.trim() || createForm.password.trim().length < 6)
@@ -494,7 +488,7 @@ export function StaffWorkspace({ tenantName }: Props) {
   async function saveMember(m: TenantStaffMember) {
     const draft = getDraft(m);
     if (!draft.name.trim()) return showError("Name is required");
-    if (!isValidPhone(draft.whatsappNumber)) return showError("Valid WhatsApp number required");
+    if (!isValidIndianPhone(draft.whatsappNumber)) return showError("Valid Indian WhatsApp number chahiye (10 digits, 6-9 se shuru).");
     if (draft.email.trim() && !isValidEmail(toSafeEmail(draft.email)))
       return showError("Enter a valid email");
     if (draft.password.trim() && draft.password.trim().length < 6)
@@ -883,10 +877,11 @@ export function StaffWorkspace({ tenantName }: Props) {
                 <input
                   value={createForm.whatsappNumber}
                   onChange={(e) =>
-                    setCreateForm((p) => ({ ...p, whatsappNumber: normalizePhone(e.target.value) }))
+                    setCreateForm((p) => ({ ...p, whatsappNumber: sanitizePhone(e.target.value) }))
                   }
-                  placeholder="+91 98765…"
+                  placeholder="98765…"
                   inputMode="tel"
+                  maxLength={10}
                   className={inputCls}
                 />
               </FormField>
@@ -965,12 +960,13 @@ export function StaffWorkspace({ tenantName }: Props) {
                   onChange={(e) =>
                     setDraft(
                       editingMember.membershipId,
-                      { whatsappNumber: normalizePhone(e.target.value) },
+                      { whatsappNumber: sanitizePhone(e.target.value) },
                       editingMember
                     )
                   }
-                  placeholder="+91…"
+                  placeholder="98765…"
                   inputMode="tel"
+                  maxLength={10}
                   className={inputCls}
                 />
               </FormField>

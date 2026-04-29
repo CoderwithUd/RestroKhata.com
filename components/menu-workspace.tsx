@@ -4,6 +4,7 @@ import { FormEvent, useEffect, useMemo, useState } from "react";
 import { useConfirm } from "@/components/confirm-provider";
 import { getErrorMessage } from "@/lib/error";
 import { showError, showSuccess } from "@/lib/feedback";
+import { Eye, EyeOff, Plus } from "lucide-react";
 import {
   useCreateMenuOptionGroupMutation,
   useCreateMenuCategoryMutation,
@@ -25,6 +26,8 @@ import type {
   MenuOptionGroupRecord,
   UpdateMenuItemPayload,
 } from "@/store/types/menu";
+
+// ─── Types ───────────────────────────────────────────────────────────────────
 
 type Props = { tenantName?: string; tenantSlug?: string };
 
@@ -54,18 +57,210 @@ type OptionGroupForm = {
   sortOrder: string;
 };
 
-type QuickMenuAction = "item" | "category" | "subCategory" | "optional";
-type MenuPanelTab = "itemList" | "category" | "subCategory" | "optionGroup";
-type ListViewMode = "grid" | "table";
+type MenuPanelTab = "itemList" | "category" | "optionGroup";
+type ItemModalStep = 1 | 2 | 3;
+
+// ─── Constants ────────────────────────────────────────────────────────────────
 
 const OBJECT_ID_REGEX = /^[a-f\d]{24}$/i;
-const RECENT_PARENT_CATEGORY_STORAGE_KEY = "restrokhata:recent-main-categories";
-const MAX_RECENT_PARENT_CATEGORIES = 8;
-const MENU_ACTIVE_PANEL_STORAGE_KEY = "restrokhata:menu-active-panel";
-const MENU_LIST_VIEW_STORAGE_KEY = "restrokhata:menu-list-view";
-const LAST_ITEM_VARIANTS_STORAGE_KEY = "restrokhata:last-item-variants";
-const VARIANT_NAME_PRESETS = ["Regular", "Half", "Full", "Large"];
-const FULFILLMENTTYPE_NAME = ["KITCHEN", "BAR", "COUNTER", "DIRECT"];
+const RECENT_PARENT_CATEGORY_KEY = "restrokhata:recent-main-categories";
+const MAX_RECENT = 8;
+const PANEL_KEY = "restrokhata:menu-active-panel";
+const LAST_VARIANTS_KEY = "restrokhata:last-item-variants";
+const VARIANT_PRESETS = ["Regular", "Half", "Full", "Large"];
+const FULFILLMENT_TYPES = ["KITCHEN", "BAR", "COUNTER", "DIRECT"];
+const TAX_PRESETS = ["0", "5", "12", "18", "28"];
+
+// const Icon = {
+//   Close: () => (
+//     <svg
+//       className="w-4 h-4"
+//       fill="none"
+//       stroke="currentColor"
+//       strokeWidth={2}
+//       viewBox="0 0 24 24"
+//     >
+//       <path
+//         strokeLinecap="round"
+//         strokeLinejoin="round"
+//         d="M6 18L18 6M6 6l12 12"
+//       />
+//     </svg>
+//   ),
+//   Plus: () => (
+//     <svg
+//       className="w-4 h-4"
+//       fill="none"
+//       stroke="currentColor"
+//       strokeWidth={2.5}
+//       viewBox="0 0 24 24"
+//     >
+//       <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
+//     </svg>
+//   ),
+//   Search: () => (
+//     <svg
+//       className="w-4 h-4"
+//       fill="none"
+//       stroke="currentColor"
+//       strokeWidth={2}
+//       viewBox="0 0 24 24"
+//     >
+//       <path
+//         strokeLinecap="round"
+//         strokeLinejoin="round"
+//         d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
+//       />
+//     </svg>
+//   ),
+//   Grid: () => (
+//     <svg
+//       className="w-4 h-4"
+//       fill="none"
+//       stroke="currentColor"
+//       strokeWidth={2}
+//       viewBox="0 0 24 24"
+//     >
+//       <rect x="3" y="3" width="7" height="7" rx="1" />
+//       <rect x="14" y="3" width="7" height="7" rx="1" />
+//       <rect x="3" y="14" width="7" height="7" rx="1" />
+//       <rect x="14" y="14" width="7" height="7" rx="1" />
+//     </svg>
+//   ),
+//   List: () => (
+//     <svg
+//       className="w-4 h-4"
+//       fill="none"
+//       stroke="currentColor"
+//       strokeWidth={2}
+//       viewBox="0 0 24 24"
+//     >
+//       <path
+//         strokeLinecap="round"
+//         strokeLinejoin="round"
+//         d="M4 6h16M4 12h16M4 18h16"
+//       />
+//     </svg>
+//   ),
+//   Edit: () => (
+//     <svg
+//       className="w-3.5 h-3.5"
+//       fill="none"
+//       stroke="currentColor"
+//       strokeWidth={2}
+//       viewBox="0 0 24 24"
+//     >
+//       <path
+//         strokeLinecap="round"
+//         strokeLinejoin="round"
+//         d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"
+//       />
+//     </svg>
+//   ),
+//   Trash: () => (
+//     <svg
+//       className="w-3.5 h-3.5"
+//       fill="none"
+//       stroke="currentColor"
+//       strokeWidth={2}
+//       viewBox="0 0 24 24"
+//     >
+//       <path
+//         strokeLinecap="round"
+//         strokeLinejoin="round"
+//         d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
+//       />
+//     </svg>
+//   ),
+//   Refresh: () => (
+//     <svg
+//       className="w-4 h-4"
+//       fill="none"
+//       stroke="currentColor"
+//       strokeWidth={2}
+//       viewBox="0 0 24 24"
+//     >
+//       <path
+//         strokeLinecap="round"
+//         strokeLinejoin="round"
+//         d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+//       />
+//     </svg>
+//   ),
+//   Phone: () => (
+//     <svg
+//       className="w-3 h-3"
+//       fill="none"
+//       stroke="currentColor"
+//       strokeWidth={2}
+//       viewBox="0 0 24 24"
+//     >
+//       <path
+//         strokeLinecap="round"
+//         strokeLinejoin="round"
+//         d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z"
+//       />
+//     </svg>
+//   ),
+//   Mail: () => (
+//     <svg
+//       className="w-3 h-3"
+//       fill="none"
+//       stroke="currentColor"
+//       strokeWidth={2}
+//       viewBox="0 0 24 24"
+//     >
+//       <path
+//         strokeLinecap="round"
+//         strokeLinejoin="round"
+//         d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"
+//       />
+//     </svg>
+//   ),
+//   Lock: () => (
+//     <svg
+//       className="w-3.5 h-3.5"
+//       fill="none"
+//       stroke="currentColor"
+//       strokeWidth={2}
+//       viewBox="0 0 24 24"
+//     >
+//       <path
+//         strokeLinecap="round"
+//         strokeLinejoin="round"
+//         d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"
+//       />
+//     </svg>
+//   ),
+//   Users: () => (
+//     <svg
+//       className="w-8 h-8"
+//       fill="none"
+//       stroke="currentColor"
+//       strokeWidth={1.5}
+//       viewBox="0 0 24 24"
+//     >
+//       <path
+//         strokeLinecap="round"
+//         strokeLinejoin="round"
+//         d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z"
+//       />
+//     </svg>
+//   ),
+//   ChevronRight: () => (
+//     <svg
+//       className="w-3.5 h-3.5"
+//       fill="none"
+//       stroke="currentColor"
+//       strokeWidth={2.5}
+//       viewBox="0 0 24 24"
+//     >
+//       <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+//     </svg>
+//   ),
+// };
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function toNumber(value: string, fallback = 0): number {
   const parsed = Number(value);
@@ -76,7 +271,7 @@ function formatMoney(amount: number): string {
   return new Intl.NumberFormat("en-IN", {
     style: "currency",
     currency: "INR",
-    maximumFractionDigits: 2,
+    maximumFractionDigits: 0,
   }).format(Number.isFinite(amount) ? amount : 0);
 }
 
@@ -96,7 +291,7 @@ function flattenCategories(
 
 function createVariant(index: number): VariantForm {
   return {
-    key: `variant-${Date.now()}-${Math.random().toString(16).slice(2)}-${index}`,
+    key: `v-${Date.now()}-${Math.random().toString(16).slice(2)}-${index}`,
     name: index === 0 ? "Regular" : "",
     price: "",
     isAvailable: true,
@@ -108,7 +303,7 @@ function createVariantFromTemplate(
   index: number,
 ): VariantForm {
   return {
-    key: `variant-${Date.now()}-${Math.random().toString(16).slice(2)}-${index}`,
+    key: `v-${Date.now()}-${Math.random().toString(16).slice(2)}-${index}`,
     name: template.name,
     price: template.price,
     isAvailable: template.isAvailable,
@@ -125,17 +320,12 @@ function createEmptyForm(): ItemForm {
     taxPercentage: "5",
     variants: [createVariant(0)],
     optionGroupIds: [],
-    fulfillmentType: "",
+    fulfillmentType: "KITCHEN",
   };
 }
 
 function createEmptyOptionGroupForm(): OptionGroupForm {
-  return {
-    name: "",
-    minSelect: "0",
-    maxSelect: "1",
-    sortOrder: "0",
-  };
+  return { name: "", minSelect: "0", maxSelect: "1", sortOrder: "0" };
 }
 
 function resolveSelectedCategoryId(form: ItemForm): string {
@@ -146,19 +336,12 @@ function resolveItemCategorySelection(
   categoryId: string | undefined,
   categoriesById: Map<string, MenuCategoryRecord>,
 ): Pick<ItemForm, "mainCategoryId" | "subCategoryId"> {
-  if (!categoryId) {
-    return { mainCategoryId: "", subCategoryId: "" };
-  }
-
+  if (!categoryId) return { mainCategoryId: "", subCategoryId: "" };
   const selected = categoriesById.get(categoryId);
-  if (!selected) {
-    return { mainCategoryId: categoryId, subCategoryId: "" };
-  }
-
+  if (!selected) return { mainCategoryId: categoryId, subCategoryId: "" };
   if (selected.parentId && categoriesById.has(selected.parentId)) {
     return { mainCategoryId: selected.parentId, subCategoryId: selected.id };
   }
-
   return { mainCategoryId: selected.id, subCategoryId: "" };
 }
 
@@ -168,14 +351,13 @@ function getPrimaryPrice(item: MenuItemRecord): number {
 
 function ensureVariants(item: MenuItemRecord): VariantForm[] {
   if (item.variants.length) {
-    return item.variants.map((variant, index) => ({
-      key: `existing-${variant.id}-${index}`,
-      name: variant.name,
-      price: String(variant.price),
-      isAvailable: variant.isAvailable,
+    return item.variants.map((v, i) => ({
+      key: `existing-${v.id}-${i}`,
+      name: v.name,
+      price: String(v.price),
+      isAvailable: v.isAvailable,
     }));
   }
-
   return [
     {
       key: `fallback-${item.id}`,
@@ -188,30 +370,30 @@ function ensureVariants(item: MenuItemRecord): VariantForm[] {
 
 function validateForm(form: ItemForm): string | null {
   if (!form.name.trim()) return "Item name is required";
-  if (!form.mainCategoryId) return "Please select main category";
+  if (!form.mainCategoryId) return "Main category select karo";
   if (!form.variants.length) return "At least one variant is required";
-
-  for (let i = 0; i < form.variants.length; i += 1) {
-    const variant = form.variants[i];
-    if (!variant.name.trim()) return `Variant ${i + 1} name is required`;
-    if (!variant.price.trim() || toNumber(variant.price, -1) < 0)
-      return `Variant ${i + 1} price is invalid`;
+  for (let i = 0; i < form.variants.length; i++) {
+    if (!form.variants[i].name.trim())
+      return `Variant ${i + 1} ka naam likhein`;
+    if (
+      !form.variants[i].price.trim() ||
+      toNumber(form.variants[i].price, -1) < 0
+    )
+      return `Variant ${i + 1} ki price sahi nahi hai`;
   }
-
   const invalidGroup = form.optionGroupIds.find(
     (id) => !OBJECT_ID_REGEX.test(id),
   );
   if (invalidGroup) return `Invalid option group id: ${invalidGroup}`;
-
   return null;
 }
 
 function toVariantsPayload(variants: VariantForm[]) {
-  return variants.map((variant, index) => ({
-    name: variant.name.trim() || `Variant ${index + 1}`,
-    price: Math.max(0, toNumber(variant.price, 0)),
-    isAvailable: variant.isAvailable,
-    sortOrder: index,
+  return variants.map((v, i) => ({
+    name: v.name.trim() || `Variant ${i + 1}`,
+    price: Math.max(0, toNumber(v.price, 0)),
+    isAvailable: v.isAvailable,
+    sortOrder: i,
   }));
 }
 
@@ -245,7 +427,7 @@ function toUpdatePayload(
     sortOrder: item.sortOrder ?? 0,
     optionGroupIds: form.optionGroupIds,
     variants: toVariantsPayload(form.variants),
-       fulfillmentType: form.fulfillmentType, 
+    fulfillmentType: form.fulfillmentType,
   };
 }
 
@@ -255,35 +437,325 @@ function toOptionGroupPayload(form: OptionGroupForm) {
     minSelect,
     Math.floor(toNumber(form.maxSelect, minSelect)),
   );
-  const sortOrder = Math.max(0, Math.floor(toNumber(form.sortOrder, 0)));
-
   return {
     name: form.name.trim(),
     minSelect,
     maxSelect,
-    sortOrder,
+    sortOrder: Math.max(0, Math.floor(toNumber(form.sortOrder, 0))),
   };
 }
 
 function validateOptionGroupForm(form: OptionGroupForm): string | null {
   if (!form.name.trim()) return "Option group name is required";
-  const minSelect = Math.floor(toNumber(form.minSelect, -1));
-  const maxSelect = Math.floor(toNumber(form.maxSelect, -1));
-  if (minSelect < 0) return "Min select should be 0 or more";
-  if (maxSelect < 0) return "Max select should be 0 or more";
-  if (maxSelect < minSelect) return "Max select should be >= min select";
+  const min = Math.floor(toNumber(form.minSelect, -1));
+  const max = Math.floor(toNumber(form.maxSelect, -1));
+  if (min < 0) return "Min select 0 ya zyada hona chahiye";
+  if (max < 0) return "Max select 0 ya zyada hona chahiye";
+  if (max < min) return "Max select, min se kam nahi ho sakta";
   return null;
 }
 
+function lsGet(key: string): string | null {
+  try {
+    return window.localStorage.getItem(key);
+  } catch {
+    return null;
+  }
+}
+function lsSet(key: string, value: string): void {
+  try {
+    window.localStorage.setItem(key, value);
+  } catch {
+    /* noop */
+  }
+}
+
+// ─── Sub-components ───────────────────────────────────────────────────────────
+
+/** Pill chip button */
+function Chip({
+  label,
+  active,
+  onClick,
+  danger,
+  className = "",
+}: {
+  label: string;
+  active?: boolean;
+  onClick: () => void;
+  danger?: boolean;
+  className?: string;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={[
+        "shrink-0 rounded-full border px-3 py-1.5 text-[11px] font-semibold transition-colors whitespace-nowrap",
+        danger
+          ? "border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-100"
+          : active
+            ? "border-[#d4a30a] bg-[#fdf3e3] text-[#7a4a00]"
+            : "border-[#e0d4bb] bg-white text-slate-600 hover:bg-[#faf5eb]",
+        className,
+      ].join(" ")}
+    >
+      {label}
+    </button>
+  );
+}
+
+/** Horizontal scrollable chip row */
+function ChipScroll({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="flex gap-2 overflow-x-auto pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+      {children}
+    </div>
+  );
+}
+
+/** Section label */
+function SectionLabel({ children }: { children: React.ReactNode }) {
+  return (
+    <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-slate-400 mb-2">
+      {children}
+    </p>
+  );
+}
+
+/** Toggle switch */
+function Toggle({
+  checked,
+  onChange,
+}: {
+  checked: boolean;
+  onChange: (v: boolean) => void;
+}) {
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={checked}
+      onClick={() => onChange(!checked)}
+      className={[
+        "relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors",
+        checked ? "bg-emerald-500" : "bg-slate-200",
+      ].join(" ")}
+    >
+      <span
+        className={[
+          "pointer-events-none inline-block h-4 w-4 rounded-full bg-white shadow-sm transition-transform",
+          checked ? "translate-x-4" : "translate-x-0",
+        ].join(" ")}
+      />
+    </button>
+  );
+}
+
+/** Availability badge */
+function AvailBadge({ available }: { available: boolean }) {
+  return (
+    <span
+      className={[
+        "inline-flex shrink-0 rounded-full px-2.5 py-1 text-[10px] font-bold",
+        available
+          ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
+          : "bg-slate-100 text-slate-500 border border-slate-200",
+      ].join(" ")}
+    >
+      {available ? "Live" : "Hidden"}
+    </span>
+  );
+}
+
+/** Step indicator */
+function StepDots({ current, total }: { current: number; total: number }) {
+  return (
+    <div className="flex items-center gap-1.5 mb-4">
+      {Array.from({ length: total }, (_, i) => (
+        <div
+          key={i}
+          className={[
+            "h-1.5 rounded-full transition-all",
+            i + 1 === current
+              ? "w-6 bg-[#d4a30a]"
+              : i + 1 < current
+                ? "w-3 bg-emerald-400"
+                : "w-3 bg-slate-200",
+          ].join(" ")}
+        />
+      ))}
+      <span className="ml-2 text-[11px] text-slate-400 font-medium">
+        Step {current} of {total}
+      </span>
+    </div>
+  );
+}
+
+/** Field label */
+function FieldLabel({ children }: { children: React.ReactNode }) {
+  return (
+    <label className="block text-xs font-semibold text-slate-600 mb-1.5">
+      {children}
+    </label>
+  );
+}
+
+/** Text input */
+function TextInput({
+  value,
+  onChange,
+  placeholder,
+  id,
+  className = "",
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  placeholder?: string;
+  id?: string;
+  className?: string;
+}) {
+  return (
+    <input
+      id={id}
+      type="text"
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      placeholder={placeholder}
+      className={[
+        "h-11 w-full rounded-xl border border-[#ddd4c1] bg-white px-3.5 text-sm text-slate-900",
+        "outline-none transition-all focus:border-[#d4a30a] focus:ring-2 focus:ring-[#f5c842]/20",
+        className,
+      ].join(" ")}
+    />
+  );
+}
+
+/** Number input */
+function NumberInput({
+  value,
+  onChange,
+  placeholder,
+  min = 0,
+  className = "",
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  placeholder?: string;
+  min?: number;
+  className?: string;
+}) {
+  return (
+    <input
+      type="number"
+      min={min}
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      placeholder={placeholder}
+      className={[
+        "h-11 w-full rounded-xl border border-[#ddd4c1] bg-white px-3.5 text-sm text-slate-900",
+        "outline-none transition-all focus:border-[#d4a30a] focus:ring-2 focus:ring-[#f5c842]/20",
+        className,
+      ].join(" ")}
+    />
+  );
+}
+
+/** Primary button */
+function PrimaryBtn({
+  children,
+  onClick,
+  disabled,
+  type = "button",
+  className = "",
+}: {
+  children: React.ReactNode;
+  onClick?: () => void;
+  disabled?: boolean;
+  type?: "button" | "submit";
+  className?: string;
+}) {
+  return (
+    <button
+      type={type}
+      onClick={onClick}
+      disabled={disabled}
+      className={[
+        "w-full rounded-xl bg-[#d4a30a] px-4 py-3 text-sm font-bold text-white",
+        "transition-all active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed",
+        "hover:bg-[#b98a06]",
+        className,
+      ].join(" ")}
+    >
+      {children}
+    </button>
+  );
+}
+
+/** Ghost button */
+function GhostBtn({
+  children,
+  onClick,
+  disabled,
+  className = "",
+}: {
+  children: React.ReactNode;
+  onClick?: () => void;
+  disabled?: boolean;
+  className?: string;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      className={[
+        "rounded-xl border border-[#e0d4bb] bg-white px-4 py-2.5 text-sm font-semibold text-slate-600",
+        "transition-all hover:bg-[#faf5eb] active:scale-[0.98] disabled:opacity-50",
+        className,
+      ].join(" ")}
+    >
+      {children}
+    </button>
+  );
+}
+
+/** Danger button */
+function DangerBtn({
+  children,
+  onClick,
+  disabled,
+  className = "",
+}: {
+  children: React.ReactNode;
+  onClick?: () => void;
+  disabled?: boolean;
+  className?: string;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      className={[
+        "rounded-xl border border-rose-200 bg-rose-50 px-4 py-2.5 text-sm font-semibold text-rose-700",
+        "transition-all hover:bg-rose-100 active:scale-[0.98] disabled:opacity-50",
+        className,
+      ].join(" ")}
+    >
+      {children}
+    </button>
+  );
+}
+
+// ─── Variant Fields ───────────────────────────────────────────────────────────
+
 function VariantFields({
-  idPrefix,
   variants,
   onChange,
   onAdd,
   onRemove,
-  presets,
 }: {
-  idPrefix: string;
   variants: VariantForm[];
   onChange: (
     key: string,
@@ -292,105 +764,77 @@ function VariantFields({
   ) => void;
   onAdd: () => void;
   onRemove: (key: string) => void;
-  presets?: string[];
 }) {
   return (
-    <div className="space-y-2">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-          Variants
-        </p>
+    <div className="space-y-3">
+      <div className="flex items-center justify-between">
+        <SectionLabel>Variants & Pricing</SectionLabel>
         <button
           type="button"
           onClick={onAdd}
-          className="w-full rounded-lg border border-[#dfd2bb] bg-white px-2.5 py-1.5 text-[11px] font-semibold text-slate-700 sm:w-auto"
+          className="rounded-full border border-[#d4a30a] bg-[#fdf9ee] px-3 py-1 text-[11px] font-bold text-[#8a5c00] hover:bg-[#fef3d0]"
         >
           + Add Variant
         </button>
       </div>
-
       {variants.map((variant, index) => (
         <div
           key={variant.key}
-          className="rounded-xl border border-[#eadfc9] bg-[#fffaf0] p-2.5"
+          className="rounded-2xl border border-[#ead9b8] bg-[#fffaf0] p-3"
         >
-          <div className="mb-2 flex items-center justify-between">
-            <p className="text-xs font-semibold text-slate-700">
+          <div className="flex items-center justify-between mb-2.5">
+            <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wide">
               Variant {index + 1}
-            </p>
-            {variants.length > 1 ? (
+            </span>
+            {variants.length > 1 && (
               <button
                 type="button"
                 onClick={() => onRemove(variant.key)}
-                className="rounded-md border border-rose-200 bg-rose-50 px-2 py-1 text-[11px] font-semibold text-rose-700"
+                className="text-[11px] font-semibold text-rose-500 hover:text-rose-700"
               >
                 Remove
               </button>
-            ) : null}
+            )}
           </div>
-          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-            <div className="space-y-1">
-              <label
-                htmlFor={`${idPrefix}-variant-name-${variant.key}`}
-                className="text-xs font-medium text-slate-700"
-              >
-                Variant Name
-              </label>
-              <input
-                id={`${idPrefix}-variant-name-${variant.key}`}
+          {/* Name presets */}
+          <div className="mb-2">
+            <ChipScroll>
+              {VARIANT_PRESETS.map((preset) => (
+                <Chip
+                  key={preset}
+                  label={preset}
+                  active={variant.name === preset}
+                  onClick={() => onChange(variant.key, "name", preset)}
+                />
+              ))}
+            </ChipScroll>
+          </div>
+          <div className="grid grid-cols-2 gap-2">
+            <div>
+              <FieldLabel>Name</FieldLabel>
+              <TextInput
                 value={variant.name}
-                onChange={(event) =>
-                  onChange(variant.key, "name", event.target.value)
-                }
-                className="h-10 w-full rounded-lg border border-[#ddd4c1] bg-white px-3 text-sm outline-none ring-amber-200 focus:ring-2"
-                placeholder="Small / Large"
+                onChange={(v) => onChange(variant.key, "name", v)}
+                placeholder="e.g. Large"
               />
-              {presets?.length ? (
-                <div className="flex flex-wrap gap-1 pt-1">
-                  {presets.map((preset) => (
-                    <button
-                      key={`${idPrefix}-${variant.key}-${preset}`}
-                      type="button"
-                      onClick={() => onChange(variant.key, "name", preset)}
-                      className="rounded-full border border-[#d8c8ad] bg-white px-2 py-0.5 text-[10px] font-semibold text-slate-700 hover:bg-[#faf2e4]"
-                    >
-                      {preset}
-                    </button>
-                  ))}
-                </div>
-              ) : null}
             </div>
-            <div className="space-y-1">
-              <label
-                htmlFor={`${idPrefix}-variant-price-${variant.key}`}
-                className="text-xs font-medium text-slate-700"
-              >
-                Price (INR)
-              </label>
-              <input
-                id={`${idPrefix}-variant-price-${variant.key}`}
-                type="number"
-                min={0}
-                
+            <div>
+              <FieldLabel>Price (₹)</FieldLabel>
+              <NumberInput
                 value={variant.price}
-                onChange={(event) =>
-                  onChange(variant.key, "price", event.target.value)
-                }
-                className="h-10 w-full rounded-lg border border-[#ddd4c1] bg-white px-3 text-sm outline-none ring-amber-200 focus:ring-2"
+                onChange={(v) => onChange(variant.key, "price", v)}
                 placeholder="120"
               />
             </div>
           </div>
-          <label className="mt-2 inline-flex items-center gap-2 text-xs text-slate-700">
-            <input
-              type="checkbox"
+          <label className="mt-2.5 flex items-center gap-2.5 cursor-pointer">
+            <Toggle
               checked={variant.isAvailable}
-              onChange={(event) =>
-                onChange(variant.key, "isAvailable", event.target.checked)
-              }
-              className="h-4 w-4 rounded border-slate-300 text-amber-500"
+              onChange={(v) => onChange(variant.key, "isAvailable", v)}
             />
-            Variant available for order
+            <span className="text-xs font-medium text-slate-600">
+              Available for order
+            </span>
           </label>
         </div>
       ))}
@@ -398,118 +842,18 @@ function VariantFields({
   );
 }
 
-function OptionGroupFields({
-  groups,
-  selected,
-  onToggle,
-}: {
-  groups: MenuOptionGroupRecord[];
-  selected: string[];
-  onToggle: (groupId: string, checked: boolean) => void;
-}) {
-  const selectedNames = groups
-    .filter((group) => selected.includes(group.id))
-    .map((group) => group.name);
-
-  return (
-    <div className="space-y-2">
-      <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-        Option Groups (optional)
-      </p>
-      {groups.length ? (
-        <div className="grid gap-2">
-          {groups.map((group) => (
-            <label
-              key={group.id}
-              className="rounded-lg border border-[#eadfc9] bg-[#fffaf0] p-2.5 text-xs"
-            >
-              <div className="flex items-start justify-between gap-2">
-                <span>
-                  <span className="block font-semibold text-slate-800">
-                    {group.name}
-                  </span>
-                  <span className="mt-0.5 block text-[11px] text-slate-500">
-                    {group.options.length} options - Min {group.minSelect ?? 0}{" "}
-                    / Max {group.maxSelect ?? group.options.length}
-                  </span>
-                </span>
-                <input
-                  type="checkbox"
-                  checked={selected.includes(group.id)}
-                  onChange={(event) => onToggle(group.id, event.target.checked)}
-                  className="mt-0.5 h-4 w-4 rounded border-slate-300 text-amber-500"
-                />
-              </div>
-            </label>
-          ))}
-        </div>
-      ) : (
-        <p className="rounded-lg border border-dashed border-[#e0d6c4] bg-[#fffcf7] px-3 py-2 text-xs text-slate-500">
-          No option groups found.
-        </p>
-      )}
-      {selectedNames.length ? (
-        <p className="rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-[11px] text-blue-800">
-          Selected groups: {selectedNames.join(", ")}
-        </p>
-      ) : null}
-    </div>
-  );
-}
-
-function FulfillmentTypeField({
-  idPrefix,
-  value,
-  onChange,
-}: {
-  idPrefix: string;
-  value: string;
-  onChange: (value: string) => void;
-}) {
-  return (
-    <div className="space-y-2">
-      <div className="flex items-center justify-between gap-2">
-        <label
-          htmlFor={`${idPrefix}-fulfillment-type`}
-          className="text-xs font-medium text-slate-700"
-        >
-          Fulfillment Type
-        </label>
-        <span className="text-[11px] text-slate-500">Tap one option</span>
-      </div>
-      <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-        {FULFILLMENTTYPE_NAME.map((type) => {
-          const active = value === type;
-          return (
-            <button
-              key={`${idPrefix}-${type}`}
-              type="button"
-              aria-pressed={active}
-              onClick={() => onChange(type)}
-              className={`rounded-lg border px-3 py-2 text-xs font-semibold transition-colors ${
-                active
-                  ? "border-amber-300 bg-amber-100 text-amber-800"
-                  : "border-[#ddd4c1] bg-white text-slate-700 hover:bg-[#faf2e4]"
-              }`}
-            >
-              {type}
-            </button>
-          );
-        })}
-      </div>
-      <div className="rounded-lg border border-[#e8dcc4] bg-[#fffaf0] px-3 py-2 text-[11px] text-slate-600">
-        Selected: {value || "None"}
-      </div>
-    </div>
-  );
-}
+// ─── Main Component ───────────────────────────────────────────────────────────
 
 export function MenuWorkspace({ tenantSlug }: Props) {
   const confirm = useConfirm();
+
+  // ── Queries ──
   const { data: categoriesPayload } = useGetMenuCategoriesQuery({ flat: true });
   const { data: optionGroupsPayload, error: optionGroupsError } =
     useGetMenuOptionGroupsQuery();
   const { data: itemsPayload } = useGetMenuItemsQuery({ page: 1, limit: 100 });
+
+  // ── Mutations ──
   const [createCategory, { isLoading: isCreatingCategory }] =
     useCreateMenuCategoryMutation();
   const [updateCategory, { isLoading: isUpdatingCategory }] =
@@ -529,14 +873,38 @@ export function MenuWorkspace({ tenantSlug }: Props) {
   const [deleteMenuItem, { isLoading: isDeletingItem }] =
     useDeleteMenuItemMutation();
 
+  // ── Panel / View state ──
+  const [activePanel, setActivePanel] = useState<MenuPanelTab>(() => {
+    const saved = lsGet(PANEL_KEY);
+    if (saved === "itemList" || saved === "category" || saved === "optionGroup")
+      return saved;
+    return "itemList";
+  });
+  const [searchText, setSearchText] = useState("");
+  const [mainCategoryFilter, setMainCategoryFilter] = useState("all");
+  const [availabilityFilter, setAvailabilityFilter] = useState<
+    "all" | "available" | "unavailable"
+  >("all");
+  const [isMenuPreviewOpen, setIsMenuPreviewOpen] = useState(false);
+
+  // ── Item modal state ──
+  const [isItemModalOpen, setIsItemModalOpen] = useState(false);
+  const [itemModalStep, setItemModalStep] = useState<ItemModalStep>(1);
+  const [editingItem, setEditingItem] = useState<MenuItemRecord | null>(null);
   const [itemForm, setItemForm] = useState<ItemForm>(() => createEmptyForm());
-  const [categoryName, setCategoryName] = useState("");
-  const [categoryType, setCategoryType] = useState<"main" | "sub">("main");
-  const [categoryParentId, setCategoryParentId] = useState("");
+
+  // ── Category sheet state ──
+  const [isCatSheetOpen, setIsCatSheetOpen] = useState(false);
+  const [catType, setCatType] = useState<"main" | "sub">("main");
+  const [catName, setCatName] = useState("");
+  const [catParentId, setCatParentId] = useState("");
   const [editingCategoryId, setEditingCategoryId] = useState<string | null>(
     null,
   );
   const [editingCategoryName, setEditingCategoryName] = useState("");
+
+  // ── Option group sheet state ──
+  const [isOGSheetOpen, setIsOGSheetOpen] = useState(false);
   const [groupForm, setGroupForm] = useState<OptionGroupForm>(() =>
     createEmptyOptionGroupForm(),
   );
@@ -544,64 +912,32 @@ export function MenuWorkspace({ tenantSlug }: Props) {
   const [editingGroupForm, setEditingGroupForm] = useState<OptionGroupForm>(
     () => createEmptyOptionGroupForm(),
   );
-  const [editingItem, setEditingItem] = useState<MenuItemRecord | null>(null);
-  const [editForm, setEditForm] = useState<ItemForm>(() => createEmptyForm());
-  const [searchText, setSearchText] = useState("");
-  const [mainCategoryFilter, setMainCategoryFilter] = useState("all");
-  const [availabilityFilter, setAvailabilityFilter] = useState<
-    "all" | "available" | "unavailable"
-  >("all");
-  const [quickMenuAction, setQuickMenuAction] =
-    useState<QuickMenuAction | null>(null);
-  const [isMenuPreviewOpen, setIsMenuPreviewOpen] = useState(false);
-  const [activeMenuPanel, setActiveMenuPanel] = useState<MenuPanelTab>(() => {
-    if (typeof window === "undefined") return "itemList";
-    const saved = window.localStorage.getItem(MENU_ACTIVE_PANEL_STORAGE_KEY);
-    if (
-      saved === "itemList" ||
-      saved === "category" ||
-      saved === "subCategory" ||
-      saved === "optionGroup"
-    ) {
-      return saved;
-    }
-    return "itemList";
-  });
-  const [listViewMode, setListViewMode] = useState<ListViewMode>(() => {
-    if (typeof window === "undefined") return "grid";
-    const saved = window.localStorage.getItem(MENU_LIST_VIEW_STORAGE_KEY);
-    return saved === "table" ? "table" : "grid";
-  });
-  const [lastUsedCreateVariants, setLastUsedCreateVariants] = useState<
+
+  // ── Remembered state ──
+  const [lastUsedVariants, setLastUsedVariants] = useState<
     Omit<VariantForm, "key">[]
   >(() => {
-    if (typeof window === "undefined") return [];
     try {
-      const raw = window.localStorage.getItem(LAST_ITEM_VARIANTS_STORAGE_KEY);
+      const raw = lsGet(LAST_VARIANTS_KEY);
       if (!raw) return [];
       const parsed = JSON.parse(raw);
       if (!Array.isArray(parsed)) return [];
       return parsed
         .filter(
-          (variant): variant is Omit<VariantForm, "key"> =>
-            !!variant &&
-            typeof variant.name === "string" &&
-            typeof variant.price === "string" &&
-            typeof variant.isAvailable === "boolean",
+          (v): v is Omit<VariantForm, "key"> =>
+            !!v &&
+            typeof v.name === "string" &&
+            typeof v.price === "string" &&
+            typeof v.isAvailable === "boolean",
         )
         .slice(0, 5);
     } catch {
       return [];
     }
   });
-  const [recentParentCategoryIds, setRecentParentCategoryIds] = useState<
-    string[]
-  >(() => {
-    if (typeof window === "undefined") return [];
+  const [recentParentIds, setRecentParentIds] = useState<string[]>(() => {
     try {
-      const raw = window.localStorage.getItem(
-        RECENT_PARENT_CATEGORY_STORAGE_KEY,
-      );
+      const raw = lsGet(RECENT_PARENT_CATEGORY_KEY);
       if (!raw) return [];
       const parsed = JSON.parse(raw);
       if (!Array.isArray(parsed)) return [];
@@ -609,15 +945,24 @@ export function MenuWorkspace({ tenantSlug }: Props) {
         .filter(
           (id): id is string => typeof id === "string" && id.trim().length > 0,
         )
-        .slice(0, MAX_RECENT_PARENT_CATEGORIES);
+        .slice(0, MAX_RECENT);
     } catch {
       return [];
     }
   });
-  const menuPreviewHref = tenantSlug
-    ? `/qr?tenantSlug=${encodeURIComponent(tenantSlug)}`
-    : "";
 
+  // ── Persist to localStorage ──
+  useEffect(() => {
+    lsSet(PANEL_KEY, activePanel);
+  }, [activePanel]);
+  useEffect(() => {
+    lsSet(RECENT_PARENT_CATEGORY_KEY, JSON.stringify(recentParentIds));
+  }, [recentParentIds]);
+  useEffect(() => {
+    lsSet(LAST_VARIANTS_KEY, JSON.stringify(lastUsedVariants));
+  }, [lastUsedVariants]);
+
+  // ── Derived data ──
   const categories = useMemo(
     () =>
       flattenCategories(categoriesPayload?.items || []).sort((a, b) =>
@@ -626,74 +971,42 @@ export function MenuWorkspace({ tenantSlug }: Props) {
     [categoriesPayload?.items],
   );
   const categoriesById = useMemo(
-    () => new Map(categories.map((category) => [category.id, category])),
+    () => new Map(categories.map((c) => [c.id, c])),
     [categories],
   );
   const mainCategories = useMemo(
     () =>
       categories
-        .filter(
-          (category) =>
-            !category.parentId || !categoriesById.has(category.parentId),
-        )
+        .filter((c) => !c.parentId || !categoriesById.has(c.parentId))
         .sort((a, b) => a.name.localeCompare(b.name)),
     [categories, categoriesById],
   );
-  const quickPickMainCategories = useMemo(() => {
-    if (!mainCategories.length) return [];
-    const byId = new Map(
-      mainCategories.map((category) => [category.id, category]),
-    );
+  const subCategoriesByMainId = useMemo(() => {
+    const bucket = new Map<string, MenuCategoryRecord[]>();
+    categories.forEach((c) => {
+      if (!c.parentId || !categoriesById.has(c.parentId)) return;
+      const list = bucket.get(c.parentId) || [];
+      list.push(c);
+      bucket.set(c.parentId, list);
+    });
+    bucket.forEach((list) => list.sort((a, b) => a.name.localeCompare(b.name)));
+    return bucket;
+  }, [categories, categoriesById]);
+
+  // Recent → front, rest alphabetically
+  const quickPickMainCats = useMemo(() => {
+    const byId = new Map(mainCategories.map((c) => [c.id, c]));
     const ordered: MenuCategoryRecord[] = [];
-    recentParentCategoryIds.forEach((id) => {
+    recentParentIds.forEach((id) => {
       const found = byId.get(id);
       if (found) ordered.push(found);
     });
-    mainCategories.forEach((category) => {
-      if (!recentParentCategoryIds.includes(category.id))
-        ordered.push(category);
+    mainCategories.forEach((c) => {
+      if (!recentParentIds.includes(c.id)) ordered.push(c);
     });
     return ordered;
-  }, [mainCategories, recentParentCategoryIds]);
-  const subCategoriesByMainId = useMemo(() => {
-    const bucket = new Map<string, MenuCategoryRecord[]>();
-    categories.forEach((category) => {
-      if (!category.parentId || !categoriesById.has(category.parentId)) return;
-      const list = bucket.get(category.parentId) || [];
-      list.push(category);
-      bucket.set(category.parentId, list);
-    });
+  }, [mainCategories, recentParentIds]);
 
-    bucket.forEach((list) => {
-      list.sort((a, b) => a.name.localeCompare(b.name));
-    });
-    return bucket;
-  }, [categories, categoriesById]);
-  const subCategories = useMemo(
-    () =>
-      categories
-        .filter(
-          (category) =>
-            !!category.parentId && categoriesById.has(category.parentId),
-        )
-        .sort((a, b) => a.name.localeCompare(b.name)),
-    [categories, categoriesById],
-  );
-
-  const itemSubCategories = useMemo(
-    () =>
-      itemForm.mainCategoryId
-        ? subCategoriesByMainId.get(itemForm.mainCategoryId) || []
-        : [],
-    [itemForm.mainCategoryId, subCategoriesByMainId],
-  );
-  const editSubCategories = useMemo(
-    () =>
-      editForm.mainCategoryId
-        ? subCategoriesByMainId.get(editForm.mainCategoryId) || []
-        : [],
-    [editForm.mainCategoryId, subCategoriesByMainId],
-  );
   const optionGroups = useMemo(
     () =>
       (optionGroupsPayload?.items || [])
@@ -711,48 +1024,46 @@ export function MenuWorkspace({ tenantSlug }: Props) {
   const itemCountByCategoryId = useMemo(() => {
     const counts = new Map<string, number>();
     items.forEach((item) => {
-      if (!item.categoryId) return;
-      counts.set(item.categoryId, (counts.get(item.categoryId) || 0) + 1);
+      if (item.categoryId)
+        counts.set(item.categoryId, (counts.get(item.categoryId) || 0) + 1);
     });
     return counts;
   }, [items]);
 
-  const formatCategoryLabel = (category: MenuCategoryRecord): string => {
-    if (!category.parentId) return category.name;
-    const parent = categoriesById.get(category.parentId);
-    return parent ? `${parent.name} > ${category.name}` : category.name;
-  };
+  const itemSubCategories = useMemo(
+    () =>
+      itemForm.mainCategoryId
+        ? subCategoriesByMainId.get(itemForm.mainCategoryId) || []
+        : [],
+    [itemForm.mainCategoryId, subCategoriesByMainId],
+  );
+
   const selectedCategoryLabel = (categoryId: string): string => {
-    const category = categoriesById.get(categoryId);
-    return category ? formatCategoryLabel(category) : categoryId;
+    const cat = categoriesById.get(categoryId);
+    if (!cat) return categoryId;
+    if (!cat.parentId) return cat.name;
+    const parent = categoriesById.get(cat.parentId);
+    return parent ? `${parent.name} › ${cat.name}` : cat.name;
   };
 
   const filteredItems = useMemo(() => {
     const q = searchText.trim().toLowerCase();
     return items.filter((item) => {
-      const category = item.categoryId
-        ? categoriesById.get(item.categoryId)
-        : null;
-      const itemMainCategoryId = !item.categoryId
+      const cat = item.categoryId ? categoriesById.get(item.categoryId) : null;
+      const mainId = !item.categoryId
         ? ""
-        : !category
+        : !cat
           ? item.categoryId
-          : category.parentId && categoriesById.has(category.parentId)
-            ? category.parentId
-            : category.id;
-
-      if (
-        mainCategoryFilter !== "all" &&
-        itemMainCategoryId !== mainCategoryFilter
-      )
+          : cat.parentId && categoriesById.has(cat.parentId)
+            ? cat.parentId
+            : cat.id;
+      if (mainCategoryFilter !== "all" && mainId !== mainCategoryFilter)
         return false;
       if (availabilityFilter === "available" && !item.isAvailable) return false;
       if (availabilityFilter === "unavailable" && item.isAvailable)
         return false;
       if (!q) return true;
-      const variantsText = item.variants
-        .map((variant) => variant.name)
-        .join(" ");
+      const variantsText = item.variants.map((v) => v.name).join(" ");
       return `${item.name} ${item.categoryName || ""} ${item.description || ""} ${variantsText}`
         .toLowerCase()
         .includes(q);
@@ -764,404 +1075,313 @@ export function MenuWorkspace({ tenantSlug }: Props) {
     mainCategoryFilter,
     searchText,
   ]);
-
-  const filteredMainCategories = useMemo(() => {
-    const q = searchText.trim().toLowerCase();
-    if (!q) return mainCategories;
-    return mainCategories.filter((category) =>
-      `${category.name}`.toLowerCase().includes(q),
-    );
-  }, [mainCategories, searchText]);
-
-  const filteredSubCategories = useMemo(() => {
-    const q = searchText.trim().toLowerCase();
-    if (!q) return subCategories;
-    return subCategories.filter((category) => {
-      const parentName =
-        category.parentId && categoriesById.get(category.parentId)?.name;
-      return `${category.name} ${parentName || ""}`.toLowerCase().includes(q);
-    });
-  }, [categoriesById, searchText, subCategories]);
-
-  const filteredOptionGroups = useMemo(() => {
-    const q = searchText.trim().toLowerCase();
-    if (!q) return optionGroups;
-    return optionGroups.filter((group) =>
-      `${group.name} ${group.options.map((option) => option.name).join(" ")}`
-        .toLowerCase()
-        .includes(q),
-    );
-  }, [optionGroups, searchText]);
-
-  const editingCategory = useMemo(
-    () =>
-      editingCategoryId ? categoriesById.get(editingCategoryId) || null : null,
-    [categoriesById, editingCategoryId],
-  );
+  console.log(filteredItems);
 
   const totalItems = items.length;
-  const availableItems = items.filter((item) => item.isAvailable).length;
+  const availableItems = items.filter((i) => i.isAvailable).length;
   const unavailableItems = totalItems - availableItems;
   const avgPrice = totalItems
-    ? items.reduce((sum, item) => sum + getPrimaryPrice(item), 0) / totalItems
+    ? items.reduce((s, i) => s + getPrimaryPrice(i), 0) / totalItems
     : 0;
 
-  useEffect(() => {
-    try {
-      window.localStorage.setItem(
-        RECENT_PARENT_CATEGORY_STORAGE_KEY,
-        JSON.stringify(recentParentCategoryIds),
-      );
-    } catch {
-      // Ignore local storage write issues.
-    }
-  }, [recentParentCategoryIds]);
-
-  useEffect(() => {
-    try {
-      window.localStorage.setItem(
-        MENU_ACTIVE_PANEL_STORAGE_KEY,
-        activeMenuPanel,
-      );
-    } catch {
-      // Ignore local storage write issues.
-    }
-  }, [activeMenuPanel]);
-
-  useEffect(() => {
-    try {
-      window.localStorage.setItem(MENU_LIST_VIEW_STORAGE_KEY, listViewMode);
-    } catch {
-      // Ignore local storage write issues.
-    }
-  }, [listViewMode]);
-
-  useEffect(() => {
-    try {
-      window.localStorage.setItem(
-        LAST_ITEM_VARIANTS_STORAGE_KEY,
-        JSON.stringify(lastUsedCreateVariants),
-      );
-    } catch {
-      // Ignore local storage write issues.
-    }
-  }, [lastUsedCreateVariants]);
-
-  function rememberRecentParentCategory(categoryId: string) {
-    if (!categoryId) return;
-    setRecentParentCategoryIds((prev) => {
-      const next = [categoryId, ...prev.filter((id) => id !== categoryId)];
-      return next.slice(0, MAX_RECENT_PARENT_CATEGORIES);
-    });
-  }
-
-  function chooseParentCategory(categoryId: string) {
-    setCategoryParentId(categoryId);
-    rememberRecentParentCategory(categoryId);
-  }
-
-  function changeActiveMenuPanel(panel: MenuPanelTab) {
-    setActiveMenuPanel(panel);
-  }
-
-  function triggerAddAction(action: QuickMenuAction) {
-    if (action === "item") changeActiveMenuPanel("itemList");
-    if (action === "category") changeActiveMenuPanel("category");
-    if (action === "subCategory") changeActiveMenuPanel("subCategory");
-    if (action === "optional") changeActiveMenuPanel("optionGroup");
-    if (action === "optional") cancelEditOptionGroup();
-    if (action === "category" || action === "subCategory") {
-      setEditingCategoryId(null);
-      setEditingCategoryName("");
-      setCategoryName("");
-    }
-    if (action === "item") {
-      setEditingItem(null);
-    }
-    openQuickMenuAction(action);
-  }
-
-  function openAddForActivePanel() {
-    if (activeMenuPanel === "itemList") {
-      triggerAddAction("item");
-      return;
-    }
-    if (activeMenuPanel === "category") {
-      triggerAddAction("category");
-      return;
-    }
-    if (activeMenuPanel === "subCategory") {
-      triggerAddAction("subCategory");
-      return;
-    }
-    triggerAddAction("optional");
-  }
-
-  function openOptionGroupEditor(group: MenuOptionGroupRecord) {
-    startEditOptionGroup(group);
-    setQuickMenuAction("optional");
-  }
-
-  function openCategoryEditor(category: MenuCategoryRecord) {
-    const isSub =
-      !!category.parentId && categoriesById.has(category.parentId || "");
-    setEditingCategoryId(category.id);
-    setEditingCategoryName(category.name);
-    setCategoryName(category.name);
-    setCategoryType(isSub ? "sub" : "main");
-    setCategoryParentId(isSub ? category.parentId || "" : "");
-    changeActiveMenuPanel(isSub ? "subCategory" : "category");
-    setQuickMenuAction(isSub ? "subCategory" : "category");
-  }
-
-  function openQuickMenuAction(action: QuickMenuAction) {
-    if (action === "item") {
-      const templateVariants = lastUsedCreateVariants.length
-        ? lastUsedCreateVariants.map((variant, index) =>
-            createVariantFromTemplate(variant, index),
-          )
-        : [createVariant(0)];
-      setItemForm((prev) => ({
-        ...createEmptyForm(),
-        mainCategoryId: prev.mainCategoryId,
-        subCategoryId: prev.subCategoryId,
-        taxPercentage: prev.taxPercentage || "5",
-        optionGroupIds: prev.optionGroupIds,
-        variants: templateVariants,
-      }));
-    }
-    if (action === "category") {
-      setCategoryType("main");
-      setCategoryParentId("");
-    }
-    if (action === "subCategory") {
-      setCategoryType("sub");
-    }
-    if (action === "optional") {
-      setGroupForm(createEmptyOptionGroupForm());
-    }
-    setQuickMenuAction(action);
-  }
-
-  function closeQuickMenuAction() {
-    setQuickMenuAction(null);
+  // ── Item modal helpers ──
+  function openCreateItem() {
+    const templateVariants = lastUsedVariants.length
+      ? lastUsedVariants.map((v, i) => createVariantFromTemplate(v, i))
+      : [createVariant(0)];
+    setItemForm((prev) => ({
+      ...createEmptyForm(),
+      mainCategoryId: prev.mainCategoryId,
+      subCategoryId: prev.subCategoryId,
+      taxPercentage: prev.taxPercentage || "5",
+      optionGroupIds: prev.optionGroupIds,
+      variants: templateVariants,
+    }));
     setEditingItem(null);
-    setEditingCategoryId(null);
-    setEditingCategoryName("");
+    setItemModalStep(1);
+    setIsItemModalOpen(true);
+  }
+
+  function openEditItem(item: MenuItemRecord) {
+    const sel = resolveItemCategorySelection(item.categoryId, categoriesById);
+    setItemForm({
+      name: item.name,
+      mainCategoryId: sel.mainCategoryId,
+      subCategoryId: sel.subCategoryId,
+      description: item.description || "",
+      image: item.image || "",
+      taxPercentage: String(item.taxPercentage ?? 5),
+      variants: ensureVariants(item),
+      optionGroupIds: item.optionGroupIds || [],
+      fulfillmentType: item.fulfillmentType || "KITCHEN",
+    });
+    setEditingItem(item);
+    setItemModalStep(1);
+    setIsItemModalOpen(true);
+  }
+
+  function closeItemModal() {
+    setIsItemModalOpen(false);
+    setEditingItem(null);
   }
 
   function updateVariant(
-    mode: "create" | "edit",
     key: string,
     field: keyof Omit<VariantForm, "key">,
     value: string | boolean,
   ) {
-    const updateList = (list: VariantForm[]) =>
-      list.map((variant) =>
-        variant.key === key ? { ...variant, [field]: value } : variant,
-      );
-    if (mode === "create")
-      setItemForm((prev) => ({ ...prev, variants: updateList(prev.variants) }));
-    if (mode === "edit")
-      setEditForm((prev) => ({ ...prev, variants: updateList(prev.variants) }));
+    setItemForm((prev) => ({
+      ...prev,
+      variants: prev.variants.map((v) =>
+        v.key === key ? { ...v, [field]: value } : v,
+      ),
+    }));
   }
 
-  function addVariant(mode: "create" | "edit") {
-    if (mode === "create")
-      setItemForm((prev) => ({
-        ...prev,
-        variants: [
-          ...prev.variants,
-          lastUsedCreateVariants[prev.variants.length]
-            ? createVariantFromTemplate(
-                lastUsedCreateVariants[prev.variants.length],
-                prev.variants.length,
-              )
-            : createVariant(prev.variants.length),
-        ],
-      }));
-    if (mode === "edit")
-      setEditForm((prev) => ({
-        ...prev,
-        variants: [...prev.variants, createVariant(prev.variants.length)],
-      }));
+  function addVariant() {
+    setItemForm((prev) => ({
+      ...prev,
+      variants: [
+        ...prev.variants,
+        lastUsedVariants[prev.variants.length]
+          ? createVariantFromTemplate(
+              lastUsedVariants[prev.variants.length],
+              prev.variants.length,
+            )
+          : createVariant(prev.variants.length),
+      ],
+    }));
   }
 
-  function removeVariant(mode: "create" | "edit", key: string) {
-    const removeFrom = (list: VariantForm[]) =>
-      list.length > 1 ? list.filter((variant) => variant.key !== key) : list;
-    if (mode === "create")
-      setItemForm((prev) => ({ ...prev, variants: removeFrom(prev.variants) }));
-    if (mode === "edit")
-      setEditForm((prev) => ({ ...prev, variants: removeFrom(prev.variants) }));
+  function removeVariant(key: string) {
+    setItemForm((prev) => ({
+      ...prev,
+      variants:
+        prev.variants.length > 1
+          ? prev.variants.filter((v) => v.key !== key)
+          : prev.variants,
+    }));
   }
 
-  function toggleGroup(
-    mode: "create" | "edit",
-    groupId: string,
-    checked: boolean,
-  ) {
-    const update = (list: string[]) =>
-      checked
-        ? Array.from(new Set([...list, groupId]))
-        : list.filter((id) => id !== groupId);
-    if (mode === "create")
-      setItemForm((prev) => ({
-        ...prev,
-        optionGroupIds: update(prev.optionGroupIds),
-      }));
-    if (mode === "edit")
-      setEditForm((prev) => ({
-        ...prev,
-        optionGroupIds: update(prev.optionGroupIds),
-      }));
+  function changeMainCategory(id: string) {
+    const validSubIds = new Set(
+      (subCategoriesByMainId.get(id) || []).map((c) => c.id),
+    );
+    setItemForm((prev) => ({
+      ...prev,
+      mainCategoryId: id,
+      subCategoryId: validSubIds.has(prev.subCategoryId)
+        ? prev.subCategoryId
+        : "",
+    }));
   }
 
-  function changeMainCategory(mode: "create" | "edit", mainCategoryId: string) {
-    const update = (prev: ItemForm): ItemForm => {
-      const validSubIds = new Set(
-        (subCategoriesByMainId.get(mainCategoryId) || []).map(
-          (category) => category.id,
-        ),
-      );
-      return {
-        ...prev,
-        mainCategoryId,
-        subCategoryId: validSubIds.has(prev.subCategoryId)
-          ? prev.subCategoryId
-          : "",
-      };
-    };
-
-    if (mode === "create") setItemForm(update);
-    if (mode === "edit") setEditForm(update);
+  function toggleOptionGroup(id: string, checked: boolean) {
+    setItemForm((prev) => ({
+      ...prev,
+      optionGroupIds: checked
+        ? Array.from(new Set([...prev.optionGroupIds, id]))
+        : prev.optionGroupIds.filter((x) => x !== id),
+    }));
   }
 
-  function changeSubCategory(mode: "create" | "edit", subCategoryId: string) {
-    if (mode === "create") setItemForm((prev) => ({ ...prev, subCategoryId }));
-    if (mode === "edit") setEditForm((prev) => ({ ...prev, subCategoryId }));
-  }
-
-  function changeMainCategoryFilter(mainCategoryId: string) {
-    setMainCategoryFilter(mainCategoryId);
-  }
-
-  async function submitCreateCategory(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    if (!categoryName.trim()) {
-      showError("Category name is required");
-      return;
-    }
-    if (categoryType === "sub" && !categoryParentId) {
-      showError("Sub category ke liye main category select karo");
+  async function submitItem(e: FormEvent) {
+    e.preventDefault();
+    const err = validateForm(itemForm);
+    if (err) {
+      showError(err);
       return;
     }
 
     try {
-      const parentId = categoryType === "sub" ? categoryParentId : null;
-      const siblingCount = parentId
-        ? subCategoriesByMainId.get(parentId)?.length || 0
-        : mainCategories.length;
-      const response = await createCategory({
-        name: categoryName.trim(),
-        parentId,
-        sortOrder: siblingCount + 1,
-      }).unwrap();
-      setCategoryName("");
-      if (categoryType === "sub") {
-        setCategoryParentId("");
+      if (editingItem) {
+        const res = await updateMenuItem({
+          itemId: editingItem.id,
+          payload: toUpdatePayload(editingItem, itemForm),
+        }).unwrap();
+        showSuccess(res.message || "Item update ho gaya");
+      } else {
+        const res = await createMenuItem(toCreatePayload(itemForm)).unwrap();
+        const remembered = itemForm.variants
+          .filter((v) => v.name.trim())
+          .map((v) => ({
+            name: v.name,
+            price: v.price,
+            isAvailable: v.isAvailable,
+          }));
+        if (remembered.length) setLastUsedVariants(remembered.slice(0, 5));
+        showSuccess(res.message || "Item add ho gaya");
       }
-      showSuccess(response.message || "Category created");
-      closeQuickMenuAction();
-    } catch (e) {
-      showError(getErrorMessage(e));
+      closeItemModal();
+    } catch (err) {
+      showError(getErrorMessage(err));
     }
   }
 
-  async function submitCategoryEdit(category: MenuCategoryRecord) {
-    if (!editingCategoryName.trim()) {
-      showError("Category name is required");
-      return;
-    }
-
-    try {
-      const response = await updateCategory({
-        categoryId: category.id,
-        payload: {
-          name: editingCategoryName.trim(),
-          parentId: category.parentId ?? null,
-          sortOrder: category.sortOrder ?? 0,
-        },
-      }).unwrap();
-      setEditingCategoryId(null);
-      setEditingCategoryName("");
-      setCategoryName("");
-      showSuccess(response.message || "Category updated");
-      closeQuickMenuAction();
-    } catch (e) {
-      showError(getErrorMessage(e));
-    }
+async function toggleAvailability(item: MenuItemRecord) {
+  if (!item.categoryId) {
+    showError("Category missing hai. Item ek baar edit karo.");
+    return;
   }
 
-  async function removeCategory(category: MenuCategoryRecord) {
-    const subCategoryCount =
-      subCategoriesByMainId.get(category.id)?.length || 0;
-    const itemCount = itemCountByCategoryId.get(category.id) || 0;
-    const detailParts = [
-      subCategoryCount ? `${subCategoryCount} sub categories` : "",
-      itemCount ? `${itemCount} items` : "",
-    ].filter(Boolean);
-    const detailText = detailParts.length
-      ? ` Current usage: ${detailParts.join(", ")}.`
-      : "";
+  const variantsPayload = item.variants.length
+    ? item.variants.map((v, i) => ({
+        name: v.name,
+        price: v.price,
+        isAvailable: v.isAvailable,
+        sortOrder: v.sortOrder ?? i,
+      }))
+    : [{
+        name: "Regular",
+        price: item.price,
+        isAvailable: item.isAvailable,
+        sortOrder: 0,
+      }];
 
-    const approved = await confirm({
-      title: "Delete Category",
-      message: `Delete category "${category.name}"?${detailText} Backend only allows delete when no child categories or items exist.`,
-      confirmText: "Delete Category",
-      cancelText: "Keep Category",
+  const payload: UpdateMenuItemPayload = {
+    categoryId: item.categoryId,
+    name: item.name,
+    description: item.description,
+    image: item.image,
+    taxPercentage: item.taxPercentage ?? 0,
+    sortOrder: item.sortOrder ?? 0,
+    optionGroupIds: item.optionGroupIds || [],
+    fulfillmentType: item.fulfillmentType || "KITCHEN",
+    variants: variantsPayload,
+    isAvailable: !item.isAvailable,
+  };
+
+  try {
+    await updateMenuItem({ itemId: item.id, payload }).unwrap();
+    showSuccess(`${item.name} ${item.isAvailable ? "hidden" : "live"} kar diya`);
+  } catch (err) {
+    showError(getErrorMessage(err));
+  }
+}
+
+  async function removeItem(item: MenuItemRecord) {
+    const ok = await confirm({
+      title: "Item Delete Karo",
+      message: `"${item.name}" hamesha ke liye delete ho jayega.`,
+      confirmText: "Delete",
+      cancelText: "Cancel",
       tone: "danger",
     });
-    if (!approved) return;
-
+    if (!ok) return;
     try {
-      const response = await deleteCategory({
-        categoryId: category.id,
-      }).unwrap();
-      if (editingCategoryId === category.id) {
-        setEditingCategoryId(null);
-        setEditingCategoryName("");
-      }
-      if (categoryParentId === category.id) setCategoryParentId("");
-      if (mainCategoryFilter === category.id) setMainCategoryFilter("all");
-      showSuccess(response.message || "Category deleted");
-    } catch (e) {
-      showError(getErrorMessage(e));
+      const res = await deleteMenuItem({ itemId: item.id }).unwrap();
+      showSuccess(res.message || "Item delete ho gaya");
+    } catch (err) {
+      showError(getErrorMessage(err));
     }
   }
 
-  async function submitCreateOptionGroup(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
+  // ── Category helpers ──
+  function openCreateCategory(type: "main" | "sub") {
+    setCatType(type);
+    setCatName("");
+    setCatParentId("");
+    setEditingCategoryId(null);
+    setEditingCategoryName("");
+    setIsCatSheetOpen(true);
+  }
 
-    const validationError = validateOptionGroupForm(groupForm);
-    if (validationError) {
-      showError(validationError);
+  function openEditCategory(cat: MenuCategoryRecord) {
+    const isSub = !!cat.parentId && categoriesById.has(cat.parentId || "");
+    setCatType(isSub ? "sub" : "main");
+    setCatName(cat.name);
+    setCatParentId(isSub ? cat.parentId || "" : "");
+    setEditingCategoryId(cat.id);
+    setEditingCategoryName(cat.name);
+    setIsCatSheetOpen(true);
+  }
+
+  function chooseParentCategory(id: string) {
+    setCatParentId(id);
+    setRecentParentIds((prev) =>
+      [id, ...prev.filter((x) => x !== id)].slice(0, MAX_RECENT),
+    );
+  }
+
+  async function submitCategory(e: FormEvent) {
+    e.preventDefault();
+    const name = editingCategoryId ? editingCategoryName : catName;
+    if (!name.trim()) {
+      showError("Category name likhein");
+      return;
+    }
+    if (catType === "sub" && !catParentId) {
+      showError("Main category select karo");
       return;
     }
 
     try {
-      const response = await createOptionGroup(
-        toOptionGroupPayload(groupForm),
-      ).unwrap();
-      setGroupForm(createEmptyOptionGroupForm());
-      showSuccess(response.message || "Option group created");
-      closeQuickMenuAction();
-    } catch (e) {
-      showError(getErrorMessage(e));
+      if (editingCategoryId) {
+        const cat = categoriesById.get(editingCategoryId);
+        if (!cat) return;
+        const res = await updateCategory({
+          categoryId: editingCategoryId,
+          payload: {
+            name: name.trim(),
+            parentId: cat.parentId ?? null,
+            sortOrder: cat.sortOrder ?? 0,
+          },
+        }).unwrap();
+        showSuccess(res.message || "Category update ho gayi");
+      } else {
+        const parentId = catType === "sub" ? catParentId : null;
+        const siblingCount = parentId
+          ? subCategoriesByMainId.get(parentId)?.length || 0
+          : mainCategories.length;
+        const res = await createCategory({
+          name: name.trim(),
+          parentId,
+          sortOrder: siblingCount + 1,
+        }).unwrap();
+        showSuccess(res.message || "Category add ho gayi");
+      }
+      setIsCatSheetOpen(false);
+    } catch (err) {
+      showError(getErrorMessage(err));
     }
   }
 
-  function startEditOptionGroup(group: MenuOptionGroupRecord) {
+  async function removeCategory(cat: MenuCategoryRecord) {
+    const subCount = subCategoriesByMainId.get(cat.id)?.length || 0;
+    const itemCount = itemCountByCategoryId.get(cat.id) || 0;
+    const detail = [
+      subCount ? `${subCount} sub categories` : "",
+      itemCount ? `${itemCount} items` : "",
+    ]
+      .filter(Boolean)
+      .join(", ");
+    const ok = await confirm({
+      title: "Category Delete Karo",
+      message: `"${cat.name}" delete karna chahte ho?${detail ? ` (${detail})` : ""} Backend tabhi delete karta hai jab koi child ya item nahi ho.`,
+      confirmText: "Delete",
+      cancelText: "Cancel",
+      tone: "danger",
+    });
+    if (!ok) return;
+    try {
+      const res = await deleteCategory({ categoryId: cat.id }).unwrap();
+      if (catParentId === cat.id) setCatParentId("");
+      if (mainCategoryFilter === cat.id) setMainCategoryFilter("all");
+      showSuccess(res.message || "Category delete ho gayi");
+    } catch (err) {
+      showError(getErrorMessage(err));
+    }
+  }
+
+  // ── Option group helpers ──
+  function openCreateOG() {
+    setGroupForm(createEmptyOptionGroupForm());
+    setEditingGroupId(null);
+    setEditingGroupForm(createEmptyOptionGroupForm());
+    setIsOGSheetOpen(true);
+  }
+
+  function openEditOG(group: MenuOptionGroupRecord) {
     setEditingGroupId(group.id);
     setEditingGroupForm({
       name: group.name,
@@ -1169,1616 +1389,560 @@ export function MenuWorkspace({ tenantSlug }: Props) {
       maxSelect: String(group.maxSelect ?? Math.max(1, group.options.length)),
       sortOrder: String(group.sortOrder ?? 0),
     });
+    setIsOGSheetOpen(true);
   }
 
-  function cancelEditOptionGroup() {
-    setEditingGroupId(null);
-    setEditingGroupForm(createEmptyOptionGroupForm());
-  }
-
-  async function submitUpdateOptionGroup(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    if (!editingGroupId) return;
-
-    const validationError = validateOptionGroupForm(editingGroupForm);
-    if (validationError) {
-      showError(validationError);
+  async function submitOG(e: FormEvent) {
+    e.preventDefault();
+    const form = editingGroupId ? editingGroupForm : groupForm;
+    const err = validateOptionGroupForm(form);
+    if (err) {
+      showError(err);
       return;
     }
 
     try {
-      const response = await updateOptionGroup({
-        groupId: editingGroupId,
-        payload: toOptionGroupPayload(editingGroupForm),
-      }).unwrap();
-      cancelEditOptionGroup();
-      showSuccess(response.message || "Option group updated");
-      closeQuickMenuAction();
-    } catch (e) {
-      showError(getErrorMessage(e));
-    }
-  }
-
-  async function removeOptionGroup(group: MenuOptionGroupRecord) {
-    const approved = await confirm({
-      title: "Delete Option Group",
-      message: `Delete option group "${group.name}"? Menu items linked with this group may lose option mapping.`,
-      confirmText: "Delete Group",
-      cancelText: "Keep Group",
-      tone: "danger",
-    });
-    if (!approved) return;
-
-    try {
-      const response = await deleteOptionGroup({ groupId: group.id }).unwrap();
-      if (editingGroupId === group.id) cancelEditOptionGroup();
-      showSuccess(response.message || "Option group deleted");
-    } catch (e) {
-      showError(getErrorMessage(e));
-    }
-  }
-
-  async function submitCreateItem(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-
-    const validationError = validateForm(itemForm);
-    if (validationError) {
-      showError(validationError);
-      return;
-    }
-
-    try {
-      const response = await createMenuItem(toCreatePayload(itemForm)).unwrap();
-      const rememberedVariants = itemForm.variants
-        .map((variant) => ({
-          name: variant.name,
-          price: variant.price,
-          isAvailable: variant.isAvailable,
-        }))
-        .filter((variant) => variant.name.trim().length > 0);
-      if (rememberedVariants.length) {
-        setLastUsedCreateVariants(rememberedVariants.slice(0, 5));
+      if (editingGroupId) {
+        const res = await updateOptionGroup({
+          groupId: editingGroupId,
+          payload: toOptionGroupPayload(form),
+        }).unwrap();
+        showSuccess(res.message || "Option group update ho gaya");
+      } else {
+        const res = await createOptionGroup(
+          toOptionGroupPayload(form),
+        ).unwrap();
+        showSuccess(res.message || "Option group add ho gaya");
       }
-      setItemForm({
-        ...createEmptyForm(),
-        mainCategoryId: itemForm.mainCategoryId,
-        subCategoryId: itemForm.subCategoryId,
-        taxPercentage: itemForm.taxPercentage,
-        optionGroupIds: itemForm.optionGroupIds,
-        variants: rememberedVariants.length
-          ? rememberedVariants.map((variant, index) =>
-              createVariantFromTemplate(variant, index),
-            )
-          : [createVariant(0)],
-      });
-      showSuccess(response.message || "Menu item created");
-      closeQuickMenuAction();
-    } catch (e) {
-      showError(getErrorMessage(e));
+      setIsOGSheetOpen(false);
+    } catch (err) {
+      showError(getErrorMessage(err));
     }
   }
 
-  function openEdit(item: MenuItemRecord) {
-    const categorySelection = resolveItemCategorySelection(
-      item.categoryId,
-      categoriesById,
-    );
-    setEditingItem(item);
-    setEditForm({
-      name: item.name,
-      mainCategoryId: categorySelection.mainCategoryId,
-      subCategoryId: categorySelection.subCategoryId,
-      description: item.description || "",
-      image: item.image || "",
-      taxPercentage: String(item.taxPercentage ?? 0),
-      variants: ensureVariants(item),
-      optionGroupIds: item.optionGroupIds || [],
-      fulfillmentType:item.fulfillmentType || "KITCHEN",
-    });
-    changeActiveMenuPanel("itemList");
-    setQuickMenuAction("item");
-  }
-
-  async function submitEdit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    if (!editingItem) return;
-
-    const validationError = validateForm(editForm);
-    if (validationError) {
-      showError(validationError);
-      return;
-    }
-
-    try {
-      const response = await updateMenuItem({
-        itemId: editingItem.id,
-        payload: toUpdatePayload(editingItem, editForm),
-      }).unwrap();
-      setEditingItem(null);
-      showSuccess(response.message || "Menu item updated");
-      closeQuickMenuAction();
-    } catch (e) {
-      showError(getErrorMessage(e));
-    }
-  }
-
-  async function toggleAvailability(item: MenuItemRecord) {
-    if (!item.categoryId) {
-      showError("Category missing for this item. Edit item once.");
-      return;
-    }
-
-    const payload: UpdateMenuItemPayload = {
-      categoryId: item.categoryId,
-      name: item.name,
-      description: item.description,
-      image: item.image,
-      taxPercentage: item.taxPercentage ?? 0,
-      sortOrder: item.sortOrder ?? 0,
-      optionGroupIds: item.optionGroupIds || [],
-      variants: (item.variants.length
-        ? item.variants
-        : [
-            {
-              id: "temp",
-              name: "Regular",
-              price: item.price,
-              isAvailable: item.isAvailable,
-              raw: {},
-            },
-          ]
-      ).map((variant, index) => ({
-        name: variant.name,
-        price: variant.price,
-        isAvailable: !item.isAvailable,
-        sortOrder: variant.sortOrder ?? index,
-      })),
-    };
-
-    try {
-      await updateMenuItem({ itemId: item.id, payload }).unwrap();
-      showSuccess(
-        `${item.name} marked ${item.isAvailable ? "unavailable" : "available"}`,
-      );
-    } catch (e) {
-      showError(getErrorMessage(e));
-    }
-  }
-
-  async function removeItem(item: MenuItemRecord) {
-    const approved = await confirm({
-      title: "Delete Menu Item",
-      message: `Delete ${item.name}? This will remove the item from your menu.`,
-      confirmText: "Delete Item",
-      cancelText: "Keep Item",
+  async function removeOG(group: MenuOptionGroupRecord) {
+    const ok = await confirm({
+      title: "Option Group Delete Karo",
+      message: `"${group.name}" delete karne se linked items ka option mapping hat jayega.`,
+      confirmText: "Delete",
+      cancelText: "Cancel",
       tone: "danger",
     });
-    if (!approved) return;
-
+    if (!ok) return;
     try {
-      const response = await deleteMenuItem({ itemId: item.id }).unwrap();
-      if (editingItem?.id === item.id) setEditingItem(null);
-      showSuccess(response.message || "Menu item deleted");
-    } catch (e) {
-      showError(getErrorMessage(e));
+      const res = await deleteOptionGroup({ groupId: group.id }).unwrap();
+      showSuccess(res.message || "Option group delete ho gaya");
+    } catch (err) {
+      showError(getErrorMessage(err));
     }
   }
+
+  const menuPreviewHref = tenantSlug
+    ? `/qr?tenantSlug=${encodeURIComponent(tenantSlug)}`
+    : "";
+
+  // ─── Render ───────────────────────────────────────────────────────────────
 
   return (
     <>
-      <section className="mt-1 rounded-2xl border border-[#eadfc9] bg-[linear-gradient(125deg,#fff9ed_0%,#fff5e8_55%,#ffeccc_100%)] p-2.5 shadow-sm sm:p-3">
-        <div className="flex gap-1.5 overflow-x-auto whitespace-nowrap pb-1 no-scrollbar">
-          <button
-            type="button"
-            onClick={() => changeActiveMenuPanel("itemList")}
-            className={`shrink-0 rounded-lg border px-2.5 py-1.5 text-[11px] font-semibold transition-colors sm:px-3 sm:py-2 sm:text-xs ${
-              activeMenuPanel === "itemList"
-                ? "border-[#e7bf7b] bg-[#d5963c] text-white"
-                : "border-[#d6c39e] bg-[#f6ead4] text-[#6f5332] hover:bg-[#edd9b8]"
-            }`}
-          >
-            Item List
-          </button>
-
-          <button
-            type="button"
-            onClick={() => changeActiveMenuPanel("category")}
-            className={`shrink-0 rounded-lg border px-2.5 py-1.5 text-[11px] font-semibold transition-colors sm:px-3 sm:py-2 sm:text-xs ${
-              activeMenuPanel === "category"
-                ? "border-[#e7bf7b] bg-[#d5963c] text-white"
-                : "border-[#d6c39e] bg-[#f6ead4] text-[#6f5332] hover:bg-[#edd9b8]"
-            }`}
-          >
-            Category
-          </button>
-
-          <button
-            type="button"
-            onClick={() => changeActiveMenuPanel("subCategory")}
-            className={`shrink-0 rounded-lg border px-2.5 py-1.5 text-[11px] font-semibold transition-colors sm:px-3 sm:py-2 sm:text-xs ${
-              activeMenuPanel === "subCategory"
-                ? "border-[#e7bf7b] bg-[#d5963c] text-white"
-                : "border-[#d6c39e] bg-[#f6ead4] text-[#6f5332] hover:bg-[#edd9b8]"
-            }`}
-          >
-            Sub Cat
-          </button>
-
-          <button
-            type="button"
-            onClick={() => changeActiveMenuPanel("optionGroup")}
-            className={`shrink-0 rounded-lg border px-2.5 py-1.5 text-[11px] font-semibold transition-colors sm:px-3 sm:py-2 sm:text-xs ${
-              activeMenuPanel === "optionGroup"
-                ? "border-[#e7bf7b] bg-[#d5963c] text-white"
-                : "border-[#d6c39e] bg-[#f6ead4] text-[#6f5332] hover:bg-[#edd9b8]"
-            }`}
-          >
-            Option Group
-          </button>
-        </div>
-      </section>
-
-      <section className="mt-3 grid gap-3 sm:mt-4 sm:gap-4">
-        <article className="hidden rounded-2xl border border-[#e6dfd1] bg-[#fffdf9] shadow-sm">
-          <div className="rounded-t-2xl bg-[linear-gradient(130deg,#e5f0ea_0%,#f8e4bb_45%,#f7c87b_100%)] px-4 py-4">
-            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-700">
-              Menu Control
-            </p>
-            <h3 className="mt-1 text-xl font-semibold text-slate-900">
-              Easy Menu Setup
-            </h3>
-            <p className="mt-1 text-xs text-slate-700">
-              Simple flow: Main Category to Sub Category (optional), then Item
-              Variants and Optional Groups.
-            </p>
-          </div>
-
-          <form
-            onSubmit={submitCreateCategory}
-            className="space-y-2 border-b border-[#eee7d8] p-4"
-          >
-            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-              Category Create & Edit
-            </p>
-            <div className="grid grid-cols-2 gap-2">
+      {/* ── Tab Bar ── */}
+      <nav className="flex gap-2 overflow-x-auto pb-0.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+        {(["itemList", "category", "optionGroup"] as MenuPanelTab[]).map(
+          (tab) => {
+            const labels: Record<MenuPanelTab, string> = {
+              itemList: "Menu Items",
+              category: "Categories",
+              optionGroup: "Option Groups",
+            };
+            return (
               <button
+                key={tab}
                 type="button"
-                onClick={() => {
-                  setCategoryType("main");
-                  setCategoryParentId("");
-                }}
-                className={`rounded-lg border px-3 py-2 text-xs font-semibold ${
-                  categoryType === "main"
-                    ? "border-amber-200 bg-amber-50 text-amber-800"
-                    : "border-slate-200 bg-white text-slate-600"
-                }`}
+                onClick={() => setActivePanel(tab)}
+                className={[
+                  "shrink-0 rounded-full border px-4 py-2 text-xs font-bold transition-all whitespace-nowrap",
+                  activePanel === tab
+                    ? "border-[#d4a30a] bg-[#d4a30a] text-white shadow-sm"
+                    : "border-[#e0d4bb] bg-white text-slate-500 hover:bg-[#faf5eb]",
+                ].join(" ")}
               >
-                Main Category
+                {labels[tab]}
               </button>
-              <button
-                type="button"
-                onClick={() => setCategoryType("sub")}
-                className={`rounded-lg border px-3 py-2 text-xs font-semibold ${
-                  categoryType === "sub"
-                    ? "border-blue-200 bg-blue-50 text-blue-800"
-                    : "border-slate-200 bg-white text-slate-600"
-                }`}
-              >
-                Sub Category
-              </button>
-            </div>
-            <label
-              htmlFor="menu-category-name"
-              className="text-xs font-medium text-slate-700"
+            );
+          },
+        )}
+      </nav>
+
+      {/* ── Stats Row (Items panel only) ── */}
+      {activePanel === "itemList" && (
+        <div className="mt-3 grid grid-cols-4 gap-2">
+          {[
+            { label: "Total", value: totalItems },
+            { label: "Live", value: availableItems },
+            { label: "Hidden", value: unavailableItems },
+            { label: "Avg", value: formatMoney(avgPrice) },
+          ].map(({ label, value }) => (
+            <div
+              key={label}
+              className="rounded-2xl border border-[#ead9b8] bg-[#fffaf0] px-2 py-2.5 text-center"
             >
-              Category Name
-            </label>
-            <div className="flex gap-2">
-              <input
-                id="menu-category-name"
-                value={categoryName}
-                onChange={(event) => setCategoryName(event.target.value)}
-                className="h-10 flex-1 rounded-lg border border-[#ddd4c1] bg-white px-3 text-sm outline-none ring-amber-200 focus:ring-2"
-                placeholder="e.g. Beverages"
-              />
-              <button
-                type="submit"
-                disabled={isCreatingCategory}
-                className="rounded-lg border border-[#dfd2bb] bg-white px-3 text-xs font-semibold text-slate-700 disabled:opacity-60"
-              >
-                {isCreatingCategory
-                  ? "..."
-                  : `Add ${categoryType === "main" ? "Main" : "Sub"}`}
-              </button>
+              <p className="text-base font-bold text-slate-800 leading-none">
+                {value}
+              </p>
+              <p className="mt-1 text-[10px] font-semibold text-slate-400 uppercase tracking-wide">
+                {label}
+              </p>
             </div>
-            {categoryType === "sub" ? (
-              <div className="space-y-1">
-                <p className="text-[11px] font-medium text-slate-600">
-                  Quick Category Pick
-                </p>
-                <div className="flex gap-1.5 overflow-x-auto overflow-y-hidden pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-                  {quickPickMainCategories.map((category) => {
-                    const selected = categoryParentId === category.id;
-                    return (
-                      <button
-                        key={`quick-chip-${category.id}`}
-                        type="button"
-                        onClick={() => chooseParentCategory(category.id)}
-                        className={`shrink-0 rounded-full border px-2.5 py-1 text-[11px] font-semibold transition-colors ${
-                          selected
-                            ? "border-amber-300 bg-amber-100 text-amber-800"
-                            : "border-[#dfd2bb] bg-white text-slate-700 hover:bg-[#faf2e4]"
-                        }`}
-                      >
-                        {category.name}
-                      </button>
-                    );
-                  })}
-                </div>
-                <label
-                  htmlFor="menu-category-parent"
-                  className="text-xs font-medium text-slate-700"
-                >
-                  Main Category
-                </label>
-                <select
-                  id="menu-category-parent"
-                  value={categoryParentId}
-                  onChange={(event) => chooseParentCategory(event.target.value)}
-                  className="h-10 w-full rounded-lg border border-[#ddd4c1] bg-white px-3 text-sm"
-                >
-                  <option value="">Select main category</option>
-                  {mainCategories.map((category) => (
-                    <option key={category.id} value={category.id}>
-                      {category.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            ) : null}
-            <p className="text-[11px] text-slate-500">
-              Menu API standard: category me `name`, `parentId`, `sortOrder`
-              jata hai.
-            </p>
+          ))}
+        </div>
+      )}
 
-            <div className="max-h-36 space-y-1.5 overflow-y-auto rounded-lg border border-[#eadfc9] bg-[#fffaf0] p-2">
-              {mainCategories.length ? (
-                mainCategories.map((mainCategory) => {
-                  const subCategories =
-                    subCategoriesByMainId.get(mainCategory.id) || [];
+      {/* ── Search + Filters ── */}
+      <div className="mt-3">
+        <div className="flex items-center justify-between items-center gap-2">
+          <div className="flex items-center gap-2 rounded-2xl border border-[#ddd4c1] bg-white px-3.5 py-2.5 w-[80%]">
+            <svg
+              className="h-4 w-4 shrink-0 text-slate-400"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
+              />
+            </svg>
+            <input
+              value={searchText}
+              onChange={(e) => setSearchText(e.target.value)}
+              placeholder={
+                activePanel === "itemList"
+                  ? "Search items..."
+                  : activePanel === "category"
+                    ? "Search categories..."
+                    : "Search option groups..."
+              }
+              className="flex-1 bg-transparent text-sm text-slate-800 outline-none placeholder:text-slate-400"
+            />
+            {searchText && (
+              <button
+                type="button"
+                onClick={() => setSearchText("")}
+                className="text-slate-400 hover:text-slate-600"
+              >
+                ✕
+              </button>
+            )}
+          </div>
+          <div>
+            <button
+              className="flex items-center gap-1 h-8 px-3 rounded-lg bg-amber-500 hover:bg-amber-600 text-white text-xs font-semibold shadow-sm shadow-amber-200/60 transition-all active:scale-95"
+              onClick={() => {
+                if (activePanel === "itemList") openCreateItem();
+                else if (activePanel === "category") openCreateCategory("main");
+                else openCreateOG();
+              }}
+            >
+              <Plus />
+              <span>
+                {activePanel === "itemList"
+                  ? "Menu Item"
+                  : activePanel === "category"
+                    ? "Category"
+                    : "Option Group"}
+              </span>
+            </button>
+          </div>
+        </div>
+
+        {activePanel === "itemList" && (
+          <div className="mt-2.5 space-y-2">
+            <ChipScroll>
+              <Chip
+                label="All"
+                active={mainCategoryFilter === "all"}
+                onClick={() => {
+                  setMainCategoryFilter("all");
+                  setAvailabilityFilter("all");
+                }}
+              />
+              {mainCategories.map((cat) => (
+                <Chip
+                  key={cat.id}
+                  label={cat.name}
+                  active={mainCategoryFilter === cat.id}
+                  onClick={() => setMainCategoryFilter(cat.id)}
+                />
+              ))}
+              <Chip
+                label="Live"
+                active={availabilityFilter === "available"}
+                onClick={() =>
+                  setAvailabilityFilter((p) =>
+                    p === "available" ? "all" : "available",
+                  )
+                }
+              />
+              <Chip
+                label="Hidden"
+                active={availabilityFilter === "unavailable"}
+                onClick={() =>
+                  setAvailabilityFilter((p) =>
+                    p === "unavailable" ? "all" : "unavailable",
+                  )
+                }
+              />
+            </ChipScroll>
+            {/* <ChipScroll>
+              <Chip
+                label="All Items"
+                active={availabilityFilter === "all"}
+                onClick={() => setAvailabilityFilter("all")}
+              />
+              <Chip
+                label="Live"
+                active={availabilityFilter === "available"}
+                onClick={() =>
+                  setAvailabilityFilter((p) =>
+                    p === "available" ? "all" : "available",
+                  )
+                }
+              />
+              <Chip
+                label="Hidden"
+                active={availabilityFilter === "unavailable"}
+                onClick={() =>
+                  setAvailabilityFilter((p) =>
+                    p === "unavailable" ? "all" : "unavailable",
+                  )
+                }
+              />
+            </ChipScroll> */}
+          </div>
+        )}
+      </div>
+
+      {/* ── Content ── */}
+      <div className="mt-3">
+        {/* Items */}
+        {activePanel === "itemList" &&
+          (filteredItems.length ? (
+            // <div className="grid gap-3 sm:grid-cols-2">
+            <div className="grid gap-3 grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4">
+              {filteredItems.map((item) => (
+                <article
+                  key={item.id}
+                  className="rounded-2xl border border-[#ead9b8] bg-gradient-to-br from-[#fffcf6] to-[#fff7e8] p-3.5"
+                  onClick={() => openEditItem(item)}
+                >
+                  <div className="flex items-start justify-between gap-2 mb-2">
+                    <div className="min-w-0">
+                      <p className="truncate font-bold text-slate-900">
+                        {item.name}
+                      </p>
+                      <p className="truncate text-[11px] text-slate-400 mt-0.5">
+                        {item.categoryId
+                          ? selectedCategoryLabel(item.categoryId)
+                          : "Uncategorized"}
+                      </p>
+                    </div>
+                    <div className="flex flex-col items-center">
+                      <AvailBadge available={item.isAvailable} />
+                      <button
+                        type="button"
+                        className="p-1 rounded-full transition-all"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          toggleAvailability(item);
+                        }}
+                      >
+                        <span
+                          className={`text-base ${item.isAvailable ? "text-emerald-600" : "text-rose-500"}`}
+                        >
+                          {item.isAvailable ? <Eye /> : <EyeOff />}
+                        </span>
+                      </button>
+                    </div>
+                  </div>
+                  <p className="text-base font-bold text-[#8a5c00] mb-2">
+                    {formatMoney(getPrimaryPrice(item))}
+                  </p>
+                  {item.description && (
+                    <p className="text-xs text-slate-500 mb-2 line-clamp-2">
+                      {item.description}
+                    </p>
+                  )}
+                  <div className="flex flex-wrap gap-1.5 mb-3">
+                    {item.variants.map((v, i) => (
+                      <span
+                        key={`${item.id}-${v.id}-${i}`}
+                        className={[
+                          "rounded-full border px-2 py-0.5 text-[10px] font-semibold",
+                          v.isAvailable
+                            ? "border-[#ead9b8] bg-[#fffaf0] text-[#7a4a00]"
+                            : "border-slate-200 bg-slate-100 text-slate-400 line-through",
+                        ].join(" ")}
+                      >
+                        {v.name}: {formatMoney(v.price)}
+                      </span>
+                    ))}
+                  </div>
+                  {item.fulfillmentType && (
+                    <span className="mb-3 inline-block rounded-full border border-blue-100 bg-blue-50 px-2 py-0.5 text-[10px] font-bold text-blue-600">
+                      {item.fulfillmentType}
+                    </span>
+                  )}
+                  {/* <div className="grid grid-cols-3 gap-1.5 mt-1">
+                    <GhostBtn
+                      onClick={() => openEditItem(item)}
+                      className="py-2 text-xs"
+                    >
+                      Edit
+                    </GhostBtn>
+                    <button
+                      type="button"
+                      onClick={() => toggleAvailability(item)}
+                      disabled={isUpdatingItem}
+                      className={[
+                        "rounded-xl border px-2 py-2 text-xs font-semibold transition-all active:scale-[0.98] disabled:opacity-50",
+                        item.isAvailable
+                          ? "border-slate-200 bg-slate-100 text-slate-600 hover:bg-slate-200"
+                          : "border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100",
+                      ].join(" ")}
+                    >
+                      {item.isAvailable ? "Hide" : "Show"}
+                    </button>
+                    <DangerBtn
+                      onClick={() => removeItem(item)}
+                      disabled={isDeletingItem}
+                      className="py-2 text-xs"
+                    >
+                      Del
+                    </DangerBtn>
+                  </div> */}
+                </article>
+              ))}
+            </div>
+          ) : (
+            <div className="rounded-2xl border border-dashed border-[#ddd4c1] bg-[#fffdf9] py-14 text-center">
+              <p className="text-2xl mb-2">🍽️</p>
+              <p className="text-sm font-semibold text-slate-400">
+                Koi item nahi mila
+              </p>
+              <p className="text-xs text-slate-400 mt-1">
+                Upar + se naya item add karo
+              </p>
+            </div>
+          ))}
+
+        {/* Categories */}
+        {activePanel === "category" &&
+          (() => {
+            const q = searchText.trim().toLowerCase();
+            const filteredMains = mainCategories.filter(
+              (c) => !q || c.name.toLowerCase().includes(q),
+            );
+            return filteredMains.length ? (
+              <div className="space-y-2">
+                {filteredMains.map((main) => {
+                  const subs = subCategoriesByMainId.get(main.id) || [];
+                  const totalItemsInTree =
+                    (itemCountByCategoryId.get(main.id) || 0) +
+                    subs.reduce(
+                      (s, sub) => s + (itemCountByCategoryId.get(sub.id) || 0),
+                      0,
+                    );
                   return (
                     <div
-                      key={mainCategory.id}
-                      className="space-y-1 rounded-md border border-[#eadfc9] bg-white p-2"
+                      key={main.id}
+                      className="rounded-2xl border border-[#ead9b8] bg-[#fffaf0] overflow-hidden"
                     >
-                      {editingCategoryId === mainCategory.id ? (
-                        <div className="space-y-1.5">
-                          <input
-                            value={editingCategoryName}
-                            onChange={(event) =>
-                              setEditingCategoryName(event.target.value)
-                            }
-                            placeholder="Category name"
-                            className="h-8 w-full rounded-md border border-[#ddd4c1] px-2 text-xs"
-                          />
-                          <div className="flex gap-1.5">
-                            <button
-                              type="button"
-                              onClick={() => submitCategoryEdit(mainCategory)}
-                              disabled={isUpdatingCategory}
-                              className="rounded-md border border-emerald-200 bg-emerald-50 px-2 py-1 text-[11px] font-semibold text-emerald-700 disabled:opacity-60"
-                            >
-                              Save
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setEditingCategoryId(null);
-                                setEditingCategoryName("");
-                              }}
-                              className="rounded-md border border-slate-300 bg-slate-100 px-2 py-1 text-[11px] font-semibold text-slate-600"
-                            >
-                              Cancel
-                            </button>
-                          </div>
+                      <div className="flex items-center justify-between px-3.5 py-3 bg-gradient-to-r from-[#fffaf0] to-[#fff5e0]">
+                        <div className="min-w-0">
+                          <p className="font-bold text-slate-800 text-sm truncate">
+                            {main.name}
+                          </p>
+                          <p className="text-[11px] text-slate-400 mt-0.5">
+                            {subs.length} sub-categories · {totalItemsInTree}{" "}
+                            items
+                          </p>
                         </div>
-                      ) : (
-                        <div className="flex items-center justify-between gap-2">
-                          <div className="min-w-0">
-                            <p className="truncate text-xs font-semibold text-slate-800">
-                              {mainCategory.name}
-                            </p>
-                            <p className="truncate text-[10px] text-slate-500">
-                              Main Category
-                            </p>
-                          </div>
-                          <div className="flex gap-1.5">
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setEditingCategoryId(mainCategory.id);
-                                setEditingCategoryName(mainCategory.name);
-                              }}
-                              className="rounded-md border border-[#dfd2bb] bg-white px-2 py-1 text-[11px] font-semibold text-slate-700"
-                            >
-                              Edit
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => removeCategory(mainCategory)}
-                              disabled={isDeletingCategory}
-                              className="rounded-md border border-rose-200 bg-rose-50 px-2 py-1 text-[11px] font-semibold text-rose-700 disabled:opacity-60"
-                            >
-                              {isDeletingCategory ? "..." : "Delete"}
-                            </button>
-                          </div>
+                        <div className="flex gap-1.5 shrink-0">
+                          <button
+                            type="button"
+                            onClick={() => openCreateCategory("sub")}
+                            className="rounded-full border border-[#d4a30a]/40 bg-white px-2.5 py-1 text-[11px] font-bold text-[#8a5c00] hover:bg-[#fdf9ee]"
+                          >
+                            + Sub
+                          </button>
+                          <GhostBtn
+                            onClick={() => openEditCategory(main)}
+                            className="px-2.5 py-1 text-[11px]"
+                          >
+                            Edit
+                          </GhostBtn>
+                          <DangerBtn
+                            onClick={() => removeCategory(main)}
+                            disabled={isDeletingCategory}
+                            className="px-2.5 py-1 text-[11px]"
+                          >
+                            Del
+                          </DangerBtn>
                         </div>
-                      )}
-                      {subCategories.length ? (
-                        <div className="space-y-1 pl-2">
-                          {subCategories.map((subCategory) => (
+                      </div>
+                      {subs.length > 0 && (
+                        <div className="px-3.5 pb-3 pt-1 border-t border-[#ead9b8]/60 space-y-1.5">
+                          {subs.map((sub) => (
                             <div
-                              key={subCategory.id}
-                              className="rounded-md border border-[#f0e7d8] bg-[#fffcf7] p-2"
+                              key={sub.id}
+                              className="flex items-center justify-between rounded-xl border border-[#ead9b8] bg-white px-3 py-2"
                             >
-                              {editingCategoryId === subCategory.id ? (
-                                <div className="space-y-1.5">
-                                  <input
-                                    value={editingCategoryName}
-                                    onChange={(event) =>
-                                      setEditingCategoryName(event.target.value)
-                                    }
-                                    placeholder="Sub category name"
-                                    className="h-8 w-full rounded-md border border-[#ddd4c1] px-2 text-xs"
-                                  />
-                                  <div className="flex gap-1.5">
-                                    <button
-                                      type="button"
-                                      onClick={() =>
-                                        submitCategoryEdit(subCategory)
-                                      }
-                                      disabled={isUpdatingCategory}
-                                      className="rounded-md border border-emerald-200 bg-emerald-50 px-2 py-1 text-[11px] font-semibold text-emerald-700 disabled:opacity-60"
-                                    >
-                                      Save
-                                    </button>
-                                    <button
-                                      type="button"
-                                      onClick={() => {
-                                        setEditingCategoryId(null);
-                                        setEditingCategoryName("");
-                                      }}
-                                      className="rounded-md border border-slate-300 bg-slate-100 px-2 py-1 text-[11px] font-semibold text-slate-600"
-                                    >
-                                      Cancel
-                                    </button>
-                                  </div>
-                                </div>
-                              ) : (
-                                <div className="flex items-center justify-between gap-2">
-                                  <div className="min-w-0">
-                                    <p className="truncate text-xs font-semibold text-slate-700">
-                                      {subCategory.name}
-                                    </p>
-                                    <p className="truncate text-[10px] text-slate-500">
-                                      Sub Category
-                                    </p>
-                                  </div>
-                                  <div className="flex gap-1.5">
-                                    <button
-                                      type="button"
-                                      onClick={() => {
-                                        setEditingCategoryId(subCategory.id);
-                                        setEditingCategoryName(
-                                          subCategory.name,
-                                        );
-                                      }}
-                                      className="rounded-md border border-[#dfd2bb] bg-white px-2 py-1 text-[11px] font-semibold text-slate-700"
-                                    >
-                                      Edit
-                                    </button>
-                                    <button
-                                      type="button"
-                                      onClick={() =>
-                                        removeCategory(subCategory)
-                                      }
-                                      disabled={isDeletingCategory}
-                                      className="rounded-md border border-rose-200 bg-rose-50 px-2 py-1 text-[11px] font-semibold text-rose-700 disabled:opacity-60"
-                                    >
-                                      {isDeletingCategory ? "..." : "Delete"}
-                                    </button>
-                                  </div>
-                                </div>
-                              )}
+                              <div>
+                                <p className="text-sm font-semibold text-slate-700">
+                                  {sub.name}
+                                </p>
+                                <p className="text-[10px] text-slate-400">
+                                  {itemCountByCategoryId.get(sub.id) || 0} items
+                                </p>
+                              </div>
+                              <div className="flex gap-1.5">
+                                <GhostBtn
+                                  onClick={() => openEditCategory(sub)}
+                                  className="px-2.5 py-1 text-[11px]"
+                                >
+                                  Edit
+                                </GhostBtn>
+                                <DangerBtn
+                                  onClick={() => removeCategory(sub)}
+                                  disabled={isDeletingCategory}
+                                  className="px-2.5 py-1 text-[11px]"
+                                >
+                                  Del
+                                </DangerBtn>
+                              </div>
                             </div>
                           ))}
                         </div>
-                      ) : null}
+                      )}
                     </div>
                   );
-                })
-              ) : (
-                <p className="px-1 py-2 text-xs text-slate-500">
-                  No categories found.
+                })}
+              </div>
+            ) : (
+              <div className="rounded-2xl border border-dashed border-[#ddd4c1] bg-[#fffdf9] py-14 text-center">
+                <p className="text-2xl mb-2">📂</p>
+                <p className="text-sm font-semibold text-slate-400">
+                  Koi category nahi mili
                 </p>
-              )}
-            </div>
-          </form>
+              </div>
+            );
+          })()}
 
-          <form
-            onSubmit={
-              editingGroupId ? submitUpdateOptionGroup : submitCreateOptionGroup
-            }
-            className="space-y-2 border-b border-[#eee7d8] p-4"
-          >
-            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-              Option Groups (POST/PUT/DELETE)
-            </p>
-            <label
-              htmlFor="menu-group-name"
-              className="text-xs font-medium text-slate-700"
-            >
-              Group Name
-            </label>
-            <input
-              id="menu-group-name"
-              value={editingGroupId ? editingGroupForm.name : groupForm.name}
-              onChange={(event) =>
-                editingGroupId
-                  ? setEditingGroupForm((prev) => ({
-                      ...prev,
-                      name: event.target.value,
-                    }))
-                  : setGroupForm((prev) => ({
-                      ...prev,
-                      name: event.target.value,
-                    }))
-              }
-              className="h-10 w-full rounded-lg border border-[#ddd4c1] bg-white px-3 text-sm outline-none ring-amber-200 focus:ring-2"
-              placeholder="e.g. Spice Level"
-            />
-            <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
-              <div className="space-y-1">
-                <label
-                  htmlFor="menu-group-min"
-                  className="text-xs font-medium text-slate-700"
-                >
-                  Min Select
-                </label>
-                <input
-                  id="menu-group-min"
-                  type="number"
-                  min={0}
-                  value={
-                    editingGroupId
-                      ? editingGroupForm.minSelect
-                      : groupForm.minSelect
-                  }
-                  onChange={(event) =>
-                    editingGroupId
-                      ? setEditingGroupForm((prev) => ({
-                          ...prev,
-                          minSelect: event.target.value,
-                        }))
-                      : setGroupForm((prev) => ({
-                          ...prev,
-                          minSelect: event.target.value,
-                        }))
-                  }
-                  className="h-10 w-full rounded-lg border border-[#ddd4c1] bg-white px-3 text-sm"
-                />
-              </div>
-              <div className="space-y-1">
-                <label
-                  htmlFor="menu-group-max"
-                  className="text-xs font-medium text-slate-700"
-                >
-                  Max Select
-                </label>
-                <input
-                  id="menu-group-max"
-                  type="number"
-                  min={0}
-                  value={
-                    editingGroupId
-                      ? editingGroupForm.maxSelect
-                      : groupForm.maxSelect
-                  }
-                  onChange={(event) =>
-                    editingGroupId
-                      ? setEditingGroupForm((prev) => ({
-                          ...prev,
-                          maxSelect: event.target.value,
-                        }))
-                      : setGroupForm((prev) => ({
-                          ...prev,
-                          maxSelect: event.target.value,
-                        }))
-                  }
-                  className="h-10 w-full rounded-lg border border-[#ddd4c1] bg-white px-3 text-sm"
-                />
-              </div>
-              <div className="space-y-1">
-                <label
-                  htmlFor="menu-group-order"
-                  className="text-xs font-medium text-slate-700"
-                >
-                  Sort Order
-                </label>
-                <input
-                  id="menu-group-order"
-                  type="number"
-                  min={0}
-                  value={
-                    editingGroupId
-                      ? editingGroupForm.sortOrder
-                      : groupForm.sortOrder
-                  }
-                  onChange={(event) =>
-                    editingGroupId
-                      ? setEditingGroupForm((prev) => ({
-                          ...prev,
-                          sortOrder: event.target.value,
-                        }))
-                      : setGroupForm((prev) => ({
-                          ...prev,
-                          sortOrder: event.target.value,
-                        }))
-                  }
-                  className="h-10 w-full rounded-lg border border-[#ddd4c1] bg-white px-3 text-sm"
-                />
-              </div>
-            </div>
-            <div className="flex flex-wrap gap-2">
-              <button
-                type="submit"
-                disabled={isCreatingOptionGroup || isUpdatingOptionGroup}
-                className="rounded-lg border border-[#dfd2bb] bg-white px-3 py-2 text-xs font-semibold text-slate-700 disabled:opacity-60"
-              >
-                {isCreatingOptionGroup || isUpdatingOptionGroup
-                  ? "Saving..."
-                  : editingGroupId
-                    ? "Update Group (PUT)"
-                    : "Create Group (POST)"}
-              </button>
-              {editingGroupId ? (
-                <button
-                  type="button"
-                  onClick={cancelEditOptionGroup}
-                  className="rounded-lg border border-slate-300 bg-slate-100 px-3 py-2 text-xs font-semibold text-slate-700"
-                >
-                  Cancel Edit
-                </button>
-              ) : null}
-            </div>
-            <div className="max-h-32 space-y-1.5 overflow-y-auto rounded-lg border border-[#eadfc9] bg-[#fffaf0] p-2">
-              {optionGroups.length ? (
-                optionGroups.map((group) => (
-                  <div
+        {/* Option Groups */}
+        {activePanel === "optionGroup" &&
+          (() => {
+            const q = searchText.trim().toLowerCase();
+            const filtered = optionGroups.filter(
+              (g) =>
+                !q ||
+                `${g.name} ${g.options.map((o) => o.name).join(" ")}`
+                  .toLowerCase()
+                  .includes(q),
+            );
+            return filtered.length ? (
+              <div className="grid gap-2.5 sm:grid-cols-2">
+                {filtered.map((group) => (
+                  <article
                     key={group.id}
-                    className="flex items-center justify-between rounded-md border border-[#eadfc9] bg-white p-2"
+                    className="rounded-2xl border border-[#ead9b8] bg-gradient-to-br from-[#fffcf6] to-[#fff7e8] p-3.5"
                   >
-                    <div className="min-w-0">
-                      <p className="truncate text-xs font-semibold text-slate-800">
-                        {group.name}
-                      </p>
-                      <p className="truncate text-[10px] text-slate-500">
-                        Min {group.minSelect ?? 0} / Max {group.maxSelect ?? 0}{" "}
-                        - {group.options.length} options
-                      </p>
-                    </div>
-                    <div className="flex gap-1.5">
-                      <button
-                        type="button"
-                        onClick={() => startEditOptionGroup(group)}
-                        className="rounded-md border border-[#dfd2bb] bg-white px-2 py-1 text-[11px] font-semibold text-slate-700"
+                    <p className="font-bold text-slate-800 truncate">
+                      {group.name}
+                    </p>
+                    <p className="text-[11px] text-slate-400 mt-0.5">
+                      Min {group.minSelect ?? 0} / Max {group.maxSelect ?? 0} ·{" "}
+                      {group.options.length} options
+                    </p>
+                    {group.options.length > 0 && (
+                      <div className="mt-2 flex flex-wrap gap-1">
+                        {group.options.slice(0, 4).map((opt) => (
+                          <span
+                            key={opt.id || opt.name}
+                            className="rounded-full border border-[#ead9b8] bg-white px-2 py-0.5 text-[10px] font-semibold text-slate-600"
+                          >
+                            {opt.name}
+                          </span>
+                        ))}
+                        {group.options.length > 4 && (
+                          <span className="rounded-full border border-[#ead9b8] bg-white px-2 py-0.5 text-[10px] font-semibold text-slate-400">
+                            +{group.options.length - 4}
+                          </span>
+                        )}
+                      </div>
+                    )}
+                    <div className="mt-3 flex gap-1.5">
+                      <GhostBtn
+                        onClick={() => openEditOG(group)}
+                        className="flex-1 py-2 text-xs"
                       >
                         Edit
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => removeOptionGroup(group)}
+                      </GhostBtn>
+                      <DangerBtn
+                        onClick={() => removeOG(group)}
                         disabled={isDeletingOptionGroup}
-                        className="rounded-md border border-rose-200 bg-rose-50 px-2 py-1 text-[11px] font-semibold text-rose-700 disabled:opacity-60"
+                        className="flex-1 py-2 text-xs"
                       >
                         Delete
-                      </button>
+                      </DangerBtn>
                     </div>
-                  </div>
-                ))
-              ) : (
-                <p className="px-1 py-2 text-xs text-slate-500">
-                  No option groups found.
-                </p>
-              )}
-            </div>
-          </form>
-
-          <form onSubmit={submitCreateItem} className="space-y-3 p-4">
-            <label
-              htmlFor="menu-item-name"
-              className="text-xs font-medium text-slate-700"
-            >
-              Item Name
-            </label>
-            <input
-              id="menu-item-name"
-              value={itemForm.name}
-              onChange={(event) =>
-                setItemForm((prev) => ({ ...prev, name: event.target.value }))
-              }
-              className="h-10 w-full rounded-lg border border-[#ddd4c1] bg-white px-3 text-sm outline-none ring-amber-200 focus:ring-2"
-              placeholder="e.g. Cold Coffee"
-            />
-
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-              <div className="space-y-1">
-                <label
-                  htmlFor="menu-item-main-category"
-                  className="text-xs font-medium text-slate-700"
-                >
-                  Main Category
-                </label>
-                <select
-                  id="menu-item-main-category"
-                  value={itemForm.mainCategoryId}
-                  onChange={(event) =>
-                    changeMainCategory("create", event.target.value)
-                  }
-                  className="h-10 w-full rounded-lg border border-[#ddd4c1] bg-white px-3 text-sm"
-                >
-                  <option value="">Select main category</option>
-                  {mainCategories.map((category) => (
-                    <option key={category.id} value={category.id}>
-                      {category.name}
-                    </option>
-                  ))}
-                </select>
+                  </article>
+                ))}
               </div>
-              <div className="space-y-1">
-                <label
-                  htmlFor="menu-item-sub-category"
-                  className="text-xs font-medium text-slate-700"
-                >
-                  Sub Category (optional)
-                </label>
-                <select
-                  id="menu-item-sub-category"
-                  value={itemForm.subCategoryId}
-                  onChange={(event) =>
-                    changeSubCategory("create", event.target.value)
-                  }
-                  disabled={!itemForm.mainCategoryId}
-                  className="h-10 w-full rounded-lg border border-[#ddd4c1] bg-white px-3 text-sm disabled:bg-slate-100 disabled:text-slate-500"
-                >
-                  <option value="">
-                    {itemForm.mainCategoryId
-                      ? "No sub category"
-                      : "Select main category first"}
-                  </option>
-                  {itemSubCategories.map((category) => (
-                    <option key={category.id} value={category.id}>
-                      {category.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            </div>
-            <p className="rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-[11px] text-blue-800">
-              Final category:{" "}
-              {resolveSelectedCategoryId(itemForm)
-                ? selectedCategoryLabel(resolveSelectedCategoryId(itemForm))
-                : "Not selected"}
-            </p>
-
-            <VariantFields
-              idPrefix="create"
-              variants={itemForm.variants}
-              onChange={(key, field, value) =>
-                updateVariant("create", key, field, value)
-              }
-              onAdd={() => addVariant("create")}
-              onRemove={(key) => removeVariant("create", key)}
-              presets={VARIANT_NAME_PRESETS}
-            />
-
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-              <div className="space-y-1">
-                <label
-                  htmlFor="menu-item-tax"
-                  className="text-xs font-medium text-slate-700"
-                >
-                  Tax Percentage (%)
-                </label>
-                <input
-                  id="menu-item-tax"
-                  type="number"
-                  min={0}
-                  max={100}
-                  
-                  value={itemForm.taxPercentage}
-                  onChange={(event) =>
-                    setItemForm((prev) => ({
-                      ...prev,
-                      taxPercentage: event.target.value,
-                    }))
-                  }
-                  className="h-10 w-full rounded-lg border border-[#ddd4c1] bg-white px-3 text-sm outline-none ring-amber-200 focus:ring-2"
-                  placeholder="5"
-                />
-              </div>
-              <div className="space-y-1">
-                <label
-                  htmlFor="menu-item-image"
-                  className="text-xs font-medium text-slate-700"
-                >
-                  Image URL (optional)
-                </label>
-                <input
-                  id="menu-item-image"
-                  value={itemForm.image}
-                  onChange={(event) =>
-                    setItemForm((prev) => ({
-                      ...prev,
-                      image: event.target.value,
-                    }))
-                  }
-                  className="h-10 w-full rounded-lg border border-[#ddd4c1] bg-white px-3 text-sm outline-none ring-amber-200 focus:ring-2"
-                  placeholder="https://..."
-                />
-              </div>
-            </div>
-
-            <label
-              htmlFor="menu-item-description"
-              className="text-xs font-medium text-slate-700"
-            >
-              Description (optional)
-            </label>
-            <textarea
-              id="menu-item-description"
-              value={itemForm.description}
-              onChange={(event) =>
-                setItemForm((prev) => ({
-                  ...prev,
-                  description: event.target.value,
-                }))
-              }
-              rows={3}
-              className="w-full rounded-lg border border-[#ddd4c1] bg-white px-3 py-2 text-sm outline-none ring-amber-200 focus:ring-2"
-              placeholder="Short description"
-            />
-
-            <FulfillmentTypeField
-              idPrefix="menu-item"
-              value={itemForm.fulfillmentType}
-              onChange={(value) =>
-                setItemForm((prev) => ({ ...prev, fulfillmentType: value }))
-              }
-            />
-
-            <OptionGroupFields
-              groups={optionGroups}
-              selected={itemForm.optionGroupIds}
-              onToggle={(groupId, checked) =>
-                toggleGroup("create", groupId, checked)
-              }
-            />
-
-            <button
-              type="submit"
-              disabled={isCreatingItem}
-              className="w-full rounded-xl bg-amber-500 px-4 py-2.5 text-sm font-semibold text-white shadow-lg shadow-amber-500/25 disabled:opacity-60"
-            >
-              {isCreatingItem ? "Adding..." : "Add Menu Item"}
-            </button>
-
-            <div className="grid grid-cols-2 gap-2 text-xs sm:grid-cols-4">
-              <div className="rounded-lg border border-[#ebdfc8] bg-white p-2">
-                <p className="text-slate-500">Total</p>
-                <p className="mt-1 text-base font-semibold">{totalItems}</p>
-              </div>
-              <div className="rounded-lg border border-[#ebdfc8] bg-white p-2">
-                <p className="text-slate-500">Available</p>
-                <p className="mt-1 text-base font-semibold">{availableItems}</p>
-              </div>
-              <div className="rounded-lg border border-[#ebdfc8] bg-white p-2">
-                <p className="text-slate-500">Hidden</p>
-                <p className="mt-1 text-base font-semibold">
-                  {unavailableItems}
+            ) : (
+              <div className="rounded-2xl border border-dashed border-[#ddd4c1] bg-[#fffdf9] py-14 text-center">
+                <p className="text-2xl mb-2">⚙️</p>
+                <p className="text-sm font-semibold text-slate-400">
+                  Koi option group nahi mila
                 </p>
               </div>
-              <div className="rounded-lg border border-[#ebdfc8] bg-white p-2">
-                <p className="text-slate-500">Avg Price</p>
-                <p className="mt-1 text-sm font-semibold">
-                  {formatMoney(avgPrice)}
-                </p>
-              </div>
-            </div>
-          </form>
-        </article>
+            );
+          })()}
+      </div>
 
-        <article className="min-w-0 rounded-2xl border border-[#e6dfd1] bg-[#fffdf9] shadow-sm">
-          <div className="border-b border-[#eee7d8] px-2.5 py-2.5 sm:px-4 sm:py-3">
-            <div className="mt-2.5 rounded-xl border border-[#eadfc9] bg-[#fffaf1] p-2.5 sm:mt-3 sm:p-3">
-              <div className="flex items-center gap-2">
-                <div className="flex shrink-0 flex-col items-center leading-none">
-                  <span className="text-lg font-bold text-slate-700">
-                    {activeMenuPanel === "itemList"
-                      ? filteredItems.length
-                      : activeMenuPanel === "category"
-                        ? filteredMainCategories.length
-                        : activeMenuPanel === "subCategory"
-                          ? filteredSubCategories.length
-                          : filteredOptionGroups.length}
-                  </span>
-                  <span className="text-[10px] font-medium text-slate-700">
-                    {activeMenuPanel === "itemList"
-                      ? "items"
-                      : activeMenuPanel === "category"
-                        ? "cats"
-                        : activeMenuPanel === "subCategory"
-                          ? "subs"
-                          : "groups"}
-                  </span>
-                </div>
-
-                <input
-                  id="menu-search"
-                  value={searchText}
-                  onChange={(event) => setSearchText(event.target.value)}
-                  placeholder="Search..."
-                  className="h-10 min-w-0 flex-1 rounded-xl border border-[#dcccaf] bg-white px-3 text-sm outline-none ring-amber-200 focus:ring-2"
-                />
-
-                <div className="flex shrink-0 items-center rounded-lg border border-[#dccfb8] bg-white p-0.5">
-                  <button
-                    type="button"
-                    onClick={() => setListViewMode("grid")}
-                    className={`rounded-md px-2 py-1 text-[11px] font-semibold ${
-                      listViewMode === "grid"
-                        ? "bg-[#f6ead4] text-[#7a5a34]"
-                        : "text-slate-600"
-                    }`}
-                  >
-                    ?
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setListViewMode("table")}
-                    className={`rounded-md px-2 py-1 text-[11px] font-semibold ${
-                      listViewMode === "table"
-                        ? "bg-[#f6ead4] text-[#7a5a34]"
-                        : "text-slate-600"
-                    }`}
-                  >
-                    ?
-                  </button>
-                </div>
-              </div>
-              {activeMenuPanel === "itemList" ? (
-                <div className="mt-2 grid grid-cols-1 gap-2 md:grid-cols-10 md:items-center">
-                  <div className="md:col-span-7">
-                    <div className="flex items-center gap-2 overflow-x-auto whitespace-nowrap no-scrollbar">
-                      <span className="shrink-0 text-[11px] font-semibold uppercase tracking-wide text-slate-500">
-                        Category
-                      </span>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          changeMainCategoryFilter("all");
-                          setAvailabilityFilter("all");
-                        }}
-                        className={`shrink-0 rounded-full border px-3 py-1 text-[11px] font-semibold ${
-                          mainCategoryFilter === "all"
-                            ? "border-amber-300 bg-amber-100 text-amber-800"
-                            : "border-[#ddcfb7] bg-white text-slate-700"
-                        }`}
-                      >
-                        All
-                      </button>
-                      {mainCategories.map((category) => (
-                        <button
-                          key={`main-filter-chip-${category.id}`}
-                          type="button"
-                          onClick={() => changeMainCategoryFilter(category.id)}
-                          className={`shrink-0 rounded-full border px-3 py-1 text-[11px] font-semibold ${
-                            mainCategoryFilter === category.id
-                              ? "border-amber-300 bg-amber-100 text-amber-800"
-                              : "border-[#ddcfb7] bg-white text-slate-700"
-                          }`}
-                        >
-                          {category.name}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                  <div className="md:col-span-3">
-                    <div className="flex items-center gap-2 overflow-x-auto whitespace-nowrap no-scrollbar">
-                      <span className="shrink-0 text-[11px] font-semibold uppercase tracking-wide text-slate-500">
-                        Availability
-                      </span>
-                      <button
-                        type="button"
-                        onClick={() =>
-                          setAvailabilityFilter((prev) =>
-                            prev === "available" ? "all" : "available",
-                          )
-                        }
-                        className={`shrink-0 rounded-full border px-3 py-1 text-[11px] font-semibold ${
-                          availabilityFilter === "available"
-                            ? "border-emerald-300 bg-emerald-100 text-emerald-800"
-                            : "border-[#ddcfb7] bg-white text-slate-700"
-                        }`}
-                      >
-                        Available
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() =>
-                          setAvailabilityFilter((prev) =>
-                            prev === "unavailable" ? "all" : "unavailable",
-                          )
-                        }
-                        className={`shrink-0 rounded-full border px-3 py-1 text-[11px] font-semibold ${
-                          availabilityFilter === "unavailable"
-                            ? "border-slate-300 bg-slate-100 text-slate-700"
-                            : "border-[#ddcfb7] bg-white text-slate-700"
-                        }`}
-                      >
-                        Hidden
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              ) : null}
-
-              <button
-                type="button"
-                onClick={openAddForActivePanel}
-                className="mt-4 w-full rounded-xl border-2 border-dashed border-amber-300 bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-700 shadow-sm transition-all hover:border-amber-400 hover:bg-amber-100 hover:shadow-md active:scale-[0.98]"
-              >
-                + Create{" "}
-                {activeMenuPanel === "itemList"
-                  ? "Item"
-                  : activeMenuPanel === "category"
-                    ? "Category"
-                    : activeMenuPanel === "subCategory"
-                      ? "Sub Category"
-                      : "Option Group"}
-              </button>
-            </div>
-          </div>
-
-          {optionGroupsError ? (
-            <p className="mx-2.5 mt-2.5 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-700 sm:mx-4 sm:mt-3">
-              Option groups load issue: {getErrorMessage(optionGroupsError)}
-            </p>
-          ) : null}
-
-          <div className="p-2.5 sm:p-4">
-            {activeMenuPanel === "itemList" ? (
-              filteredItems.length ? (
-                listViewMode === "grid" ? (
-                  <div className="grid gap-2.5 sm:grid-cols-2 sm:gap-3">
-                    {filteredItems.map((item) => (
-                      <article
-                        key={item.id}
-                        className="rounded-2xl border border-[#eadfc9] bg-[linear-gradient(160deg,#fffcf6_0%,#fff7e8_100%)] p-2.5 shadow-sm sm:p-3"
-                      >
-                        <div className="flex items-start justify-between gap-3">
-                          <div className="min-w-0">
-                            <p className="truncate text-base font-semibold text-slate-900">
-                              {item.name}
-                            </p>
-                            <p className="truncate text-xs text-slate-500">
-                              {item.categoryId
-                                ? selectedCategoryLabel(item.categoryId)
-                                : "Uncategorized"}
-                            </p>
-                          </div>
-                          <span
-                            className={`inline-flex rounded-full border px-2.5 py-1 text-[10px] font-semibold ${item.isAvailable ? "border-emerald-200 bg-emerald-50 text-emerald-700" : "border-slate-300 bg-slate-100 text-slate-600"}`}
-                          >
-                            {item.isAvailable ? "Available" : "Hidden"}
-                          </span>
-                        </div>
-                        <p className="mt-2 text-sm font-semibold text-amber-700">
-                          {formatMoney(getPrimaryPrice(item))}
-                        </p>
-                        <p className="mt-2 min-h-9 text-xs text-slate-600">
-                          {item.description || "No description"}
-                        </p>
-                        <div className="mt-2 flex flex-wrap gap-1.5">
-                          {item.variants.map((variant, index) => (
-                            <span
-                              key={`${item.id}-${variant.id}-${index}`}
-                              className={`rounded-full border px-2 py-0.5 text-[10px] ${variant.isAvailable ? "border-amber-200 bg-amber-50 text-amber-800" : "border-slate-300 bg-slate-100 text-slate-500"}`}
-                            >
-                              {variant.name}: {formatMoney(variant.price)}
-                            </span>
-                          ))}
-                        </div>
-                        <div className="mt-3 grid grid-cols-3 gap-2">
-                          <button
-                            type="button"
-                            onClick={() => openEdit(item)}
-                            className="rounded-lg border border-[#dfd2bb] bg-white px-2 py-2 text-xs font-semibold text-slate-700"
-                          >
-                            Update
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => toggleAvailability(item)}
-                            disabled={isUpdatingItem}
-                            className={`rounded-lg border px-2 py-2 text-xs font-semibold disabled:opacity-60 ${item.isAvailable ? "border-slate-300 bg-slate-100 text-slate-700" : "border-emerald-200 bg-emerald-50 text-emerald-700"}`}
-                          >
-                            {item.isAvailable ? "Hide" : "Show"}
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => removeItem(item)}
-                            disabled={isDeletingItem}
-                            className="rounded-lg border border-rose-200 bg-rose-50 px-2 py-2 text-xs font-semibold text-rose-700 disabled:opacity-60"
-                          >
-                            Delete
-                          </button>
-                        </div>
-                      </article>
-                    ))}
-                  </div>
-                ) : (
-                  <div className="no-scrollbar w-full max-w-full overflow-x-auto overscroll-x-contain rounded-xl border border-[#eadfc9]">
-                    <table className="min-w-[720px] divide-y divide-[#efe4d3] text-left text-xs sm:min-w-full">
-                      <thead className="bg-[#fff8ec]">
-                        <tr className="text-slate-700">
-                          <th className="px-2.5 py-2 font-semibold sm:px-3">
-                            Item
-                          </th>
-                          <th className="px-2.5 py-2 font-semibold sm:px-3">
-                            Category
-                          </th>
-                          <th className="px-2.5 py-2 font-semibold sm:px-3">
-                            Variants
-                          </th>
-                          <th className="px-2.5 py-2 font-semibold sm:px-3">
-                            Price
-                          </th>
-                          <th className="px-2.5 py-2 font-semibold sm:px-3">
-                            Status
-                          </th>
-                          <th className="px-2.5 py-2 font-semibold text-right sm:px-3">
-                            Actions
-                          </th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-[#f1e7d9] bg-white">
-                        {filteredItems.map((item) => (
-                          <tr key={`item-row-${item.id}`}>
-                            <td className="px-2.5 py-2 font-semibold text-slate-900 sm:px-3">
-                              {item.name}
-                            </td>
-                            <td className="px-2.5 py-2 text-slate-700 sm:px-3">
-                              {item.categoryId
-                                ? selectedCategoryLabel(item.categoryId)
-                                : "Uncategorized"}
-                            </td>
-                            <td className="px-2.5 py-2 text-slate-700 sm:px-3">
-                              {item.variants.length
-                                ? item.variants.map((variant, index) => (
-                                    <span
-                                      key={`${item.id}-table-variant-${variant.id || index}`}
-                                      className="mr-1 inline-block rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[10px] text-amber-800"
-                                    >
-                                      {variant.name}:{" "}
-                                      {formatMoney(variant.price)}
-                                    </span>
-                                  ))
-                                : `Regular: ${formatMoney(getPrimaryPrice(item))}`}
-                            </td>
-                            <td className="px-2.5 py-2 font-semibold text-amber-700 sm:px-3">
-                              {formatMoney(getPrimaryPrice(item))}
-                            </td>
-                            <td className="px-2.5 py-2 text-slate-700 sm:px-3">
-                              {item.isAvailable ? "Available" : "Hidden"}
-                            </td>
-                            <td className="px-2.5 py-2 sm:px-3">
-                              <div className="flex justify-end gap-1 sm:gap-1.5">
-                                <button
-                                  type="button"
-                                  onClick={() => openEdit(item)}
-                                  className="rounded-md border border-[#dfd2bb] bg-white px-2 py-1 text-[11px] font-semibold text-slate-700"
-                                >
-                                  Update
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={() => toggleAvailability(item)}
-                                  disabled={isUpdatingItem}
-                                  className="rounded-md border border-slate-300 bg-slate-100 px-2 py-1 text-[11px] font-semibold text-slate-700 disabled:opacity-60"
-                                >
-                                  {item.isAvailable ? "Hide" : "Show"}
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={() => removeItem(item)}
-                                  disabled={isDeletingItem}
-                                  className="rounded-md border border-rose-200 bg-rose-50 px-2 py-1 text-[11px] font-semibold text-rose-700 disabled:opacity-60"
-                                >
-                                  Delete
-                                </button>
-                              </div>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                )
-              ) : (
-                <div className="rounded-2xl border border-dashed border-[#e0d6c4] bg-[#fffcf7] px-3 py-8 text-center text-sm text-slate-600 sm:px-4 sm:py-10">
-                  No menu items found. Create category and item from Menu
-                  Control.
-                </div>
-              )
-            ) : null}
-
-            {activeMenuPanel === "category" ? (
-              filteredMainCategories.length ? (
-                listViewMode === "grid" ? (
-                  <div className="grid gap-2.5 sm:grid-cols-2 sm:gap-3">
-                    {filteredMainCategories.map((category) => {
-                      const subCount =
-                        subCategoriesByMainId.get(category.id)?.length || 0;
-                      const totalItemsInTree =
-                        (itemCountByCategoryId.get(category.id) || 0) +
-                        (subCategoriesByMainId.get(category.id) || []).reduce(
-                          (sum, subCategory) =>
-                            sum +
-                            (itemCountByCategoryId.get(subCategory.id) || 0),
-                          0,
-                        );
-                      return (
-                        <article
-                          key={`main-grid-${category.id}`}
-                          className="rounded-2xl border border-[#eadfc9] bg-[linear-gradient(160deg,#fffcf6_0%,#fff7e8_100%)] p-2.5 shadow-sm sm:p-3"
-                        >
-                          <p className="truncate text-sm font-semibold text-slate-900">
-                            {category.name}
-                          </p>
-                          <p className="mt-1 text-[11px] text-slate-600">
-                            {subCount} sub categories - {totalItemsInTree} items
-                          </p>
-                          <div className="mt-3 flex gap-1.5">
-                            <button
-                              type="button"
-                              onClick={() => openCategoryEditor(category)}
-                              className="rounded-md border border-[#dfd2bb] bg-white px-2 py-1 text-[11px] font-semibold text-slate-700"
-                            >
-                              Update
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => removeCategory(category)}
-                              disabled={isDeletingCategory}
-                              className="rounded-md border border-rose-200 bg-rose-50 px-2 py-1 text-[11px] font-semibold text-rose-700 disabled:opacity-60"
-                            >
-                              Delete
-                            </button>
-                          </div>
-                        </article>
-                      );
-                    })}
-                  </div>
-                ) : (
-                  <div className="no-scrollbar w-full max-w-full overflow-x-auto overscroll-x-contain rounded-xl border border-[#eadfc9]">
-                    <table className="min-w-[620px] divide-y divide-[#efe4d3] text-left text-xs sm:min-w-full">
-                      <thead className="bg-[#fff8ec]">
-                        <tr className="text-slate-700">
-                          <th className="px-3 py-2 font-semibold">Category</th>
-                          <th className="px-3 py-2 font-semibold">Sub Count</th>
-                          <th className="px-3 py-2 font-semibold">
-                            Item Count
-                          </th>
-                          <th className="px-3 py-2 font-semibold text-right">
-                            Actions
-                          </th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-[#f1e7d9] bg-white">
-                        {filteredMainCategories.map((category) => {
-                          const subCount =
-                            subCategoriesByMainId.get(category.id)?.length || 0;
-                          const totalItemsInTree =
-                            (itemCountByCategoryId.get(category.id) || 0) +
-                            (
-                              subCategoriesByMainId.get(category.id) || []
-                            ).reduce(
-                              (sum, subCategory) =>
-                                sum +
-                                (itemCountByCategoryId.get(subCategory.id) ||
-                                  0),
-                              0,
-                            );
-                          return (
-                            <tr key={`main-table-${category.id}`}>
-                              <td className="px-3 py-2 font-semibold text-slate-900">
-                                {category.name}
-                              </td>
-                              <td className="px-3 py-2 text-slate-700">
-                                {subCount}
-                              </td>
-                              <td className="px-3 py-2 text-slate-700">
-                                {totalItemsInTree}
-                              </td>
-                              <td className="px-3 py-2">
-                                <div className="flex justify-end gap-1.5">
-                                  <button
-                                    type="button"
-                                    onClick={() => openCategoryEditor(category)}
-                                    className="rounded-md border border-[#dfd2bb] bg-white px-2 py-1 text-[11px] font-semibold text-slate-700"
-                                  >
-                                    Update
-                                  </button>
-                                  <button
-                                    type="button"
-                                    onClick={() => removeCategory(category)}
-                                    disabled={isDeletingCategory}
-                                    className="rounded-md border border-rose-200 bg-rose-50 px-2 py-1 text-[11px] font-semibold text-rose-700 disabled:opacity-60"
-                                  >
-                                    Delete
-                                  </button>
-                                </div>
-                              </td>
-                            </tr>
-                          );
-                        })}
-                      </tbody>
-                    </table>
-                  </div>
-                )
-              ) : (
-                <div className="rounded-2xl border border-dashed border-[#e0d6c4] bg-[#fffcf7] px-3 py-8 text-center text-sm text-slate-600 sm:px-4 sm:py-10">
-                  No categories found.
-                </div>
-              )
-            ) : null}
-
-            {activeMenuPanel === "subCategory" ? (
-              filteredSubCategories.length ? (
-                listViewMode === "grid" ? (
-                  <div className="grid gap-2.5 sm:grid-cols-2 sm:gap-3">
-                    {filteredSubCategories.map((category) => (
-                      <article
-                        key={`sub-grid-${category.id}`}
-                        className="rounded-2xl border border-[#eadfc9] bg-[linear-gradient(160deg,#fffcf6_0%,#fff7e8_100%)] p-2.5 shadow-sm sm:p-3"
-                      >
-                        <p className="truncate text-sm font-semibold text-slate-900">
-                          {category.name}
-                        </p>
-                        <p className="mt-1 text-[11px] text-slate-600">
-                          Parent:{" "}
-                          {(category.parentId &&
-                            categoriesById.get(category.parentId)?.name) ||
-                            "Unknown"}
-                        </p>
-                        <p className="text-[11px] text-slate-500">
-                          Items: {itemCountByCategoryId.get(category.id) || 0}
-                        </p>
-                        <div className="mt-3 flex gap-1.5">
-                          <button
-                            type="button"
-                            onClick={() => openCategoryEditor(category)}
-                            className="rounded-md border border-[#dfd2bb] bg-white px-2 py-1 text-[11px] font-semibold text-slate-700"
-                          >
-                            Update
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => removeCategory(category)}
-                            disabled={isDeletingCategory}
-                            className="rounded-md border border-rose-200 bg-rose-50 px-2 py-1 text-[11px] font-semibold text-rose-700 disabled:opacity-60"
-                          >
-                            Delete
-                          </button>
-                        </div>
-                      </article>
-                    ))}
-                  </div>
-                ) : (
-                  <div className="no-scrollbar w-full max-w-full overflow-x-auto overscroll-x-contain rounded-xl border border-[#eadfc9]">
-                    <table className="min-w-[620px] divide-y divide-[#efe4d3] text-left text-xs sm:min-w-full">
-                      <thead className="bg-[#fff8ec]">
-                        <tr className="text-slate-700">
-                          <th className="px-3 py-2 font-semibold">
-                            Sub Category
-                          </th>
-                          <th className="px-3 py-2 font-semibold">
-                            Main Category
-                          </th>
-                          <th className="px-3 py-2 font-semibold">Items</th>
-                          <th className="px-3 py-2 font-semibold text-right">
-                            Actions
-                          </th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-[#f1e7d9] bg-white">
-                        {filteredSubCategories.map((category) => (
-                          <tr key={`sub-table-${category.id}`}>
-                            <td className="px-3 py-2 font-semibold text-slate-900">
-                              {category.name}
-                            </td>
-                            <td className="px-3 py-2 text-slate-700">
-                              {(category.parentId &&
-                                categoriesById.get(category.parentId)?.name) ||
-                                "Unknown"}
-                            </td>
-                            <td className="px-3 py-2 text-slate-700">
-                              {itemCountByCategoryId.get(category.id) || 0}
-                            </td>
-                            <td className="px-3 py-2">
-                              <div className="flex justify-end gap-1.5">
-                                <button
-                                  type="button"
-                                  onClick={() => openCategoryEditor(category)}
-                                  className="rounded-md border border-[#dfd2bb] bg-white px-2 py-1 text-[11px] font-semibold text-slate-700"
-                                >
-                                  Update
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={() => removeCategory(category)}
-                                  disabled={isDeletingCategory}
-                                  className="rounded-md border border-rose-200 bg-rose-50 px-2 py-1 text-[11px] font-semibold text-rose-700 disabled:opacity-60"
-                                >
-                                  Delete
-                                </button>
-                              </div>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                )
-              ) : (
-                <div className="rounded-2xl border border-dashed border-[#e0d6c4] bg-[#fffcf7] px-3 py-8 text-center text-sm text-slate-600 sm:px-4 sm:py-10">
-                  No sub categories found.
-                </div>
-              )
-            ) : null}
-
-            {activeMenuPanel === "optionGroup" ? (
-              filteredOptionGroups.length ? (
-                listViewMode === "grid" ? (
-                  <div className="grid gap-2.5 sm:grid-cols-2 sm:gap-3">
-                    {filteredOptionGroups.map((group) => (
-                      <article
-                        key={`group-grid-${group.id}`}
-                        className="rounded-2xl border border-[#eadfc9] bg-[linear-gradient(160deg,#fffcf6_0%,#fff7e8_100%)] p-2.5 shadow-sm sm:p-3"
-                      >
-                        <p className="truncate text-sm font-semibold text-slate-900">
-                          {group.name}
-                        </p>
-                        <p className="mt-1 text-[11px] text-slate-600">
-                          Min {group.minSelect ?? 0} / Max{" "}
-                          {group.maxSelect ?? 0}
-                        </p>
-                        <p className="text-[11px] text-slate-500">
-                          Options: {group.options.length}
-                        </p>
-                        <div className="mt-3 flex gap-1.5">
-                          <button
-                            type="button"
-                            onClick={() => openOptionGroupEditor(group)}
-                            className="rounded-md border border-[#dfd2bb] bg-white px-2 py-1 text-[11px] font-semibold text-slate-700"
-                          >
-                            Update
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => removeOptionGroup(group)}
-                            disabled={isDeletingOptionGroup}
-                            className="rounded-md border border-rose-200 bg-rose-50 px-2 py-1 text-[11px] font-semibold text-rose-700 disabled:opacity-60"
-                          >
-                            Delete
-                          </button>
-                        </div>
-                      </article>
-                    ))}
-                  </div>
-                ) : (
-                  <div className="no-scrollbar w-full max-w-full overflow-x-auto overscroll-x-contain rounded-xl border border-[#eadfc9]">
-                    <table className="min-w-[620px] divide-y divide-[#efe4d3] text-left text-xs sm:min-w-full">
-                      <thead className="bg-[#fff8ec]">
-                        <tr className="text-slate-700">
-                          <th className="px-3 py-2 font-semibold">
-                            Option Group
-                          </th>
-                          <th className="px-3 py-2 font-semibold">Min/Max</th>
-                          <th className="px-3 py-2 font-semibold">Options</th>
-                          <th className="px-3 py-2 font-semibold text-right">
-                            Actions
-                          </th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-[#f1e7d9] bg-white">
-                        {filteredOptionGroups.map((group) => (
-                          <tr key={`group-table-${group.id}`}>
-                            <td className="px-3 py-2 font-semibold text-slate-900">
-                              {group.name}
-                            </td>
-                            <td className="px-3 py-2 text-slate-700">
-                              {group.minSelect ?? 0} / {group.maxSelect ?? 0}
-                            </td>
-                            <td className="px-3 py-2 text-slate-700">
-                              {group.options.length}
-                            </td>
-                            <td className="px-3 py-2">
-                              <div className="flex justify-end gap-1.5">
-                                <button
-                                  type="button"
-                                  onClick={() => openOptionGroupEditor(group)}
-                                  className="rounded-md border border-[#dfd2bb] bg-white px-2 py-1 text-[11px] font-semibold text-slate-700"
-                                >
-                                  Update
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={() => removeOptionGroup(group)}
-                                  disabled={isDeletingOptionGroup}
-                                  className="rounded-md border border-rose-200 bg-rose-50 px-2 py-1 text-[11px] font-semibold text-rose-700 disabled:opacity-60"
-                                >
-                                  Delete
-                                </button>
-                              </div>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                )
-              ) : (
-                <div className="rounded-2xl border border-dashed border-[#e0d6c4] bg-[#fffcf7] px-3 py-8 text-center text-sm text-slate-600 sm:px-4 sm:py-10">
-                  No option groups found.
-                </div>
-              )
-            ) : null}
-          </div>
-        </article>
-      </section>
-
-      {menuPreviewHref ? (
+      {/* ── Preview Button ── */}
+      {menuPreviewHref && (
         <button
           type="button"
           onClick={() => setIsMenuPreviewOpen(true)}
-          className="fixed bottom-[calc(env(safe-area-inset-bottom)+5.25rem)] right-3 z-20 inline-flex items-center gap-1.5 rounded-full border border-[#e2cfab] bg-[#c08544] px-4 py-2 text-xs font-semibold text-white shadow-lg shadow-amber-800/20 transition-colors hover:bg-[#a86f37] sm:right-4 sm:text-sm lg:bottom-[calc(env(safe-area-inset-bottom)+1.25rem)]"
+          className="fixed bottom-[calc(env(safe-area-inset-bottom)+5.25rem)] right-3 z-20 inline-flex items-center gap-1.5 rounded-full border border-[#e2cfab] bg-[#c08544] px-4 py-2 text-xs font-bold text-white shadow-lg transition-colors hover:bg-[#a86f37] sm:right-4 lg:bottom-[calc(env(safe-area-inset-bottom)+1.25rem)]"
         >
           Preview Menu
         </button>
-      ) : null}
+      )}
 
-      {isMenuPreviewOpen && menuPreviewHref ? (
+      {/* ── Menu Preview Modal ── */}
+      {isMenuPreviewOpen && menuPreviewHref && (
         <div className="fixed inset-0 z-40 p-2 sm:p-4">
           <button
             type="button"
-            aria-label="Close menu preview"
+            aria-label="Close"
             className="absolute inset-0 bg-slate-900/45"
             onClick={() => setIsMenuPreviewOpen(false)}
           />
-          <div className="relative z-10 mx-auto flex h-full w-full max-w-5xl flex-col overflow-hidden rounded-2xl border border-[#e6dfd1] bg-[#fffdf9] shadow-2xl">
-            <div className="flex items-center justify-between border-b border-[#eee7d8] bg-[#fff8ec] px-3 py-2.5 sm:px-4">
-              <p className="text-sm font-semibold text-slate-800">
+          <div className="relative z-10 mx-auto flex h-full w-full max-w-5xl flex-col overflow-hidden rounded-2xl border border-[#e6dfd1] bg-white shadow-2xl">
+            <div className="flex items-center justify-between border-b border-[#eee7d8] bg-[#fff8ec] px-4 py-2.5">
+              <p className="text-sm font-bold text-slate-800">
                 QR Menu Preview
               </p>
               <button
                 type="button"
                 onClick={() => setIsMenuPreviewOpen(false)}
-                className="h-8 w-8 rounded-full border border-[#e0d8c9] bg-white text-lg leading-none text-slate-700"
-                aria-label="Close preview"
+                className="h-8 w-8 rounded-full border border-[#e0d8c9] bg-white text-slate-700"
+                aria-label="Close"
               >
-                X
+                ✕
               </button>
             </div>
             <div className="min-h-0 flex-1 bg-[#f6f4ef]">
@@ -2790,735 +1954,914 @@ export function MenuWorkspace({ tenantSlug }: Props) {
             </div>
           </div>
         </div>
-      ) : null}
+      )}
 
-      {quickMenuAction ? (
-        <div className="fixed inset-0 z-30 flex items-center justify-center p-3 sm:p-6">
+      {/* ── Item Modal (3-step bottom sheet) ── */}
+      {/* {isItemModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-end justify-center sm:items-center sm:p-4">
           <button
             type="button"
-            aria-label="Close quick menu panel"
-            className="absolute inset-0 bg-slate-900/35"
-            onClick={closeQuickMenuAction}
+            aria-label="Close"
+            className="absolute inset-0 bg-slate-900/40"
+            onClick={closeItemModal}
           />
-          <aside className="relative z-10 w-full max-w-2xl max-h-[90vh] overflow-y-auto rounded-3xl border border-[#e6dfd1] bg-[#fffdf9] p-3 shadow-2xl sm:p-5">
-            <div className="mb-3 flex items-center justify-between sm:mb-4">
-              <div>
-                <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">
-                  Quick Add
-                </p>
-                <h4 className="text-lg font-semibold text-slate-900">
-                  {quickMenuAction === "item"
-                    ? "Add Menu Item"
-                    : quickMenuAction === "category"
-                      ? "Add Category"
-                      : quickMenuAction === "subCategory"
-                        ? "Add Sub Category"
-                        : editingGroupId
-                          ? "Update Optional Group"
-                          : "Add Optional Group"}
-                </h4>
+          <div className="relative z-10 w-full max-w-xl max-h-[94vh] overflow-y-auto rounded-t-3xl sm:rounded-3xl border border-[#e6dfd1] bg-[#fffdf9] shadow-2xl">
+       
+            <div className="sticky top-0 z-10 bg-[#fffdf9] border-b border-[#eee7d8] px-4 pt-3 pb-3">
+              <div className="mx-auto mb-2.5 h-1 w-10 rounded-full bg-slate-200 sm:hidden" />
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
+                    {editingItem ? "Item Edit" : "Naya Item"}
+                  </p>
+                  <h3 className="text-base font-bold text-slate-900">
+                    {editingItem ? editingItem.name : "Menu Item Add Karo"}
+                  </h3>
+                </div>
+                <button
+                  type="button"
+                  onClick={closeItemModal}
+                  className="h-8 w-8 rounded-full border border-[#e0d8c9] bg-white text-sm text-slate-600"
+                >
+                  ✕
+                </button>
               </div>
-              <button
-                type="button"
-                onClick={closeQuickMenuAction}
-                className="h-8 w-8 rounded-full border border-[#e0d8c9] bg-white text-lg leading-none text-slate-700"
-                aria-label="Close popup"
-              >
-                X
-              </button>
+              <div className="mt-2.5">
+                <StepDots current={itemModalStep} total={3} />
+              </div>
             </div>
 
-            {quickMenuAction === "item" ? (
-              <form
-                onSubmit={editingItem ? submitEdit : submitCreateItem}
-                className="space-y-3"
-              >
-                <label
-                  htmlFor="quick-menu-item-name"
-                  className="text-xs font-medium text-slate-700"
-                >
-                  Item Name
-                </label>
-                <input
-                  id="quick-menu-item-name"
-                  value={editingItem ? editForm.name : itemForm.name}
-                  onChange={(event) =>
-                    editingItem
-                      ? setEditForm((prev) => ({
-                          ...prev,
-                          name: event.target.value,
-                        }))
-                      : setItemForm((prev) => ({
-                          ...prev,
-                          name: event.target.value,
-                        }))
-                  }
-                  className="h-11 w-full rounded-xl border border-[#ddd4c1] bg-white px-3 text-sm outline-none ring-amber-200 focus:ring-2"
-                  placeholder="e.g. Paneer Tikka"
-                />
-
-                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                  <div className="space-y-1">
-                    <label
-                      htmlFor="quick-menu-item-main-category"
-                      className="text-xs font-medium text-slate-700"
-                    >
-                      Main Category
-                    </label>
-                    <select
-                      id="quick-menu-item-main-category"
-                      value={
-                        editingItem
-                          ? editForm.mainCategoryId
-                          : itemForm.mainCategoryId
-                      }
-                      onChange={(event) =>
-                        changeMainCategory(
-                          editingItem ? "edit" : "create",
-                          event.target.value,
-                        )
-                      }
-                      className="h-11 w-full rounded-xl border border-[#ddd4c1] bg-white px-3 text-sm"
-                    >
-                      <option value="">Select main category</option>
-                      {mainCategories.map((category) => (
-                        <option key={category.id} value={category.id}>
-                          {category.name}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                  <div className="space-y-1">
-                    <label
-                      htmlFor="quick-menu-item-sub-category"
-                      className="text-xs font-medium text-slate-700"
-                    >
-                      Sub Category
-                    </label>
-                    <select
-                      id="quick-menu-item-sub-category"
-                      value={
-                        editingItem
-                          ? editForm.subCategoryId
-                          : itemForm.subCategoryId
-                      }
-                      onChange={(event) =>
-                        changeSubCategory(
-                          editingItem ? "edit" : "create",
-                          event.target.value,
-                        )
-                      }
-                      disabled={
-                        editingItem
-                          ? !editForm.mainCategoryId
-                          : !itemForm.mainCategoryId
-                      }
-                      className="h-11 w-full rounded-xl border border-[#ddd4c1] bg-white px-3 text-sm disabled:bg-slate-100 disabled:text-slate-500"
-                    >
-                      <option value="">
-                        {(
-                          editingItem
-                            ? editForm.mainCategoryId
-                            : itemForm.mainCategoryId
-                        )
-                          ? "No sub category"
-                          : "Select main category first"}
-                      </option>
-                      {(editingItem
-                        ? editSubCategories
-                        : itemSubCategories
-                      ).map((category) => (
-                        <option key={category.id} value={category.id}>
-                          {category.name}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                </div>
-
-                <VariantFields
-                  idPrefix="quick-create"
-                  variants={editingItem ? editForm.variants : itemForm.variants}
-                  onChange={(key, field, value) =>
-                    updateVariant(
-                      editingItem ? "edit" : "create",
-                      key,
-                      field,
-                      value,
-                    )
-                  }
-                  onAdd={() => addVariant(editingItem ? "edit" : "create")}
-                  onRemove={(key) =>
-                    removeVariant(editingItem ? "edit" : "create", key)
-                  }
-                  presets={VARIANT_NAME_PRESETS}
-                />
-
-                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                  <div className="space-y-1">
-                    <label
-                      htmlFor="quick-menu-item-tax"
-                      className="text-xs font-medium text-slate-700"
-                    >
-                      Tax Percentage (%)
-                    </label>
-                    <input
-                      id="quick-menu-item-tax"
-                      type="number"
-                      min={0}
-                      max={100}
-                      
-                      value={
-                        editingItem
-                          ? editForm.taxPercentage
-                          : itemForm.taxPercentage
-                      }
-                      onChange={(event) =>
-                        editingItem
-                          ? setEditForm((prev) => ({
-                              ...prev,
-                              taxPercentage: event.target.value,
-                            }))
-                          : setItemForm((prev) => ({
-                              ...prev,
-                              taxPercentage: event.target.value,
-                            }))
-                      }
-                      className="h-11 w-full rounded-xl border border-[#ddd4c1] bg-white px-3 text-sm outline-none ring-amber-200 focus:ring-2"
+            <form onSubmit={submitItem} className="p-4 space-y-4">
+           
+              {itemModalStep === 1 && (
+                <>
+                  <div>
+                    <FieldLabel>Item Name *</FieldLabel>
+                    <TextInput
+                      value={itemForm.name}
+                      onChange={(v) => setItemForm((p) => ({ ...p, name: v }))}
+                      placeholder="e.g. Paneer Tikka, Cold Coffee..."
                     />
                   </div>
-                  <div className="space-y-1">
-                    <label
-                      htmlFor="quick-menu-item-description"
-                      className="text-xs font-medium text-slate-700"
-                    >
-                      Description
-                    </label>
-                    <input
-                      id="quick-menu-item-description"
-                      value={
-                        editingItem
-                          ? editForm.description
-                          : itemForm.description
-                      }
-                      onChange={(event) =>
-                        editingItem
-                          ? setEditForm((prev) => ({
-                              ...prev,
-                              description: event.target.value,
-                            }))
-                          : setItemForm((prev) => ({
-                              ...prev,
-                              description: event.target.value,
-                            }))
-                      }
-                      className="h-11 w-full rounded-xl border border-[#ddd4c1] bg-white px-3 text-sm outline-none ring-amber-200 focus:ring-2"
-                      placeholder="Short description"
-                    />
+
+                  <div>
+                    <FieldLabel>Main Category *</FieldLabel>
+                    <ChipScroll>
+                      {mainCategories.map((cat) => (
+                        <Chip
+                          key={cat.id}
+                          label={cat.name}
+                          active={itemForm.mainCategoryId === cat.id}
+                          onClick={() => changeMainCategory(cat.id)}
+                        />
+                      ))}
+                    </ChipScroll>
+                    {!mainCategories.length && (
+                      <p className="mt-1 text-[11px] text-slate-400">
+                        Pehle ek category banao
+                      </p>
+                    )}
                   </div>
-                </div>
 
-                <FulfillmentTypeField
-                  idPrefix="quick-menu-item"
-                  value={
-                    editingItem
-                      ? editForm.fulfillmentType
-                      : itemForm.fulfillmentType
-                  }
-                  onChange={(value) =>
-                    editingItem
-                      ? setEditForm((prev) => ({
-                          ...prev,
-                          fulfillmentType: value,
-                        }))
-                      : setItemForm((prev) => ({
-                          ...prev,
-                          fulfillmentType: value,
-                        }))
-                  }
-                />
-
-                <OptionGroupFields
-                  groups={optionGroups}
-                  selected={
-                    editingItem
-                      ? editForm.optionGroupIds
-                      : itemForm.optionGroupIds
-                  }
-                  onToggle={(groupId, checked) =>
-                    toggleGroup(
-                      editingItem ? "edit" : "create",
-                      groupId,
-                      checked,
-                    )
-                  }
-                />
-
-                <button
-                  type="submit"
-                  disabled={editingItem ? isUpdatingItem : isCreatingItem}
-                  className="w-full rounded-xl bg-amber-500 px-4 py-2.5 text-sm font-semibold text-white shadow-lg shadow-amber-500/25 disabled:opacity-60"
-                >
-                  {editingItem
-                    ? isUpdatingItem
-                      ? "Updating..."
-                      : "Update Menu Item"
-                    : isCreatingItem
-                      ? "Adding..."
-                      : "Add Menu Item"}
-                </button>
-              </form>
-            ) : null}
-
-            {(quickMenuAction === "category" ||
-              quickMenuAction === "subCategory") && (
-              <form
-                onSubmit={(event) => {
-                  if (editingCategory && editingCategoryId) {
-                    event.preventDefault();
-                    submitCategoryEdit(editingCategory);
-                    return;
-                  }
-                  submitCreateCategory(event);
-                }}
-                className="space-y-3"
-              >
-                <label
-                  htmlFor="quick-menu-category-name"
-                  className="text-xs font-medium text-slate-700"
-                >
-                  Category Name
-                </label>
-                <input
-                  id="quick-menu-category-name"
-                  value={editingCategoryId ? editingCategoryName : categoryName}
-                  onChange={(event) =>
-                    editingCategoryId
-                      ? setEditingCategoryName(event.target.value)
-                      : setCategoryName(event.target.value)
-                  }
-                  className="h-11 w-full rounded-xl border border-[#ddd4c1] bg-white px-3 text-sm outline-none ring-amber-200 focus:ring-2"
-                  placeholder={
-                    quickMenuAction === "category"
-                      ? "e.g. Beverages"
-                      : "e.g. Cold Drinks"
-                  }
-                />
-
-                {quickMenuAction === "subCategory" ? (
-                  <div className="space-y-1">
-                    <p className="text-[11px] font-medium text-slate-600">
-                      Quick Category Pick
-                    </p>
-                    <div className="flex gap-1.5 overflow-x-auto overflow-y-hidden pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-                      {quickPickMainCategories.map((category) => {
-                        const selected = categoryParentId === category.id;
-                        return (
-                          <button
-                            key={`quick-modal-chip-${category.id}`}
-                            type="button"
-                            onClick={() => chooseParentCategory(category.id)}
-                            className={`shrink-0 rounded-full border px-2.5 py-1 text-[11px] font-semibold transition-colors ${
-                              selected
-                                ? "border-amber-300 bg-amber-100 text-amber-800"
-                                : "border-[#dfd2bb] bg-white text-slate-700 hover:bg-[#faf2e4]"
-                            }`}
-                          >
-                            {category.name}
-                          </button>
-                        );
-                      })}
+                  {itemSubCategories.length > 0 && (
+                    <div>
+                      <FieldLabel>Sub Category (optional)</FieldLabel>
+                      <ChipScroll>
+                        <Chip
+                          label="None"
+                          active={!itemForm.subCategoryId}
+                          onClick={() =>
+                            setItemForm((p) => ({ ...p, subCategoryId: "" }))
+                          }
+                        />
+                        {itemSubCategories.map((cat) => (
+                          <Chip
+                            key={cat.id}
+                            label={cat.name}
+                            active={itemForm.subCategoryId === cat.id}
+                            onClick={() =>
+                              setItemForm((p) => ({
+                                ...p,
+                                subCategoryId: cat.id,
+                              }))
+                            }
+                          />
+                        ))}
+                      </ChipScroll>
                     </div>
-                    <label
-                      htmlFor="quick-menu-parent-category"
-                      className="text-xs font-medium text-slate-700"
-                    >
-                      Main Category
-                    </label>
-                    <select
-                      id="quick-menu-parent-category"
-                      value={categoryParentId}
-                      onChange={(event) =>
-                        chooseParentCategory(event.target.value)
+                  )}
+
+                  {resolveSelectedCategoryId(itemForm) && (
+                    <div className="rounded-xl border border-[#c3defe] bg-[#eff6ff] px-3 py-2 text-[11px] font-semibold text-blue-700">
+                      Category:{" "}
+                      {selectedCategoryLabel(
+                        resolveSelectedCategoryId(itemForm),
+                      )}
+                    </div>
+                  )}
+
+                  <div>
+                    <FieldLabel>Description (optional)</FieldLabel>
+                    <textarea
+                      value={itemForm.description}
+                      onChange={(e) =>
+                        setItemForm((p) => ({
+                          ...p,
+                          description: e.target.value,
+                        }))
                       }
-                      className="h-11 w-full rounded-xl border border-[#ddd4c1] bg-white px-3 text-sm"
-                    >
-                      <option value="">Select main category</option>
-                      {mainCategories.map((category) => (
-                        <option key={category.id} value={category.id}>
-                          {category.name}
-                        </option>
-                      ))}
-                    </select>
+                      placeholder="Short description..."
+                      rows={2}
+                      className="w-full rounded-xl border border-[#ddd4c1] bg-white px-3.5 py-2.5 text-sm text-slate-800 outline-none focus:border-[#d4a30a] focus:ring-2 focus:ring-[#f5c842]/20 resize-none"
+                    />
                   </div>
-                ) : null}
 
-                <button
-                  type="submit"
-                  disabled={isCreatingCategory || isUpdatingCategory}
-                  className="w-full rounded-xl bg-amber-500 px-4 py-2.5 text-sm font-semibold text-white shadow-lg shadow-amber-500/25 disabled:opacity-60"
-                >
-                  {isCreatingCategory || isUpdatingCategory
-                    ? "Saving..."
-                    : editingCategoryId
-                      ? "Update Category"
-                      : quickMenuAction === "category"
-                        ? "Add Main Category"
-                        : "Add Sub Category"}
-                </button>
-              </form>
-            )}
+                  <div>
+                    <FieldLabel>Image URL (optional)</FieldLabel>
+                    <TextInput
+                      value={itemForm.image}
+                      onChange={(v) => setItemForm((p) => ({ ...p, image: v }))}
+                      placeholder="https://..."
+                    />
+                  </div>
 
-            {quickMenuAction === "optional" ? (
-              <div className="space-y-3">
-                <form
-                  onSubmit={
-                    editingGroupId
-                      ? submitUpdateOptionGroup
-                      : submitCreateOptionGroup
-                  }
-                  className="space-y-2"
-                >
-                  <label
-                    htmlFor="quick-menu-group-name"
-                    className="text-xs font-medium text-slate-700"
-                  >
-                    Group Name
-                  </label>
-                  <input
-                    id="quick-menu-group-name"
-                    value={
-                      editingGroupId ? editingGroupForm.name : groupForm.name
-                    }
-                    onChange={(event) =>
-                      editingGroupId
-                        ? setEditingGroupForm((prev) => ({
-                            ...prev,
-                            name: event.target.value,
-                          }))
-                        : setGroupForm((prev) => ({
-                            ...prev,
-                            name: event.target.value,
-                          }))
-                    }
-                    className="h-11 w-full rounded-xl border border-[#ddd4c1] bg-white px-3 text-sm outline-none ring-amber-200 focus:ring-2"
-                    placeholder="e.g. Extra Cheese"
+                  <PrimaryBtn onClick={() => setItemModalStep(2)}>
+                    Next: Variants & Pricing →
+                  </PrimaryBtn>
+                </>
+              )}
+
+              {itemModalStep === 2 && (
+                <>
+                  <VariantFields
+                    variants={itemForm.variants}
+                    onChange={updateVariant}
+                    onAdd={addVariant}
+                    onRemove={removeVariant}
                   />
 
-                  <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
-                    <input
-                      type="number"
-                      min={0}
-                      value={
-                        editingGroupId
-                          ? editingGroupForm.minSelect
-                          : groupForm.minSelect
-                      }
-                      onChange={(event) =>
-                        editingGroupId
-                          ? setEditingGroupForm((prev) => ({
-                              ...prev,
-                              minSelect: event.target.value,
-                            }))
-                          : setGroupForm((prev) => ({
-                              ...prev,
-                              minSelect: event.target.value,
-                            }))
-                      }
-                      className="h-11 rounded-xl border border-[#ddd4c1] bg-white px-3 text-sm"
-                      placeholder="Min"
-                    />
-                    <input
-                      type="number"
-                      min={0}
-                      value={
-                        editingGroupId
-                          ? editingGroupForm.maxSelect
-                          : groupForm.maxSelect
-                      }
-                      onChange={(event) =>
-                        editingGroupId
-                          ? setEditingGroupForm((prev) => ({
-                              ...prev,
-                              maxSelect: event.target.value,
-                            }))
-                          : setGroupForm((prev) => ({
-                              ...prev,
-                              maxSelect: event.target.value,
-                            }))
-                      }
-                      className="h-11 rounded-xl border border-[#ddd4c1] bg-white px-3 text-sm"
-                      placeholder="Max"
-                    />
-                    <input
-                      type="number"
-                      min={0}
-                      value={
-                        editingGroupId
-                          ? editingGroupForm.sortOrder
-                          : groupForm.sortOrder
-                      }
-                      onChange={(event) =>
-                        editingGroupId
-                          ? setEditingGroupForm((prev) => ({
-                              ...prev,
-                              sortOrder: event.target.value,
-                            }))
-                          : setGroupForm((prev) => ({
-                              ...prev,
-                              sortOrder: event.target.value,
-                            }))
-                      }
-                      className="h-11 rounded-xl border border-[#ddd4c1] bg-white px-3 text-sm"
-                      placeholder="Order"
-                    />
+                  <div>
+                    <FieldLabel>Tax %</FieldLabel>
+                    <ChipScroll>
+                      {TAX_PRESETS.map((pct) => (
+                        <Chip
+                          key={pct}
+                          label={`${pct}%`}
+                          active={itemForm.taxPercentage === pct}
+                          onClick={() =>
+                            setItemForm((p) => ({ ...p, taxPercentage: pct }))
+                          }
+                        />
+                      ))}
+                    </ChipScroll>
                   </div>
 
-                  <div className="flex flex-wrap gap-2">
+                  <div className="flex gap-2">
+                    <GhostBtn
+                      onClick={() => setItemModalStep(1)}
+                      className="flex-1"
+                    >
+                      ← Back
+                    </GhostBtn>
+                    <PrimaryBtn
+                      onClick={() => setItemModalStep(3)}
+                      className="flex-[2]"
+                    >
+                      Next: Fulfillment & Options →
+                    </PrimaryBtn>
+                  </div>
+                </>
+              )}
+
+
+              {itemModalStep === 3 && (
+                <>
+                  <div>
+                    <FieldLabel>Fulfillment Type</FieldLabel>
+                    <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                      {FULFILLMENT_TYPES.map((type) => (
+                        <button
+                          key={type}
+                          type="button"
+                          onClick={() =>
+                            setItemForm((p) => ({
+                              ...p,
+                              fulfillmentType: type,
+                            }))
+                          }
+                          className={[
+                            "rounded-xl border py-2.5 text-xs font-bold transition-all",
+                            itemForm.fulfillmentType === type
+                              ? "border-[#d4a30a] bg-[#fdf3e3] text-[#7a4a00]"
+                              : "border-[#ddd4c1] bg-white text-slate-600 hover:bg-[#faf5eb]",
+                          ].join(" ")}
+                        >
+                          {type}
+                        </button>
+                      ))}
+                    </div>
+                    <p className="mt-1.5 text-[11px] text-slate-400">
+                      Selected: {itemForm.fulfillmentType || "None"}
+                    </p>
+                  </div>
+
+                  {optionGroups.length > 0 && (
+                    <div>
+                      <FieldLabel>Option Groups (optional)</FieldLabel>
+                      <ChipScroll>
+                        {optionGroups.map((g) => {
+                          const selected = itemForm.optionGroupIds.includes(
+                            g.id,
+                          );
+                          return (
+                            <Chip
+                              key={g.id}
+                              label={`${selected ? "✓ " : ""}${g.name}`}
+                              active={selected}
+                              onClick={() => toggleOptionGroup(g.id, !selected)}
+                            />
+                          );
+                        })}
+                      </ChipScroll>
+                      {itemForm.optionGroupIds.length > 0 && (
+                        <p className="mt-1.5 text-[11px] font-semibold text-slate-500">
+                          {itemForm.optionGroupIds.length} group
+                          {itemForm.optionGroupIds.length > 1 ? "s" : ""}{" "}
+                          selected
+                        </p>
+                      )}
+                    </div>
+                  )}
+
+                  <div className="flex gap-2">
+                    <GhostBtn
+                      onClick={() => setItemModalStep(2)}
+                      className="flex-1"
+                    >
+                      ← Back
+                    </GhostBtn>
                     <button
                       type="submit"
-                      disabled={isCreatingOptionGroup || isUpdatingOptionGroup}
-                      className="rounded-xl bg-[#c08544] px-4 py-2 text-sm font-semibold text-white shadow-lg shadow-amber-500/20 disabled:opacity-60"
+                      disabled={editingItem ? isUpdatingItem : isCreatingItem}
+                      className="flex-[2] rounded-xl bg-[#d4a30a] py-3 text-sm font-bold text-white transition-all hover:bg-[#b98a06] active:scale-[0.98] disabled:opacity-50"
                     >
-                      {isCreatingOptionGroup || isUpdatingOptionGroup
-                        ? "Saving..."
-                        : editingGroupId
-                          ? "Update Group"
-                          : "Create Group"}
+                      {editingItem
+                        ? isUpdatingItem
+                          ? "Update ho raha hai..."
+                          : "Update Item"
+                        : isCreatingItem
+                          ? "Add ho raha hai..."
+                          : "Add to Menu"}
                     </button>
                   </div>
-                </form>
+                </>
+              )}
+            </form>
+          </div>
+        </div>
+      )} */}
 
-                <div className="max-h-52 space-y-1.5 overflow-y-auto rounded-xl border border-[#eadfc9] bg-[#fffaf0] p-2">
-                  {optionGroups.length ? (
-                    optionGroups.map((group) => (
-                      <div
-                        key={group.id}
-                        className="flex items-center justify-between rounded-md border border-[#eadfc9] bg-white p-2"
-                      >
-                        <div className="min-w-0">
-                          <p className="truncate text-xs font-semibold text-slate-800">
-                            {group.name}
-                          </p>
-                          <p className="truncate text-[10px] text-slate-500">
-                            Min {group.minSelect ?? 0} / Max{" "}
-                            {group.maxSelect ?? 0}
-                          </p>
-                        </div>
-                        <div className="flex gap-1.5">
-                          <button
-                            type="button"
-                            onClick={() => startEditOptionGroup(group)}
-                            className="rounded-md border border-[#dfd2bb] bg-white px-2 py-1 text-[11px] font-semibold text-slate-700"
-                          >
-                            Edit
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => removeOptionGroup(group)}
-                            disabled={isDeletingOptionGroup}
-                            className="rounded-md border border-rose-200 bg-rose-50 px-2 py-1 text-[11px] font-semibold text-rose-700 disabled:opacity-60"
-                          >
-                            Delete
-                          </button>
-                        </div>
+      {/* ── Item Modal ── */}
+      {isItemModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-end justify-center sm:items-center sm:p-4">
+          <button
+            type="button"
+            aria-label="Close"
+            className="absolute inset-0 bg-slate-900/40"
+            onClick={closeItemModal}
+          />
+          <div className="relative z-10 w-full max-w-xl max-h-[94vh] overflow-y-auto rounded-t-3xl sm:rounded-3xl border border-[#e6dfd1] bg-[#fffdf9] shadow-2xl">
+            {/* Header */}
+            <div className="sticky top-0 z-10 bg-[#fffdf9] border-b border-[#eee7d8] px-4 pt-3 pb-3">
+              <div className="mx-auto mb-2.5 h-1 w-10 rounded-full bg-slate-200 sm:hidden" />
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
+                    {editingItem ? "Edit Item" : "Add New Item"}
+                  </p>
+                  <h3 className="text-base font-bold text-slate-900">
+                    {editingItem ? editingItem.name : "Menu Item Details"}
+                  </h3>
+                </div>
+                <button
+                  type="button"
+                  onClick={closeItemModal}
+                  className="h-8 w-8 rounded-full border border-[#e0d8c9] bg-white text-sm text-slate-600"
+                >
+                  ✕
+                </button>
+              </div>
+              {/* Step dots only for ADD mode */}
+              {!editingItem && (
+                <div className="mt-2.5">
+                  <StepDots current={itemModalStep} total={3} />
+                </div>
+              )}
+            </div>
+
+            <form onSubmit={submitItem} className="p-4 space-y-4">
+              {/* ========== ADD MODE : 3-STEP ========== */}
+              {!editingItem && (
+                <>
+                  {itemModalStep === 1 && (
+                    // ... same as your existing step 1 (Basic Info)
+                    <>
+                      <div>
+                        <FieldLabel>Item Name *</FieldLabel>
+                        <TextInput
+                          value={itemForm.name}
+                          onChange={(v) =>
+                            setItemForm((p) => ({ ...p, name: v }))
+                          }
+                          placeholder="e.g. Paneer Tikka, Cold Coffee..."
+                        />
                       </div>
-                    ))
-                  ) : (
-                    <p className="px-1 py-2 text-xs text-slate-500">
-                      No option groups found.
+                      <div>
+                        <FieldLabel>Main Category *</FieldLabel>
+                        <ChipScroll>
+                          {mainCategories.map((cat) => (
+                            <Chip
+                              key={cat.id}
+                              label={cat.name}
+                              active={itemForm.mainCategoryId === cat.id}
+                              onClick={() => changeMainCategory(cat.id)}
+                            />
+                          ))}
+                        </ChipScroll>
+                        {!mainCategories.length && (
+                          <p className="mt-1 text-[11px] text-slate-400">
+                            Pehle ek category banao
+                          </p>
+                        )}
+                      </div>
+                      {itemSubCategories.length > 0 && (
+                        <div>
+                          <FieldLabel>Sub Category (optional)</FieldLabel>
+                          <ChipScroll>
+                            <Chip
+                              label="None"
+                              active={!itemForm.subCategoryId}
+                              onClick={() =>
+                                setItemForm((p) => ({
+                                  ...p,
+                                  subCategoryId: "",
+                                }))
+                              }
+                            />
+                            {itemSubCategories.map((cat) => (
+                              <Chip
+                                key={cat.id}
+                                label={cat.name}
+                                active={itemForm.subCategoryId === cat.id}
+                                onClick={() =>
+                                  setItemForm((p) => ({
+                                    ...p,
+                                    subCategoryId: cat.id,
+                                  }))
+                                }
+                              />
+                            ))}
+                          </ChipScroll>
+                        </div>
+                      )}
+                      {resolveSelectedCategoryId(itemForm) && (
+                        <div className="rounded-xl border border-[#c3defe] bg-[#eff6ff] px-3 py-2 text-[11px] font-semibold text-blue-700">
+                          Category:{" "}
+                          {selectedCategoryLabel(
+                            resolveSelectedCategoryId(itemForm),
+                          )}
+                        </div>
+                      )}
+                      <div>
+                        <FieldLabel>Description (optional)</FieldLabel>
+                        <textarea
+                          value={itemForm.description}
+                          onChange={(e) =>
+                            setItemForm((p) => ({
+                              ...p,
+                              description: e.target.value,
+                            }))
+                          }
+                          placeholder="Short description..."
+                          rows={2}
+                          className="w-full rounded-xl border border-[#ddd4c1] bg-white px-3.5 py-2.5 text-sm text-slate-800 outline-none focus:border-[#d4a30a] focus:ring-2 focus:ring-[#f5c842]/20 resize-none"
+                        />
+                      </div>
+                      <div>
+                        <FieldLabel>Image URL (optional)</FieldLabel>
+                        <TextInput
+                          value={itemForm.image}
+                          onChange={(v) =>
+                            setItemForm((p) => ({ ...p, image: v }))
+                          }
+                          placeholder="https://..."
+                        />
+                      </div>
+                      <PrimaryBtn onClick={() => setItemModalStep(2)}>
+                        Next: Variants & Pricing →
+                      </PrimaryBtn>
+                    </>
+                  )}
+
+                  {itemModalStep === 2 && (
+                    <>
+                      <VariantFields
+                        variants={itemForm.variants}
+                        onChange={updateVariant}
+                        onAdd={addVariant}
+                        onRemove={removeVariant}
+                      />
+                      <div>
+                        <FieldLabel>Tax %</FieldLabel>
+                        <ChipScroll>
+                          {TAX_PRESETS.map((pct) => (
+                            <Chip
+                              key={pct}
+                              label={`${pct}%`}
+                              active={itemForm.taxPercentage === pct}
+                              onClick={() =>
+                                setItemForm((p) => ({
+                                  ...p,
+                                  taxPercentage: pct,
+                                }))
+                              }
+                            />
+                          ))}
+                        </ChipScroll>
+                      </div>
+                      <div className="flex gap-2">
+                        <GhostBtn
+                          onClick={() => setItemModalStep(1)}
+                          className="flex-1"
+                        >
+                          ← Back
+                        </GhostBtn>
+                        <PrimaryBtn
+                          onClick={() => setItemModalStep(3)}
+                          className="flex-[2]"
+                        >
+                          Next: Fulfillment & Options →
+                        </PrimaryBtn>
+                      </div>
+                    </>
+                  )}
+
+                  {itemModalStep === 3 && (
+                    <>
+                      <div>
+                        <FieldLabel>Fulfillment Type</FieldLabel>
+                        <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                          {FULFILLMENT_TYPES.map((type) => (
+                            <button
+                              key={type}
+                              type="button"
+                              onClick={() =>
+                                setItemForm((p) => ({
+                                  ...p,
+                                  fulfillmentType: type,
+                                }))
+                              }
+                              className={[
+                                "rounded-xl border py-2.5 text-xs font-bold transition-all",
+                                itemForm.fulfillmentType === type
+                                  ? "border-[#d4a30a] bg-[#fdf3e3] text-[#7a4a00]"
+                                  : "border-[#ddd4c1] bg-white text-slate-600 hover:bg-[#faf5eb]",
+                              ].join(" ")}
+                            >
+                              {type}
+                            </button>
+                          ))}
+                        </div>
+                        <p className="mt-1.5 text-[11px] text-slate-400">
+                          Selected: {itemForm.fulfillmentType || "None"}
+                        </p>
+                      </div>
+                      {optionGroups.length > 0 && (
+                        <div>
+                          <FieldLabel>Option Groups (optional)</FieldLabel>
+                          <ChipScroll>
+                            {optionGroups.map((g) => {
+                              const selected = itemForm.optionGroupIds.includes(
+                                g.id,
+                              );
+                              return (
+                                <Chip
+                                  key={g.id}
+                                  label={`${selected ? "✓ " : ""}${g.name}`}
+                                  active={selected}
+                                  onClick={() =>
+                                    toggleOptionGroup(g.id, !selected)
+                                  }
+                                />
+                              );
+                            })}
+                          </ChipScroll>
+                          {itemForm.optionGroupIds.length > 0 && (
+                            <p className="mt-1.5 text-[11px] font-semibold text-slate-500">
+                              {itemForm.optionGroupIds.length} group
+                              {itemForm.optionGroupIds.length > 1
+                                ? "s"
+                                : ""}{" "}
+                              selected
+                            </p>
+                          )}
+                        </div>
+                      )}
+                      <div className="flex gap-2">
+                        <GhostBtn
+                          onClick={() => setItemModalStep(2)}
+                          className="flex-1"
+                        >
+                          ← Back
+                        </GhostBtn>
+                        <button
+                          type="submit"
+                          disabled={isCreatingItem}
+                          className="flex-[2] rounded-xl bg-[#d4a30a] py-3 text-sm font-bold text-white transition-all hover:bg-[#b98a06] active:scale-[0.98] disabled:opacity-50"
+                        >
+                          {isCreatingItem
+                            ? "Add ho raha hai..."
+                            : "Add to Menu"}
+                        </button>
+                      </div>
+                    </>
+                  )}
+                </>
+              )}
+
+              {/* ========== EDIT MODE : SINGLE PAGE ========== */}
+              {editingItem && (
+                <div className="space-y-4">
+                  {/* Basic Info */}
+                  <div>
+                    <FieldLabel>Item Name *</FieldLabel>
+                    <TextInput
+                      value={itemForm.name}
+                      onChange={(v) => setItemForm((p) => ({ ...p, name: v }))}
+                      placeholder="e.g. Paneer Tikka"
+                    />
+                  </div>
+
+                  <div>
+                    <FieldLabel>Main Category *</FieldLabel>
+                    <ChipScroll>
+                      {mainCategories.map((cat) => (
+                        <Chip
+                          key={cat.id}
+                          label={cat.name}
+                          active={itemForm.mainCategoryId === cat.id}
+                          onClick={() => changeMainCategory(cat.id)}
+                        />
+                      ))}
+                    </ChipScroll>
+                  </div>
+
+                  {itemSubCategories.length > 0 && (
+                    <div>
+                      <FieldLabel>Sub Category</FieldLabel>
+                      <ChipScroll>
+                        <Chip
+                          label="None"
+                          active={!itemForm.subCategoryId}
+                          onClick={() =>
+                            setItemForm((p) => ({ ...p, subCategoryId: "" }))
+                          }
+                        />
+                        {itemSubCategories.map((cat) => (
+                          <Chip
+                            key={cat.id}
+                            label={cat.name}
+                            active={itemForm.subCategoryId === cat.id}
+                            onClick={() =>
+                              setItemForm((p) => ({
+                                ...p,
+                                subCategoryId: cat.id,
+                              }))
+                            }
+                          />
+                        ))}
+                      </ChipScroll>
+                    </div>
+                  )}
+
+                  <div>
+                    <FieldLabel>Description</FieldLabel>
+                    <textarea
+                      value={itemForm.description}
+                      onChange={(e) =>
+                        setItemForm((p) => ({
+                          ...p,
+                          description: e.target.value,
+                        }))
+                      }
+                      rows={2}
+                      className="w-full rounded-xl border border-[#ddd4c1] bg-white px-3.5 py-2.5 text-sm outline-none focus:border-[#d4a30a]"
+                    />
+                  </div>
+
+                  <div>
+                    <FieldLabel>Image URL</FieldLabel>
+                    <TextInput
+                      value={itemForm.image}
+                      onChange={(v) => setItemForm((p) => ({ ...p, image: v }))}
+                    />
+                  </div>
+
+                  {/* Variants */}
+                  <VariantFields
+                    variants={itemForm.variants}
+                    onChange={updateVariant}
+                    onAdd={addVariant}
+                    onRemove={removeVariant}
+                  />
+
+                  {/* Tax */}
+                  <div>
+                    <FieldLabel>Tax %</FieldLabel>
+                    <ChipScroll>
+                      {TAX_PRESETS.map((pct) => (
+                        <Chip
+                          key={pct}
+                          label={`${pct}%`}
+                          active={itemForm.taxPercentage === pct}
+                          onClick={() =>
+                            setItemForm((p) => ({ ...p, taxPercentage: pct }))
+                          }
+                        />
+                      ))}
+                    </ChipScroll>
+                  </div>
+
+                  {/* Fulfillment */}
+                  <div>
+                    <FieldLabel>Fulfillment Type</FieldLabel>
+                    <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                      {FULFILLMENT_TYPES.map((type) => (
+                        <button
+                          key={type}
+                          type="button"
+                          onClick={() =>
+                            setItemForm((p) => ({
+                              ...p,
+                              fulfillmentType: type,
+                            }))
+                          }
+                          className={[
+                            "rounded-xl border py-2.5 text-xs font-bold",
+                            itemForm.fulfillmentType === type
+                              ? "border-[#d4a30a] bg-[#fdf3e3] text-[#7a4a00]"
+                              : "border-[#ddd4c1] bg-white text-slate-600",
+                          ].join(" ")}
+                        >
+                          {type}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Option Groups */}
+                  {optionGroups.length > 0 && (
+                    <div>
+                      <FieldLabel>Option Groups</FieldLabel>
+                      <ChipScroll>
+                        {optionGroups.map((g) => {
+                          const selected = itemForm.optionGroupIds.includes(
+                            g.id,
+                          );
+                          return (
+                            <Chip
+                              key={g.id}
+                              label={`${selected ? "✓ " : ""}${g.name}`}
+                              active={selected}
+                              onClick={() => toggleOptionGroup(g.id, !selected)}
+                            />
+                          );
+                        })}
+                      </ChipScroll>
+                    </div>
+                  )}
+
+                  {/* Action Buttons for Edit Mode */}
+                  <div className="flex gap-3 pt-4">
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        if (editingItem) {
+                          await removeItem(editingItem);
+                          closeItemModal(); // close after delete
+                        }
+                      }}
+                      disabled={isDeletingItem}
+                      className="flex-1 rounded-xl border border-rose-200 bg-rose-50 py-3 text-sm font-bold text-rose-700 transition-all hover:bg-rose-100 active:scale-[0.98] disabled:opacity-50"
+                    >
+                      {isDeletingItem ? "Deleting..." : "Delete Item"}
+                    </button>
+
+                    <button
+                      type="submit"
+                      disabled={isUpdatingItem}
+                      className="flex-1 rounded-xl bg-[#d4a30a] py-3 text-sm font-bold text-white transition-all hover:bg-[#b98a06] active:scale-[0.98] disabled:opacity-50"
+                    >
+                      {isUpdatingItem ? "Updating..." : "Update Item"}
+                    </button>
+                  </div>
+                </div>
+              )}
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ── Category Bottom Sheet ── */}
+      {isCatSheetOpen && (
+        <div className="fixed inset-0 z-50 flex items-end justify-center sm:items-center sm:p-4">
+          <button
+            type="button"
+            aria-label="Close"
+            className="absolute inset-0 bg-slate-900/40"
+            onClick={() => setIsCatSheetOpen(false)}
+          />
+          <div className="relative z-10 w-full max-w-md max-h-[85vh] overflow-y-auto rounded-t-3xl sm:rounded-3xl border border-[#e6dfd1] bg-[#fffdf9] shadow-2xl">
+            <div className="sticky top-0 z-10 bg-[#fffdf9] border-b border-[#eee7d8] px-4 pt-3 pb-3">
+              <div className="mx-auto mb-2.5 h-1 w-10 rounded-full bg-slate-200 sm:hidden" />
+              <div className="flex items-center justify-between">
+                <h3 className="text-base font-bold text-slate-900">
+                  {editingCategoryId
+                    ? "Category Edit Karo"
+                    : catType === "main"
+                      ? "Main Category Add Karo"
+                      : "Sub Category Add Karo"}
+                </h3>
+                <button
+                  type="button"
+                  onClick={() => setIsCatSheetOpen(false)}
+                  className="h-8 w-8 rounded-full border border-[#e0d8c9] bg-white text-sm text-slate-600"
+                >
+                  ✕
+                </button>
+              </div>
+            </div>
+            <form onSubmit={submitCategory} className="p-4 space-y-4">
+              {!editingCategoryId && (
+                <div>
+                  <FieldLabel>Category Type</FieldLabel>
+                  <div className="grid grid-cols-2 gap-2">
+                    {(["main", "sub"] as const).map((type) => (
+                      <button
+                        key={type}
+                        type="button"
+                        onClick={() => {
+                          setCatType(type);
+                          if (type === "main") setCatParentId("");
+                        }}
+                        className={[
+                          "rounded-xl border py-2.5 text-sm font-bold transition-all",
+                          catType === type
+                            ? "border-[#d4a30a] bg-[#fdf3e3] text-[#7a4a00]"
+                            : "border-[#ddd4c1] bg-white text-slate-600 hover:bg-[#faf5eb]",
+                        ].join(" ")}
+                      >
+                        {type === "main" ? "Main Category" : "Sub Category"}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              <div>
+                <FieldLabel>Category Name *</FieldLabel>
+                <TextInput
+                  value={editingCategoryId ? editingCategoryName : catName}
+                  onChange={
+                    editingCategoryId ? setEditingCategoryName : setCatName
+                  }
+                  placeholder={
+                    catType === "main"
+                      ? "e.g. Beverages, Starters..."
+                      : "e.g. Cold Drinks, Mocktails..."
+                  }
+                />
+              </div>
+
+              {catType === "sub" && (
+                <div>
+                  <FieldLabel>Main Category (Parent) *</FieldLabel>
+                  <ChipScroll>
+                    {quickPickMainCats.map((cat) => (
+                      <Chip
+                        key={cat.id}
+                        label={cat.name}
+                        active={catParentId === cat.id}
+                        onClick={() => chooseParentCategory(cat.id)}
+                      />
+                    ))}
+                  </ChipScroll>
+                  {catParentId && (
+                    <p className="mt-1.5 text-[11px] font-semibold text-slate-500">
+                      Parent: {categoriesById.get(catParentId)?.name}
                     </p>
                   )}
                 </div>
-              </div>
-            ) : null}
-          </aside>
-        </div>
-      ) : null}
+              )}
 
-      {editingItem && quickMenuAction !== "item" ? (
-        <div className="fixed inset-0 z-[70]">
+              <PrimaryBtn
+                type="submit"
+                disabled={isCreatingCategory || isUpdatingCategory}
+              >
+                {isCreatingCategory || isUpdatingCategory
+                  ? "Saving..."
+                  : editingCategoryId
+                    ? "Update Category"
+                    : catType === "main"
+                      ? "Add Main Category"
+                      : "Add Sub Category"}
+              </PrimaryBtn>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ── Option Group Bottom Sheet ── */}
+      {isOGSheetOpen && (
+        <div className="fixed inset-0 z-50 flex items-end justify-center sm:items-center sm:p-4">
           <button
             type="button"
+            aria-label="Close"
             className="absolute inset-0 bg-slate-900/40"
-            onClick={() => setEditingItem(null)}
+            onClick={() => setIsOGSheetOpen(false)}
           />
-          <aside className="absolute right-0 top-0 h-full w-full max-w-md overflow-y-auto border-l border-[#e6dfd1] bg-[#fffdf9] p-4 shadow-2xl">
-            <div className="mb-3 flex items-center justify-between border-b border-[#eee7d8] pb-3">
-              <h4 className="text-base font-semibold">
-                Edit {editingItem.name}
-              </h4>
-              <button
-                type="button"
-                onClick={() => setEditingItem(null)}
-                className="rounded-lg border border-[#e0d8c9] bg-white px-3 py-1 text-xs font-semibold"
-              >
-                Close
-              </button>
+          <div className="relative z-10 w-full max-w-md max-h-[85vh] overflow-y-auto rounded-t-3xl sm:rounded-3xl border border-[#e6dfd1] bg-[#fffdf9] shadow-2xl">
+            <div className="sticky top-0 z-10 bg-[#fffdf9] border-b border-[#eee7d8] px-4 pt-3 pb-3">
+              <div className="mx-auto mb-2.5 h-1 w-10 rounded-full bg-slate-200 sm:hidden" />
+              <div className="flex items-center justify-between">
+                <h3 className="text-base font-bold text-slate-900">
+                  {editingGroupId
+                    ? "Option Group Edit Karo"
+                    : "Option Group Add Karo"}
+                </h3>
+                <button
+                  type="button"
+                  onClick={() => setIsOGSheetOpen(false)}
+                  className="h-8 w-8 rounded-full border border-[#e0d8c9] bg-white text-sm text-slate-600"
+                >
+                  ✕
+                </button>
+              </div>
             </div>
-
-            <form className="space-y-3" onSubmit={submitEdit}>
-              <label
-                htmlFor="edit-menu-item-name"
-                className="text-xs font-medium text-slate-700"
-              >
-                Item Name
-              </label>
-              <input
-                id="edit-menu-item-name"
-                value={editForm.name}
-                onChange={(event) =>
-                  setEditForm((prev) => ({ ...prev, name: event.target.value }))
-                }
-                className="h-10 w-full rounded-lg border border-[#ddd4c1] bg-white px-3 text-sm outline-none ring-amber-200 focus:ring-2"
-              />
-
-              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                <div className="space-y-1">
-                  <label
-                    htmlFor="edit-menu-item-main-category"
-                    className="text-xs font-medium text-slate-700"
-                  >
-                    Main Category
-                  </label>
-                  <select
-                    id="edit-menu-item-main-category"
-                    value={editForm.mainCategoryId}
-                    onChange={(event) =>
-                      changeMainCategory("edit", event.target.value)
-                    }
-                    className="h-10 w-full rounded-lg border border-[#ddd4c1] bg-white px-3 text-sm"
-                  >
-                    <option value="">Select main category</option>
-                    {mainCategories.map((category) => (
-                      <option key={category.id} value={category.id}>
-                        {category.name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div className="space-y-1">
-                  <label
-                    htmlFor="edit-menu-item-sub-category"
-                    className="text-xs font-medium text-slate-700"
-                  >
-                    Sub Category (optional)
-                  </label>
-                  <select
-                    id="edit-menu-item-sub-category"
-                    value={editForm.subCategoryId}
-                    onChange={(event) =>
-                      changeSubCategory("edit", event.target.value)
-                    }
-                    disabled={!editForm.mainCategoryId}
-                    className="h-10 w-full rounded-lg border border-[#ddd4c1] bg-white px-3 text-sm disabled:bg-slate-100 disabled:text-slate-500"
-                  >
-                    <option value="">
-                      {editForm.mainCategoryId
-                        ? "No sub category"
-                        : "Select main category first"}
-                    </option>
-                    {editSubCategories.map((category) => (
-                      <option key={category.id} value={category.id}>
-                        {category.name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
+            <form onSubmit={submitOG} className="p-4 space-y-4">
+              <div>
+                <FieldLabel>Group Name *</FieldLabel>
+                <TextInput
+                  value={
+                    editingGroupId ? editingGroupForm.name : groupForm.name
+                  }
+                  onChange={(v) =>
+                    editingGroupId
+                      ? setEditingGroupForm((p) => ({ ...p, name: v }))
+                      : setGroupForm((p) => ({ ...p, name: v }))
+                  }
+                  placeholder="e.g. Spice Level, Extra Toppings..."
+                />
               </div>
-              <p className="rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-[11px] text-blue-800">
-                Final category:{" "}
-                {resolveSelectedCategoryId(editForm)
-                  ? selectedCategoryLabel(resolveSelectedCategoryId(editForm))
-                  : "Not selected"}
-              </p>
-
-              <VariantFields
-                idPrefix="edit"
-                variants={editForm.variants}
-                onChange={(key, field, value) =>
-                  updateVariant("edit", key, field, value)
-                }
-                onAdd={() => addVariant("edit")}
-                onRemove={(key) => removeVariant("edit", key)}
-                presets={VARIANT_NAME_PRESETS}
-              />
-
-              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                <div className="space-y-1">
-                  <label
-                    htmlFor="edit-menu-item-tax"
-                    className="text-xs font-medium text-slate-700"
-                  >
-                    Tax Percentage (%)
-                  </label>
-                  <input
-                    id="edit-menu-item-tax"
-                    type="number"
-                    min={0}
-                    max={100}
-                    
-                    value={editForm.taxPercentage}
-                    onChange={(event) =>
-                      setEditForm((prev) => ({
-                        ...prev,
-                        taxPercentage: event.target.value,
-                      }))
-                    }
-                    className="h-10 w-full rounded-lg border border-[#ddd4c1] bg-white px-3 text-sm outline-none ring-amber-200 focus:ring-2"
-                  />
-                </div>
-                <div className="space-y-1">
-                  <label
-                    htmlFor="edit-menu-item-image"
-                    className="text-xs font-medium text-slate-700"
-                  >
-                    Image URL
-                  </label>
-                  <input
-                    id="edit-menu-item-image"
-                    value={editForm.image}
-                    onChange={(event) =>
-                      setEditForm((prev) => ({
-                        ...prev,
-                        image: event.target.value,
-                      }))
-                    }
-                    className="h-10 w-full rounded-lg border border-[#ddd4c1] bg-white px-3 text-sm outline-none ring-amber-200 focus:ring-2"
-                  />
-                </div>
+              <div className="grid grid-cols-3 gap-3">
+                {[
+                  { label: "Min Select", field: "minSelect" as const },
+                  { label: "Max Select", field: "maxSelect" as const },
+                  { label: "Sort Order", field: "sortOrder" as const },
+                ].map(({ label, field }) => (
+                  <div key={field}>
+                    <FieldLabel>{label}</FieldLabel>
+                    <NumberInput
+                      value={
+                        editingGroupId
+                          ? editingGroupForm[field]
+                          : groupForm[field]
+                      }
+                      onChange={(v) =>
+                        editingGroupId
+                          ? setEditingGroupForm((p) => ({ ...p, [field]: v }))
+                          : setGroupForm((p) => ({ ...p, [field]: v }))
+                      }
+                      placeholder="0"
+                    />
+                  </div>
+                ))}
               </div>
-
-              <label
-                htmlFor="edit-menu-item-description"
-                className="text-xs font-medium text-slate-700"
+              <PrimaryBtn
+                type="submit"
+                disabled={isCreatingOptionGroup || isUpdatingOptionGroup}
               >
-                Description
-              </label>
-              <textarea
-                id="edit-menu-item-description"
-                value={editForm.description}
-                onChange={(event) =>
-                  setEditForm((prev) => ({
-                    ...prev,
-                    description: event.target.value,
-                  }))
-                }
-                rows={3}
-                className="w-full rounded-lg border border-[#ddd4c1] bg-white px-3 py-2 text-sm outline-none ring-amber-200 focus:ring-2"
-              />
-
-              <OptionGroupFields
-                groups={optionGroups}
-                selected={editForm.optionGroupIds}
-                onToggle={(groupId, checked) =>
-                  toggleGroup("edit", groupId, checked)
-                }
-              />
-              </form>
-          </aside>
+                {isCreatingOptionGroup || isUpdatingOptionGroup
+                  ? "Saving..."
+                  : editingGroupId
+                    ? "Update Group"
+                    : "Add Group"}
+              </PrimaryBtn>
+            </form>
+          </div>
         </div>
-      ) : null}
+      )}
     </>
   );
 }
+

@@ -887,7 +887,7 @@ export function DashboardCard({ section }: DashboardCardProps) {
   const navSections = allowedIds.map((id) => SECTION_LIBRARY[id]);
   const bottomTabs = navSections.slice(0, 5);
   const hideQuickOrderActions =
-    pathname?.startsWith("/dashboard/orders") ?? false;
+  pathname?.startsWith("/dashboard/orders") || pathname?.startsWith("/dashboard/menu");
 
   // ── Orders derived ──────────────────────────────────────────────────────────
   const liveOrders = (ordersPayload?.items || []).slice(0, 6).map((order) => ({
