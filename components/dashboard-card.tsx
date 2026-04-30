@@ -1319,7 +1319,7 @@ export function DashboardCard({ section }: DashboardCardProps) {
                             className={`flex aspect-square flex-col items-center justify-center rounded-xl border text-xs font-medium transition hover:scale-[1.02] ${tableStatusClass(table.status)}`}
                           >
                             <span className="text-sm font-semibold">
-                              T{table.number}
+                              T{table.number} 
                             </span>
                             <span>{table.capacity} seats</span>
                             <span className="mt-1 rounded-full border border-slate-200 bg-white px-1.5 py-0.5 text-[9px] text-slate-500">

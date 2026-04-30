@@ -35,6 +35,7 @@ import type {
 } from "@/store/types/orders";
 import type { TableRecord } from "@/store/types/tables";
 import type { MenuItemRecord, MenuVariantRecord } from "@/store/types/menu";
+import {normalizePhoneInput } from "@/lib/phone";
 
 // ─── Role ────────────────────────────────────────────────────────────────────
 type RoleKey = "owner" | "manager" | "waiter" | "kitchen";
@@ -294,15 +295,19 @@ function kitchenCustomerLabel(
   return item.customerName || item.customerPhone || null;
 }
 
-function kitchenDisplayNote(item: Pick<KitchenQueueItem, "note" | "orderNote">): string | null {
+function kitchenDisplayNote(
+  item: Pick<KitchenQueueItem, "note" | "orderNote">,
+): string | null {
   return item.note || item.orderNote || null;
 }
 
-function normalizePhoneInput(value: string): string {
-  return value.replace(/[^\d+]/g, "");
-}
+// function normalizePhoneInput(value: string): string {
+//   return value.replace(/[^\d+]/g, "");
+// }
 
-function validateOptionalCustomer(details: OptionalCustomerDetails): string | null {
+function validateOptionalCustomer(
+  details: OptionalCustomerDetails,
+): string | null {
   const customerName = details.customerName.trim();
   const customerPhone = normalizePhoneInput(details.customerPhone.trim());
 
@@ -495,9 +500,10 @@ function TableGrid({
               <button
                 type="button"
                 onClick={() => {
-                  if (!billingLocked) onSelectTable(table);
+                  // if (!billingLocked) onSelectTable(table);
+                  onSelectTable(table);
                 }}
-                disabled={billingLocked}
+                // disabled={billingLocked}
                 className="flex flex-1 flex-col items-center justify-center gap-0.5 rounded-t-[calc(1rem-2px)] px-1 transition active:scale-95 hover:scale-[1.03] disabled:cursor-not-allowed disabled:opacity-70"
               >
                 <span className="text-base font-bold">T{table.number}</span>
@@ -1504,63 +1510,79 @@ function WaiterActionBoard({
 
   return (
     <div className={`${className || "mt-4"} space-y-2.5`}>
-     <div className="flex gap-1.5">
+      <div className="flex gap-1.5">
+        {/* Ready to Serve */}
+        <div className="flex flex-1 flex-col gap-1.5 rounded-2xl border border-emerald-200 bg-emerald-50 p-2.5 min-w-0">
+          <div className="flex items-center gap-1.5">
+            <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-emerald-100">
+              <svg
+                className="h-3.5 w-3.5"
+                viewBox="0 0 16 16"
+                fill="none"
+                stroke="#16a34a"
+                strokeWidth="2.5"
+              >
+                <polyline points="2,9 6,13 14,3" />
+              </svg>
+            </div>
+            <p className="truncate text-[clamp(9px,2.2vw,11px)] font-medium text-emerald-700">
+              Ready
+            </p>
+          </div>
+          <p className="text-[clamp(20px,5vw,26px)] font-bold leading-none text-emerald-950 text-center">
+            {readyCount}
+          </p>
+        </div>
 
-  {/* Ready to Serve */}
-  <div className="flex flex-1 flex-col gap-1.5 rounded-2xl border border-emerald-200 bg-emerald-50 p-2.5 min-w-0">
-    <div className="flex items-center gap-1.5">
-      <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-emerald-100">
-        <svg className="h-3.5 w-3.5" viewBox="0 0 16 16" fill="none" stroke="#16a34a" strokeWidth="2.5">
-          <polyline points="2,9 6,13 14,3" />
-        </svg>
+        {/* Pending Invoice */}
+        <div className="flex flex-1 flex-col gap-1.5 rounded-2xl border border-amber-200 bg-amber-50 p-2.5 min-w-0">
+          <div className="flex items-center gap-1.5">
+            <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-amber-100">
+              <svg
+                className="h-3.5 w-3.5"
+                viewBox="0 0 16 16"
+                fill="none"
+                stroke="#d97706"
+                strokeWidth="2"
+              >
+                <rect x="2" y="4" width="12" height="9" rx="1.5" />
+                <path d="M5 4V3a1 1 0 011-1h4a1 1 0 011 1v1" />
+                <path d="M6 8h4M8 8v2" />
+              </svg>
+            </div>
+            <p className="truncate text-[clamp(9px,2.2vw,11px)] font-medium text-amber-700">
+              Invoice
+            </p>
+          </div>
+          <p className="text-[clamp(20px,5vw,26px)] font-bold leading-none text-amber-950   text-center">
+            {billingCount}
+          </p>
+        </div>
+
+        {/* Kitchen Running */}
+        <div className="flex flex-1 flex-col gap-1.5 rounded-2xl border border-rose-200 bg-rose-50 p-2.5 min-w-0">
+          <div className="flex items-center gap-1.5">
+            <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-rose-100">
+              <svg
+                className="h-3.5 w-3.5"
+                viewBox="0 0 16 16"
+                fill="none"
+                stroke="#e11d48"
+                strokeWidth="2"
+              >
+                <path d="M8 2C6 2 4 3.5 4 5.5c0 1.5 1 2.5 2 3v1h4v-1c1-.5 2-1.5 2-3C12 3.5 10 2 8 2z" />
+                <path d="M6 12h4M7 14h2" />
+              </svg>
+            </div>
+            <p className="truncate text-[clamp(9px,2.2vw,11px)] font-medium text-rose-700">
+              Kitchen
+            </p>
+          </div>
+          <p className="text-[clamp(20px,5vw,26px)] font-bold leading-none text-rose-950  text-center">
+            {kitchenCount}
+          </p>
+        </div>
       </div>
-      <p className="truncate text-[clamp(9px,2.2vw,11px)] font-medium text-emerald-700">
-        Ready
-      </p>
-    </div>
-    <p className="text-[clamp(20px,5vw,26px)] font-bold leading-none text-emerald-950 text-center">
-      {readyCount}
-    </p>
-  </div>
-
-  {/* Pending Invoice */}
-  <div className="flex flex-1 flex-col gap-1.5 rounded-2xl border border-amber-200 bg-amber-50 p-2.5 min-w-0">
-    <div className="flex items-center gap-1.5">
-      <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-amber-100">
-        <svg className="h-3.5 w-3.5" viewBox="0 0 16 16" fill="none" stroke="#d97706" strokeWidth="2">
-          <rect x="2" y="4" width="12" height="9" rx="1.5" />
-          <path d="M5 4V3a1 1 0 011-1h4a1 1 0 011 1v1" />
-          <path d="M6 8h4M8 8v2" />
-        </svg>
-      </div>
-      <p className="truncate text-[clamp(9px,2.2vw,11px)] font-medium text-amber-700">
-        Invoice
-      </p>
-    </div>
-    <p className="text-[clamp(20px,5vw,26px)] font-bold leading-none text-amber-950   text-center">
-      {billingCount}
-    </p>
-  </div>
-
-  {/* Kitchen Running */}
-  <div className="flex flex-1 flex-col gap-1.5 rounded-2xl border border-rose-200 bg-rose-50 p-2.5 min-w-0">
-    <div className="flex items-center gap-1.5">
-      <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-rose-100">
-        <svg className="h-3.5 w-3.5" viewBox="0 0 16 16" fill="none" stroke="#e11d48" strokeWidth="2">
-          <path d="M8 2C6 2 4 3.5 4 5.5c0 1.5 1 2.5 2 3v1h4v-1c1-.5 2-1.5 2-3C12 3.5 10 2 8 2z" />
-          <path d="M6 12h4M7 14h2" />
-        </svg>
-      </div>
-      <p className="truncate text-[clamp(9px,2.2vw,11px)] font-medium text-rose-700">
-        Kitchen
-      </p>
-    </div>
-    <p className="text-[clamp(20px,5vw,26px)] font-bold leading-none text-rose-950  text-center">
-      {kitchenCount}
-    </p>
-  </div>
-
-</div>
 
       <div className="rounded-[28px] border border-slate-200/80 bg-gradient-to-b from-white via-slate-50/60 to-white p-3 shadow-[0_12px_34px_rgba(15,23,42,0.06)] sm:p-4">
         <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
@@ -1722,7 +1744,6 @@ function WaiterActionBoard({
                           table.id !== (order.table?.id || order.tableId),
                       );
                       return (
-                        
                         // <div
                         //   key={`${item.itemId}-${item.variantId || "base"}-${index}`}
                         //   className="rounded-xl border border-slate-100 bg-slate-50 p-2.5 text-xs"
@@ -1833,7 +1854,7 @@ function WaiterActionBoard({
                         //             {item.quantity > 1
                         //               ? `Reduce ${correctionValue}`
                         //               : "Remove Item"}
-                              
+
                         //           </button>
                         //           <button
                         //             type="button"
@@ -1875,131 +1896,186 @@ function WaiterActionBoard({
                         //   </div>
                         // </div>
                         <div
-  key={`${item.itemId}-${item.variantId || "base"}-${index}`}
-  className="overflow-hidden rounded-[18px] border border-slate-200/80 bg-white shadow-[0_4px_14px_rgba(15,23,42,0.04)]"
->
-  {/* Main row */}
-  <div className="flex flex-wrap items-center gap-2 px-2.5 py-2 sm:flex-nowrap">
-    <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-slate-100 text-[12px] font-semibold text-slate-700">
-      ×{item.quantity}
-    </div>
-    <div className="min-w-0 flex-1">
-      <p className="truncate text-[13px] font-semibold text-slate-800">
-        {item.name}
-        {item.variantName ? (
-          <span className="ml-1 font-normal text-slate-400">({item.variantName})</span>
-        ) : null}
-      </p>
-      <p className="mt-0.5 text-[11px] text-slate-400">
-        {fmtCurrency(item.lineTotal ?? item.unitPrice * item.quantity)}
-      </p>
-    </div>
-    <div className="flex w-full flex-wrap items-center gap-1 sm:w-auto sm:justify-end">
-      {delta > 0 ? (
-        <span className="rounded-full border border-amber-300 bg-amber-100 px-2 py-0.5 text-[10px] font-semibold text-amber-800">
-          +{delta} new
-        </span>
-      ) : null}
-      <span className={`rounded-full border px-2 py-0.5 text-[10px] font-semibold ${itemStatusClass(item.status)}`}>
-        {itemStatusLabel(item.status)}
-      </span>
-    </div>
-  </div>
+                          key={`${item.itemId}-${item.variantId || "base"}-${index}`}
+                          className="overflow-hidden rounded-[18px] border border-slate-200/80 bg-white shadow-[0_4px_14px_rgba(15,23,42,0.04)]"
+                        >
+                          {/* Main row */}
+                          <div className="flex flex-wrap items-center gap-2 px-2.5 py-2 sm:flex-nowrap">
+                            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-slate-100 text-[12px] font-semibold text-slate-700">
+                              ×{item.quantity}
+                            </div>
+                            <div className="min-w-0 flex-1">
+                              <p className="truncate text-[13px] font-semibold text-slate-800">
+                                {item.name}
+                                {item.variantName ? (
+                                  <span className="ml-1 font-normal text-slate-400">
+                                    ({item.variantName})
+                                  </span>
+                                ) : null}
+                              </p>
+                              <p className="mt-0.5 text-[11px] text-slate-400">
+                                {fmtCurrency(
+                                  item.lineTotal ??
+                                    item.unitPrice * item.quantity,
+                                )}
+                              </p>
+                            </div>
+                            <div className="flex w-full flex-wrap items-center gap-1 sm:w-auto sm:justify-end">
+                              {delta > 0 ? (
+                                <span className="rounded-full border border-amber-300 bg-amber-100 px-2 py-0.5 text-[10px] font-semibold text-amber-800">
+                                  +{delta} new
+                                </span>
+                              ) : null}
+                              <span
+                                className={`rounded-full border px-2 py-0.5 text-[10px] font-semibold ${itemStatusClass(item.status)}`}
+                              >
+                                {itemStatusLabel(item.status)}
+                              </span>
+                            </div>
+                          </div>
 
-  {/* Note */}
-  {item.note ? (
-    <p className="border-t border-amber-100 bg-amber-50/80 px-2.5 py-1.5 text-[11px] text-amber-800">
-      {item.note}
-    </p>
-  ) : null}
+                          {/* Note */}
+                          {item.note ? (
+                            <p className="border-t border-amber-100 bg-amber-50/80 px-2.5 py-1.5 text-[11px] text-amber-800">
+                              {item.note}
+                            </p>
+                          ) : null}
 
-  {/* Actions */}
-  {(canCorrectItem || (item.lineId && itemNextStatus)) ? (
-    <div className="grid border-t border-slate-100 bg-slate-50/70 sm:flex">
+                          {/* Actions */}
+                          {canCorrectItem || (item.lineId && itemNextStatus) ? (
+                            <div className="grid border-t border-slate-100 bg-slate-50/70 sm:flex">
+                              {item.lineId && itemNextStatus ? (
+                                <button
+                                  type="button"
+                                  onClick={() => onMarkItemServed(order, item)}
+                                  disabled={servingItemKey === itemActionKey}
+                                  className="flex min-h-10 min-w-0 flex-1 items-center justify-center gap-1 bg-emerald-50 px-3 py-2 text-[11px] font-semibold text-emerald-700 transition hover:bg-emerald-100 disabled:opacity-40"
+                                >
+                                  <svg
+                                    viewBox="0 0 16 16"
+                                    className="h-3.5 w-3.5"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    strokeWidth="2.5"
+                                  >
+                                    <polyline points="2,9 6,13 14,3" />
+                                  </svg>
+                                  {servingItemKey === itemActionKey
+                                    ? "..."
+                                    : "Serve"}
+                                </button>
+                              ) : null}
 
-      {item.lineId && itemNextStatus ? (
-        <button
-          type="button"
-          onClick={() => onMarkItemServed(order, item)}
-          disabled={servingItemKey === itemActionKey}
-          className="flex min-h-10 min-w-0 flex-1 items-center justify-center gap-1 bg-emerald-50 px-3 py-2 text-[11px] font-semibold text-emerald-700 transition hover:bg-emerald-100 disabled:opacity-40"
-        >
-          <svg viewBox="0 0 16 16" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="2.5">
-            <polyline points="2,9 6,13 14,3" />
-          </svg>
-          {servingItemKey === itemActionKey ? "..." : "Serve"}
-        </button>
-      ) : null}
+                              {canCorrectItem ? (
+                                <>
+                                  {tableTargets.length > 0 ? (
+                                    <select
+                                      defaultValue=""
+                                      disabled={
+                                        correctingLineKey === correctionKey
+                                      }
+                                      onChange={(e) => {
+                                        const v = e.target.value;
+                                        if (!v) return;
+                                        onMovePlacedItem(
+                                          order,
+                                          item,
+                                          { targetTableId: v },
+                                          correctionValue,
+                                        );
+                                        e.currentTarget.value = "";
+                                      }}
+                                      className="min-h-10 min-w-0 border-t border-slate-100 bg-sky-50 px-3 py-2 text-center text-[11px] font-semibold text-sky-700 disabled:opacity-40 sm:flex-1 sm:border-l sm:border-t-0"
+                                    >
+                                      <option value="">Move table</option>
+                                      {tableTargets.map((t) => (
+                                        <option key={t.id} value={t.id}>
+                                          T{t.number}
+                                        </option>
+                                      ))}
+                                    </select>
+                                  ) : null}
 
-      {canCorrectItem ? (
-        <>
-          {tableTargets.length > 0 ? (
-            <select
-              defaultValue=""
-              disabled={correctingLineKey === correctionKey}
-              onChange={(e) => {
-                const v = e.target.value;
-                if (!v) return;
-                onMovePlacedItem(order, item, { targetTableId: v }, correctionValue);
-                e.currentTarget.value = "";
-              }}
-              className="min-h-10 min-w-0 border-t border-slate-100 bg-sky-50 px-3 py-2 text-center text-[11px] font-semibold text-sky-700 disabled:opacity-40 sm:flex-1 sm:border-l sm:border-t-0"
-            >
-              <option value="">Move table</option>
-              {tableTargets.map((t) => (
-                <option key={t.id} value={t.id}>T{t.number}</option>
-              ))}
-            </select>
-          ) : null}
+                                  {moveTargets.length > 0 ? (
+                                    <select
+                                      defaultValue=""
+                                      disabled={
+                                        correctingLineKey === correctionKey
+                                      }
+                                      onChange={(e) => {
+                                        const v = e.target.value;
+                                        if (!v) return;
+                                        onMovePlacedItem(
+                                          order,
+                                          item,
+                                          { targetOrderId: v },
+                                          correctionValue,
+                                        );
+                                        e.currentTarget.value = "";
+                                      }}
+                                      className="min-h-10 min-w-0 border-t border-slate-100 bg-sky-50 px-3 py-2 text-center text-[11px] font-semibold text-sky-700 disabled:opacity-40 sm:flex-1 sm:border-l sm:border-t-0"
+                                    >
+                                      <option value="">Move order</option>
+                                      {moveTargets.map((c) => (
+                                        <option key={c.id} value={c.id}>
+                                          #{c.orderNumber || c.id.slice(-4)}
+                                        </option>
+                                      ))}
+                                    </select>
+                                  ) : null}
 
-          {moveTargets.length > 0 ? (
-            <select
-              defaultValue=""
-              disabled={correctingLineKey === correctionKey}
-              onChange={(e) => {
-                const v = e.target.value;
-                if (!v) return;
-                onMovePlacedItem(order, item, { targetOrderId: v }, correctionValue);
-                e.currentTarget.value = "";
-              }}
-              className="min-h-10 min-w-0 border-t border-slate-100 bg-sky-50 px-3 py-2 text-center text-[11px] font-semibold text-sky-700 disabled:opacity-40 sm:flex-1 sm:border-l sm:border-t-0"
-            >
-              <option value="">Move order</option>
-              {moveTargets.map((c) => (
-                <option key={c.id} value={c.id}>#{c.orderNumber || c.id.slice(-4)}</option>
-              ))}
-            </select>
-          ) : null}
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      onRemovePlacedItem(
+                                        order,
+                                        item,
+                                        correctionValue,
+                                      )
+                                    }
+                                    disabled={
+                                      correctingLineKey === correctionKey
+                                    }
+                                    className="flex min-h-10 min-w-0 items-center justify-center gap-1 border-t border-slate-100 bg-rose-50 px-3 py-2 text-[11px] font-semibold text-rose-700 disabled:opacity-40 sm:flex-1 sm:border-l sm:border-t-0"
+                                  >
+                                    <svg
+                                      viewBox="0 0 16 16"
+                                      className="h-3.5 w-3.5"
+                                      fill="none"
+                                      stroke="currentColor"
+                                      strokeWidth="2.5"
+                                    >
+                                      <path d="M4 8h8" />
+                                    </svg>
+                                    {item.quantity > 1 ? "Reduce" : "Remove"}
+                                  </button>
 
-          <button
-            type="button"
-            onClick={() => onRemovePlacedItem(order, item, correctionValue)}
-            disabled={correctingLineKey === correctionKey}
-            className="flex min-h-10 min-w-0 items-center justify-center gap-1 border-t border-slate-100 bg-rose-50 px-3 py-2 text-[11px] font-semibold text-rose-700 disabled:opacity-40 sm:flex-1 sm:border-l sm:border-t-0"
-          >
-            <svg viewBox="0 0 16 16" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="2.5">
-              <path d="M4 8h8" />
-            </svg>
-            {item.quantity > 1 ? "Reduce" : "Remove"}
-          </button>
-
-          <button
-            type="button"
-            title="Cancel item"
-            onClick={() => onCancelPlacedItem(order, item)}
-            disabled={correctingLineKey === correctionKey}
-            className="flex min-h-10 items-center justify-center border-t border-slate-100 bg-slate-50 px-3 py-2 text-slate-400 disabled:opacity-40 sm:border-l sm:border-t-0"
-          >
-            <svg viewBox="0 0 16 16" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="2.5">
-              <path d="M4 4l8 8M12 4L4 12" />
-            </svg>
-          </button>
-        </>
-      ) : null}
-
-    </div>
-  ) : null}
-</div>
+                                  <button
+                                    type="button"
+                                    title="Cancel item"
+                                    onClick={() =>
+                                      onCancelPlacedItem(order, item)
+                                    }
+                                    disabled={
+                                      correctingLineKey === correctionKey
+                                    }
+                                    className="flex min-h-10 items-center justify-center border-t border-slate-100 bg-slate-50 px-3 py-2 text-slate-400 disabled:opacity-40 sm:border-l sm:border-t-0"
+                                  >
+                                    <svg
+                                      viewBox="0 0 16 16"
+                                      className="h-3.5 w-3.5"
+                                      fill="none"
+                                      stroke="currentColor"
+                                      strokeWidth="2.5"
+                                    >
+                                      <path d="M4 4l8 8M12 4L4 12" />
+                                    </svg>
+                                  </button>
+                                </>
+                              ) : null}
+                            </div>
+                          ) : null}
+                        </div>
                       );
                     })}
                   </div>
@@ -2034,8 +2110,9 @@ function WaiterView({
     limit: 100,
   });
   console.log("Waiter orders data:", ordersData);
-  const { data: invoicesData, refetch: refetchInvoices } =
-    useGetInvoicesQuery({ limit: 100 });
+  const { data: invoicesData, refetch: refetchInvoices } = useGetInvoicesQuery({
+    limit: 100,
+  });
   const [createOrder, { isLoading: isCreating }] = useCreateOrderMutation();
   const [updateOrder] = useUpdateOrderMutation();
   const [removeOrderItem] = useRemoveOrderItemMutation();
@@ -2139,7 +2216,8 @@ function WaiterView({
         if (invoicedOrderIds.has(order.id)) return false;
         // Only dine-in: must have a table, not TAKEAWAY mode
         const hasTbl = Boolean(order.tableId || order.table?.id);
-        const isTakeaway = (order.serviceMode || "").toUpperCase() === "TAKEAWAY";
+        const isTakeaway =
+          (order.serviceMode || "").toUpperCase() === "TAKEAWAY";
         if (!hasTbl || isTakeaway) return false;
         return ["PLACED", "IN_PROGRESS", "READY", "SERVED"].includes(
           normalizeStatus(order.status),
@@ -2465,8 +2543,8 @@ function WaiterView({
         setSelectedOrderId(null);
         setComposeMode("force-new");
       } catch (error) {
-      showError(getErrorMessage(error));
-      setStep("menu");
+        showError(getErrorMessage(error));
+        setStep("menu");
       }
     },
     [
@@ -2677,10 +2755,7 @@ function WaiterView({
             <h3 className="mt-1 text-lg font-semibold text-slate-900">
               Add customer details before placing order
             </h3>
-            <p className="mt-1 text-sm text-slate-600">
-              Name aur phone optional hain. `Skip` se bina customer ke order place
-              hoga, `Proceed` se customer info ke saath.
-            </p>
+           
 
             <div className="mt-4 grid gap-3">
               <label className="text-sm text-slate-700">
@@ -2711,6 +2786,7 @@ function WaiterView({
                       customerPhone: normalizePhoneInput(event.target.value),
                     }))
                   }
+                   maxLength={10}
                   placeholder="Optional WhatsApp / phone number"
                   className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm outline-none ring-amber-200 focus:ring-2"
                 />
@@ -3450,7 +3526,7 @@ function ManagerView({ role }: { role: RoleKey }) {
       ? { status: queryStatus, page: ordersPage, limit: 100 }
       : { page: ordersPage, limit: 100 },
     {
-    pollingInterval: 30000,
+      pollingInterval: 30000,
     },
   );
 
@@ -3499,8 +3575,7 @@ function ManagerView({ role }: { role: RoleKey }) {
     );
   }, [ordersData, ordersPage]);
 
-  const hasMoreOrders =
-    (ordersData?.pagination.totalPages ?? 1) > ordersPage;
+  const hasMoreOrders = (ordersData?.pagination.totalPages ?? 1) > ordersPage;
 
   useEffect(() => {
     const node = loadMoreRef.current;
@@ -3763,7 +3838,10 @@ function ManagerView({ role }: { role: RoleKey }) {
               />
             ))}
           </div>
-          <div ref={loadMoreRef} className="flex justify-center py-4 text-xs text-slate-500">
+          <div
+            ref={loadMoreRef}
+            className="flex justify-center py-4 text-xs text-slate-500"
+          >
             {hasMoreOrders
               ? isFetching
                 ? "Loading more orders..."
@@ -3839,7 +3917,6 @@ function KitchenView() {
 
   const queueItems = useMemo(() => kitchenData?.items || [], [kitchenData]);
 
- 
   const filteredItems = useMemo(() => {
     const query = searchText.trim().toLowerCase();
 
@@ -4324,8 +4401,16 @@ export function OrdersWorkspace({ rawRole }: Props) {
   const routeSelectTablePage = pathname === "/dashboard/orders/new";
   const routeSelectItemsPage = pathname === "/dashboard/orders/items";
   const routeTakeawayPage = pathname === "/dashboard/orders/takeaway";
+  
+  const hideBottomAction =
+  pathname.includes("/dashboard/order/new") ||
+  pathname.includes("/item") ||
+  pathname.includes("/takeaway");
 
-  const [toast, setToast] = useState<{ msg: string; type: "ok" | "err" } | null>(null);
+  const [toast, setToast] = useState<{
+    msg: string;
+    type: "ok" | "err";
+  } | null>(null);
 
   // Which main tab: "live" | "history"  (not shown on dedicated route pages)
   const [activeTab, setActiveTab] = useState<"live" | "history">(
@@ -4354,10 +4439,21 @@ export function OrdersWorkspace({ rawRole }: Props) {
 
   const handleOrderPlaced = useCallback(() => {
     setToast({ msg: "Order placed!", type: "ok" });
-    if (routeNewOrder || routeTableId || routeSelectTablePage || routeSelectItemsPage) {
+    if (
+      routeNewOrder ||
+      routeTableId ||
+      routeSelectTablePage ||
+      routeSelectItemsPage
+    ) {
       router.push("/dashboard/orders");
     }
-  }, [routeNewOrder, routeSelectItemsPage, routeSelectTablePage, routeTableId, router]);
+  }, [
+    routeNewOrder,
+    routeSelectItemsPage,
+    routeSelectTablePage,
+    routeTableId,
+    router,
+  ]);
 
   useEffect(() => {
     if (!toast) return;
@@ -4398,7 +4494,9 @@ export function OrdersWorkspace({ rawRole }: Props) {
                     : "text-slate-500 hover:text-slate-700"
                 }`}
               >
-                <span className={`h-2 w-2 rounded-full ${activeTab === "live" ? "bg-emerald-500 animate-pulse" : "bg-slate-300"}`} />
+                <span
+                  className={`h-2 w-2 rounded-full ${activeTab === "live" ? "bg-emerald-500 animate-pulse" : "bg-slate-300"}`}
+                />
                 Live Orders
               </button>
               <button
@@ -4411,7 +4509,13 @@ export function OrdersWorkspace({ rawRole }: Props) {
                     : "text-slate-500 hover:text-slate-700"
                 }`}
               >
-                <svg viewBox="0 0 16 16" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="2">
+                <svg
+                  viewBox="0 0 16 16"
+                  className="h-3.5 w-3.5"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                >
                   <rect x="2" y="3" width="12" height="11" rx="1.5" />
                   <path d="M5 7h6M5 10h4" />
                   <path d="M5 1v3M11 1v3" />
@@ -4428,7 +4532,13 @@ export function OrdersWorkspace({ rawRole }: Props) {
                 onClick={() => router.push("/dashboard/orders/new")}
                 className="flex items-center gap-2 rounded-xl border border-amber-300 bg-amber-50 px-4 py-2 text-sm font-bold text-amber-900 shadow-sm transition hover:bg-amber-100 active:scale-95"
               >
-                <svg viewBox="0 0 16 16" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2">
+                <svg
+                  viewBox="0 0 16 16"
+                  className="h-4 w-4"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                >
                   <rect x="2" y="4" width="12" height="7" rx="1" />
                   <path d="M5 11v2M11 11v2" />
                   <path d="M8 1v4" />
@@ -4441,7 +4551,13 @@ export function OrdersWorkspace({ rawRole }: Props) {
                 onClick={() => router.push("/dashboard/orders/takeaway")}
                 className="flex items-center gap-2 rounded-xl border border-violet-300 bg-violet-50 px-4 py-2 text-sm font-bold text-violet-900 shadow-sm transition hover:bg-violet-100 active:scale-95"
               >
-                <svg viewBox="0 0 16 16" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2">
+                <svg
+                  viewBox="0 0 16 16"
+                  className="h-4 w-4"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                >
                   <path d="M3 2L1.5 5v8a1 1 0 001 1h11a1 1 0 001-1V5L12 2z" />
                   <line x1="1.5" y1="5" x2="14.5" y2="5" />
                   <path d="M10 7a2 2 0 01-4 0" />
@@ -4453,60 +4569,55 @@ export function OrdersWorkspace({ rawRole }: Props) {
 
           {/* Tab content */}
           <div className="min-h-0 flex-1">
-            {activeTab === "live" ? (
-              <OrdersBoardView />
-            ) : (
-              <OrdersHistoryView />
-            )}
+            {activeTab === "live" ? <OrdersBoardView /> : <OrdersHistoryView />}
           </div>
         </>
       )}
 
-
-<div className="fixed bottom-[calc(env(safe-area-inset-bottom)+5.25rem)] right-3 z-40 flex flex-col items-end gap-2 sm:hidden sm:right-4 lg:bottom-[calc(env(safe-area-inset-bottom)+1.25rem)]">
-          <button
-            type="button"
-            onClick={() => router.push("/dashboard/orders/new")}
-            className="inline-flex h-12 w-fit items-center gap-2 rounded-full border border-[#1f6a57] bg-[#2f8a70] px-4 pr-5 text-sm font-semibold text-white shadow-xl shadow-emerald-900/20 ring-2 ring-emerald-200/80 transition-all hover:-translate-y-0.5 hover:bg-[#27745d] hover:shadow-2xl focus:outline-none focus:ring-4 focus:ring-emerald-300/60"
-            aria-label="Create dine in order"
-          >
-            <span className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-white/15">
-              <svg
-                viewBox="0 0 24 24"
-                className="h-4 w-4"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-              >
-                <path d="M4 8h16M5 8v8a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8" />
-                <path d="M8 4v4M16 4v4" />
-              </svg>
-            </span>
-            <span className="whitespace-nowrap">Dine In</span>
-          </button>
-          <button
-            type="button"
-            onClick={() => router.push("/dashboard/orders/takeaway")}
-            className="inline-flex h-12 w-fit items-center gap-2 rounded-full border border-[#b56f24] bg-[#c98533] px-4 pr-5 text-sm font-semibold text-white shadow-xl shadow-amber-900/20 ring-2 ring-amber-200/80 transition-all hover:-translate-y-0.5 hover:bg-[#b37227] hover:shadow-2xl focus:outline-none focus:ring-4 focus:ring-amber-300/60"
-            aria-label="Create take away order"
-          >
-            <span className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-white/15">
-              <svg
-                viewBox="0 0 24 24"
-                className="h-4 w-4"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-              >
-                <path d="M7 4h10l2 6H5l2-6z" />
-                <path d="M6 10h12l-1 10H7L6 10z" />
-              </svg>
-            </span>
-            <span className="whitespace-nowrap">Take Away</span>
-          </button>
-        </div>
-
-      
+{ !hideBottomAction &&
+      <div className="fixed bottom-[calc(env(safe-area-inset-bottom)+5.25rem)] right-3 z-40 flex flex-col items-end gap-2 sm:hidden sm:right-4 lg:bottom-[calc(env(safe-area-inset-bottom)+1.25rem)]">
+        <button
+          type="button"
+          onClick={() => router.push("/dashboard/orders/new")}
+          className="inline-flex h-12 w-fit items-center gap-2 rounded-full border border-[#1f6a57] bg-[#2f8a70] px-4 pr-5 text-sm font-semibold text-white shadow-xl shadow-emerald-900/20 ring-2 ring-emerald-200/80 transition-all hover:-translate-y-0.5 hover:bg-[#27745d] hover:shadow-2xl focus:outline-none focus:ring-4 focus:ring-emerald-300/60"
+          aria-label="Create dine in order"
+        >
+          <span className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-white/15">
+            <svg
+              viewBox="0 0 24 24"
+              className="h-4 w-4"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+            >
+              <path d="M4 8h16M5 8v8a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8" />
+              <path d="M8 4v4M16 4v4" />
+            </svg>
+          </span>
+          <span className="whitespace-nowrap">Dine In </span>
+        </button>
+        <button
+          type="button"
+          onClick={() => router.push("/dashboard/orders/takeaway")}
+          className="inline-flex h-12 w-fit items-center gap-2 rounded-full border border-[#b56f24] bg-[#c98533] px-4 pr-5 text-sm font-semibold text-white shadow-xl shadow-amber-900/20 ring-2 ring-amber-200/80 transition-all hover:-translate-y-0.5 hover:bg-[#b37227] hover:shadow-2xl focus:outline-none focus:ring-4 focus:ring-amber-300/60"
+          aria-label="Create take away order"
+        >
+          <span className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-white/15">
+            <svg
+              viewBox="0 0 24 24"
+              className="h-4 w-4"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+            >
+              <path d="M7 4h10l2 6H5l2-6z" />
+              <path d="M6 10h12l-1 10H7L6 10z" />
+            </svg>
+          </span>
+          <span className="whitespace-nowrap">Take Away</span>
+        </button>
+      </div>
+}
     </div>
   );
 }

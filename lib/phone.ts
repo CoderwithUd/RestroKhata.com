@@ -36,3 +36,23 @@ export function isValidIndianPhone(value: string): boolean {
   const digits = value.replace(/\D/g, "");
   return digits.length === 10 && /^[6-9]/.test(digits);
 }
+
+
+export function normalizePhoneInput(value: string): string {
+  if (!value) return "";
+
+ let digits = value.replace(/\D/g, "");
+
+  // agar 91 se start ho to hata de (country code)
+  if (digits.startsWith("91") && digits.length > 10) {
+    digits = digits.slice(2);
+  }
+
+  // agar 0 se start ho (091...) to hata de
+  if (digits.startsWith("0") && digits.length > 10) {
+    digits = digits.slice(1);
+  }
+
+  // last 10 digit hi rakh
+  return digits.slice(-10);
+}
