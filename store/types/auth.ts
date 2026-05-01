@@ -21,6 +21,32 @@ export type TenantAddress = {
   postalCode?: string | null;
 };
 
+export type TenantSettingsInvoice = {
+  prefix?: string | null;
+  footer?: string | null;
+  termsAndConditions?: string | null;
+  showGst?: boolean;
+  showItemTax?: boolean;
+  logoUrl?: string | null;
+  printCopies?: number;
+  headerNote?: string | null;
+  licenceNumber?: string | null;
+  showCustomerDetails?: boolean;
+  upiId?: string | null;
+};
+
+export type TenantSettingsTax = {
+  defaultTaxPercentage?: number;
+  taxInclusive?: boolean;
+  taxLabel?: string | null;
+};
+
+export type TenantSettings = {
+  orderMode?: "RESTAURANT" | "CAFE" | string;
+  invoice?: TenantSettingsInvoice | null;
+  tax?: TenantSettingsTax | null;
+};
+
 export type TenantProfileTenant = AuthTenant & {
   status?: string;
   contactNumber?: string | null;
@@ -29,6 +55,7 @@ export type TenantProfileTenant = AuthTenant & {
   ownerName?: string | null;
   gstNumber?: string | null;
   address?: TenantAddress | null;
+  settings?: TenantSettings | null;
 };
 
 export type SubscriptionPayload = {
@@ -199,6 +226,16 @@ export type UpdateTenantProfilePayload = {
   email?: string | null;
   gstNumber?: string | null;
   address?: TenantAddress | null;
+};
+
+export type TenantSettingsPayload = {
+  settings: TenantSettings;
+};
+
+export type UpdateTenantSettingsPayload = {
+  orderMode?: "RESTAURANT" | "CAFE";
+  invoice?: Partial<TenantSettingsInvoice> | null;
+  tax?: Partial<TenantSettingsTax> | null;
 };
 
 export type SessionPayload = {

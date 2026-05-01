@@ -290,12 +290,12 @@ function OrderRow({ order, invoiced ,index}: { order: OrderRecord; invoiced: boo
       <button
         type="button"
         onClick={() => setExpanded((v) => !v)}
-        className="flex w-full flex-wrap items-center gap-2 px-4 py-3 text-left hover:bg-slate-50 transition"
+        className="flex w-full flex-wrap items-center gap-2 px-4 py-3 text-left hover:bg-slate-50 transition relative"
       >
         {/* Order number */}
         {/* <span className="text-[10px] font-bold text-slate-500 min-w-[60px]">{tokenLabel}</span> */}
 
-  <span className="text-xs font-bold text-slate-500 min-w-[60px]">{index + 1}</span>
+  <span className="text-[8px]  font-bold text-slate-500 left-0.5 top-0.5 absolute"> # {index + 1}</span>
         {/* Table / customer */}
         <span className="text-sm text-slate-900 flex-1 truncate min-w-[80px]">
           {tableLabel || order.customerName || "—"}
@@ -307,9 +307,9 @@ function OrderRow({ order, invoiced ,index}: { order: OrderRecord; invoiced: boo
         </span>
 
         {/* Status badge */}
-        <span className={`rounded-full border px-2 py-0.5 text-[10px] font-semibold ${statusClass(order.status)}`}>
+        {/* <span className={`rounded-full border px-2 py-0.5 text-[10px] font-semibold ${statusClass(order.status)}`}>
           {STATUS_LABELS[ns(order.status)] || order.status}
-        </span>
+        </span> */}
 
         {/* Invoice badge */}
         {invoiced && (
@@ -353,9 +353,12 @@ function OrderRow({ order, invoiced ,index}: { order: OrderRecord; invoiced: boo
                   {item.name}
                   {item.variantName && <span className="text-slate-400"> ({item.variantName})</span>}
                 </span>
+                {
+                  item.status !== "SERVED" &&
                 <span className={`rounded-full border px-1.5 py-0.5 text-[9px] font-semibold ${statusClass(item.status)}`}>
                   {STATUS_LABELS[ns(item.status)] || item.status || "—"}
                 </span>
+                }
                 <span className="text-[11px] font-semibold text-slate-600">
                   {fmtCurrency(item.lineTotal ?? item.unitPrice * item.quantity)}
                 </span>
@@ -366,7 +369,7 @@ function OrderRow({ order, invoiced ,index}: { order: OrderRecord; invoiced: boo
             <p className="mt-1 text-[11px] italic text-amber-700">📝 {order.note}</p>
           )}
           <p className="mt-1 text-[10px] text-slate-400">
-            {fmtDate(order.createdAt)} · {activeItems.length} item{activeItems.length !== 1 ? "s" : ""}
+            {fmtDate(order.createdAt)} · {activeItems.length} item{activeItems.length !== 1 ? "s" : ""}  · {STATUS_LABELS[ns(order.status)] || order.status}
           </p>
         </div>
       )}

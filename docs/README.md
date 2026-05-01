@@ -19,6 +19,8 @@ This backend powers a restaurant SaaS system with:
 - table and reservation management
 - customer tracking
 - staff and QR based order flows
+- **order mode system** â€” `RESTAURANT` (full kitchen flow) or `CAFE` (items served instantly)
+- **tenant settings** â€” invoice, tax, and operational settings per tenant
 - invoice and payment handling
 - expense tracking
 - dashboard reports
@@ -151,6 +153,55 @@ Important fields:
 - `gstNumber`
 - `address`
 - `location`
+- `settings` â€” embedded operational settings (see Tenant Settings below)
+
+### Tenant Settings
+
+Every tenant carries an embedded `settings` object. All fields are optional with safe defaults.
+
+Default `orderMode` when a tenant is first created: **`RESTAURANT`**
+
+```json
+{
+  "orderMode": "RESTAURANT",
+  "invoice": {
+    "prefix": "",
+    "footer": "",
+    "termsAndConditions": "",
+    "showGst": true,
+    "showItemTax": false,
+    "logoUrl": "",
+    "printCopies": 1,
+    "headerNote": "",
+    "licenceNumber": "",
+    "showCustomerDetails": true,
+    "upiId": ""
+  },
+  "tax": {
+    "defaultTaxPercentage": 0,
+    "taxInclusive": false,
+    "taxLabel": "GST"
+  }
+}
+```
+
+| Field | Type | Default | Description |
+|---|---|---|---|
+| `orderMode` | `RESTAURANT` \| `CAFE` | `RESTAURANT` | Order workflow mode |
+| `invoice.prefix` | string | `""` | Prefix shown on receipt (e.g. `"INV-"`) |
+| `invoice.footer` | string | `""` | Bottom line on every invoice |
+| `invoice.termsAndConditions` | string | `""` | T&C printed on invoice |
+| `invoice.showGst` | boolean | `true` | Show GST breakdown |
+| `invoice.showItemTax` | boolean | `false` | Show per-item tax line |
+| `invoice.logoUrl` | string | `""` | URL to restaurant logo |
+| `invoice.printCopies` | 1â€“5 | `1` | Number of print copies |
+| `invoice.headerNote` | string | `""` | Greeting or header message |
+| `invoice.licenceNumber` | string | `""` | FSSAI / trade licence number |
+| `invoice.showCustomerDetails` | boolean | `true` | Show customer name/phone |
+| `invoice.upiId` | string | `""` | UPI VPA for payment QR |
+| `tax.defaultTaxPercentage` | 0â€“100 | `0` | Default tax % for new menu items |
+| `tax.taxInclusive` | boolean | `false` | Prices are tax-inclusive |
+| `tax.taxLabel` | string | `"GST"` | Tax label on invoice |
 
 ### User
 
@@ -277,14 +328,23 @@ Important fields:
 2. user, tenant, membership, and trial subscription are created in one transaction
 3. access and refresh tokens are issued
 4. auth cookies are set
+5. `orderMode` defaults to `RESTAURANT` â€” use `PUT /api/tenant/settings` to switch to `CAFE` if needed
 
-### Staff order flow
+### Staff order flow â€” RESTAURANT mode (default)
 
 1. waiter creates order against a table
 2. order either appends to an open order or creates a new one
-3. kitchen updates item or order statuses
-4. invoice is created after items are served or cancelled
+3. kitchen updates item statuses: `PLACED â†’ IN_PROGRESS â†’ READY â†’ SERVED`
+4. invoice is created after all items are served or cancelled
 5. payment completes order and releases table
+
+### Staff order flow â€” CAFE mode
+
+1. waiter creates order â€” all items are immediately `SERVED` (no kitchen queue)
+2. `GET /orders/kitchen/items` shows SERVED items so kitchen knows what to prepare
+3. items can still be cancelled, reduced, or moved after order creation
+4. invoice is created manually when the customer asks for the bill
+5. payment completes order
 
 ### Public QR order flow
 
@@ -306,6 +366,8 @@ Important fields:
 - read profile: `OWNER`, `MANAGER`, `KITCHEN`, `WAITER`
 - update profile: `OWNER`, `MANAGER`
 - staff CRUD: `OWNER`, `MANAGER`
+- read settings: `OWNER`, `MANAGER`
+- update settings: `OWNER` only
 
 ### Menu
 
@@ -457,10 +519,28 @@ Returns available staff roles for UI dropdowns.
 
 Returns:
 
-- tenant profile
+- tenant profile (includes `settings` object)
 - current user summary
 - role
 - subscription summary
+
+Example response (partial):
+
+```json
+{
+  "tenant": {
+    "id": "...",
+    "name": "My Cafe",
+    "settings": {
+      "orderMode": "CAFE",
+      "invoice": { "showGst": true, "printCopies": 1, ... },
+      "tax": { "defaultTaxPercentage": 5, "taxLabel": "GST", ... }
+    }
+  },
+  "role": "OWNER",
+  "subscription": { ... }
+}
+```
 
 ### `PUT /api/tenant/profile`
 
@@ -509,8 +589,9 @@ Role must be one of:
 
 Cases:
 
-- duplicate WhatsApp or email -> `409`
+- duplicate email or same phone already linked to another user -> `409`
 - invalid role -> `400`
+- existing user in another tenant can be reused
 
 ### `PUT /api/tenant/staff/:membershipId`
 
@@ -531,7 +612,93 @@ Cases:
 
 ### `DELETE /api/tenant/staff/:membershipId`
 
-Soft deactivates staff membership by setting `isActive=false`.
+Hard deletes the staff membership for the current tenant.
+
+- if the same user has memberships in other tenants or roles, only this membership is removed
+- if no memberships remain for that user, the user record is deleted too
+- matching refresh sessions for this tenant+role are revoked immediately
+
+### `GET /api/tenant/settings`
+
+Roles: `OWNER`, `MANAGER`
+
+Returns the full tenant settings object.
+
+Example response:
+
+```json
+{
+  "settings": {
+    "orderMode": "RESTAURANT",
+    "invoice": {
+      "prefix": "",
+      "footer": "Thank you for visiting!",
+      "termsAndConditions": "",
+      "showGst": true,
+      "showItemTax": false,
+      "logoUrl": "",
+      "printCopies": 1,
+      "headerNote": "",
+      "licenceNumber": "",
+      "showCustomerDetails": true,
+      "upiId": ""
+    },
+    "tax": {
+      "defaultTaxPercentage": 5,
+      "taxInclusive": false,
+      "taxLabel": "GST"
+    }
+  }
+}
+```
+
+### `PUT /api/tenant/settings`
+
+Role: `OWNER` only
+
+Partial update â€” send only the fields you want to change.
+
+Example body:
+
+```json
+{
+  "orderMode": "CAFE",
+  "invoice": {
+    "footer": "Thank you for visiting!",
+    "termsAndConditions": "All sales final.",
+    "showGst": true,
+    "printCopies": 2,
+    "logoUrl": "https://cdn.example.com/logo.png",
+    "upiId": "mybusiness@upi",
+    "licenceNumber": "FSSAI-123456"
+  },
+  "tax": {
+    "defaultTaxPercentage": 5,
+    "taxInclusive": false,
+    "taxLabel": "GST"
+  }
+}
+```
+
+Validation:
+
+- `orderMode` must be `RESTAURANT` or `CAFE`
+- `invoice.printCopies` must be integer between `1` and `5`
+- `tax.defaultTaxPercentage` must be between `0` and `100`
+- all string fields are trimmed and max-length validated
+
+Returns:
+
+```json
+{ "message": "settings updated", "settings": { ... } }
+```
+
+Cases:
+
+- invalid `orderMode` -> `400`
+- invalid `printCopies` -> `400`
+- invalid `defaultTaxPercentage` -> `400`
+- tenant not found -> `404`
 
 ## 9. Menu APIs
 
@@ -592,13 +759,21 @@ Required:
 
 - `name`
 - `categoryId`
-- `variants` with at least one variant
+- `variants` - array with at least one variant (each needs `name` and `price`)
 
 Optional:
 
 - `description`
-- `image`
-- `taxPercentage`
+- `images` - array of image URLs
+- `basePrice` - display/reference price (number >= 0)
+- `sku` - unique stock-keeping unit code (auto-generated if omitted)
+- `foodType` - `VEG`, `NON_VEG`, or `EGG`
+- `fulfillmentType` - `KITCHEN` (default), `BAR`, `COUNTER`, or `DIRECT`
+- `prepTime` - preparation time in minutes (number >= 0)
+- `tags` - array of label strings
+- `stock` - available stock count (`null` = unlimited)
+- `isFeatured` - boolean, default `false`
+- `taxPercentage` - 0-100, default `0`
 - `sortOrder`
 - `optionGroupIds`
 
@@ -607,10 +782,15 @@ Example:
 ```json
 {
   "name": "Paneer Tikka",
-  "description": "Starter",
+  "description": "Grilled cottage cheese starter",
   "categoryId": "664000000000000000000001",
+  "foodType": "VEG",
+  "fulfillmentType": "KITCHEN",
   "taxPercentage": 5,
+  "prepTime": 15,
   "sortOrder": 10,
+  "isFeatured": true,
+  "tags": ["starter", "popular"],
   "optionGroupIds": ["664000000000000000000010"],
   "variants": [
     { "name": "Half", "price": 160, "sortOrder": 1, "isAvailable": true },
@@ -632,6 +812,7 @@ Cases:
 - bad category -> `404`
 - unknown option group -> `404`
 - duplicate item name in same category -> `409`
+- duplicate SKU -> `409`
 
 #### `GET /api/menu/items`
 
@@ -639,11 +820,14 @@ Query:
 
 - `categoryId`
 - `isAvailable=true|false`
-- `q`
+- `foodType=VEG|NON_VEG|EGG`
+- `fulfillmentType=KITCHEN|BAR|COUNTER|DIRECT`
+- `isFeatured=true|false`
+- `q` - name search
 - `page`
 - `limit`
 
-Returns detailed item object with category, variants, and option groups.
+Returns detailed item object with category, variants, and option groups. Soft-deleted items (`isDeleted: true`) are excluded by default.
 
 #### `GET /api/menu/items/:itemId`
 
@@ -651,16 +835,33 @@ Returns one detailed item.
 
 #### `PUT /api/menu/items/:itemId`
 
-Full replacement update. Body is same shape as create item.
+Full replacement update. Body is same shape as create. Accepts all fields including `sku`, `foodType`, `fulfillmentType`, `prepTime`, `tags`, `stock`, `isFeatured`, `images`, `basePrice`.
 
 Important behavior:
 
-- variants are deleted and recreated
+- variants are diffed and upserted (existing variantId values preserved where possible)
 - item-option-group mappings are deleted and recreated
+
+#### `PATCH /api/menu/items/:itemId`
+
+Partial update - send only the fields you want to change. No variants required.
+
+Example:
+
+```json
+{
+  "isFeatured": true,
+  "stock": 20,
+  "taxPercentage": 12,
+  "fulfillmentType": "BAR"
+}
+```
+
+For variant updates: include `variants` array with existing `variantId` to update, or omit it to add new. Performs bulk writes for efficiency.
 
 #### `PATCH /api/menu/items/:itemId/availability`
 
-Kitchen route.
+Kitchen route. Toggles item availability.
 
 Body:
 
@@ -674,8 +875,7 @@ Kitchen route for one variant.
 
 #### `DELETE /api/menu/items/:itemId`
 
-Deletes item, its variants, and option mappings in one transaction.
-
+Soft-deletes the item (`isDeleted: true`). Item is hidden from all listing and POS responses but record is retained for invoice history integrity.
 ### Option group endpoints
 
 #### `POST /api/menu/option-groups`
@@ -804,6 +1004,9 @@ Reservation rules:
 - `partySize` must be integer `>= 1`
 - `reservedFor` must be valid date
 - advance payment amount rules are enforced
+- table can still be used before the reservation block window starts
+- new dine-in sessions are blocked starting `60` minutes before `reservedFor` by default
+- existing live table sessions can continue; only new sessions on that table are blocked
 
 Response includes generated QR URL and QR image.
 
@@ -1225,6 +1428,8 @@ Side effect:
 
 - order is billing locked
 - invoice request fields are cleared
+- if reservation advance fully covers the invoice, invoice is auto-marked `PAID`
+- if only part of the bill is covered, invoice `totalDue` is reduced by the applied advance
 
 ### `POST /api/invoices/group`
 
@@ -1246,6 +1451,7 @@ Behavior:
 - if `orderIds` omitted, backend takes all eligible open orders for that table
 - all target orders must be not cancelled, not completed, not already billed
 - all kitchen items across all orders must be `SERVED` or `CANCELLED`
+- if reservation advance fully covers the invoice, invoice is auto-marked `PAID`
 
 ### `GET /api/invoices`
 

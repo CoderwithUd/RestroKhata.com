@@ -4457,11 +4457,11 @@ function KitchenView() {
                                   {item.source}
                                 </span>
                               ) : null}
-                              {item.orderStatus ? (
+                              {/* {item.orderStatus ? (
                                 <span className="rounded-full border border-indigo-200 bg-indigo-50 px-2 py-0.5 text-[10px] font-semibold text-indigo-700">
                                   Order {itemStatusLabel(item.orderStatus)}
                                 </span>
-                              ) : null}
+                              ) : null} */}
                             </div>
 
                             <p className="mt-2 text-sm font-semibold text-slate-900">
@@ -4687,7 +4687,8 @@ export function OrdersWorkspace({ rawRole }: Props) {
   const hideBottomAction =
   pathname.includes("/dashboard/order/new") ||
   pathname.includes("/item") ||
-  pathname.includes("/takeaway");
+  pathname.includes("/takeaway") || pathname.includes("/kitchen");
+  
 
   const [toast, setToast] = useState<{
     msg: string;

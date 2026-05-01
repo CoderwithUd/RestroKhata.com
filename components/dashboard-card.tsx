@@ -11,7 +11,10 @@ import { FullPageLoader } from "@/components/full-page-loader";
 import { InvoicesWorkspace } from "@/components/invoices-workspace";
 import { MenuWorkspace } from "@/components/menu-workspace";
 import { OrdersWorkspace } from "@/components/orders-workspace";
-import { ProfileSettingsWorkspace } from "@/components/profile-settings-workspace";
+import {
+  ProfileWorkspace,
+  SettingsWorkspace,
+} from "@/components/profile-settings-workspace";
 import { StaffWorkspace } from "@/components/staff-workspace";
 import { TablesWorkspace } from "@/components/tables-workspace";
 import { ReportsWorkspace } from "./reports-workspace";
@@ -32,6 +35,7 @@ import {
 } from "@/store/slices/authSlice";
 import { useGetTablesQuery } from "@/store/api/tablesApi";
 import { useGetKitchenOrderItemsQuery } from "@/store/api/ordersApi";
+import { Settings } from "lucide-react";
 
 
 type DashboardCardProps = {
@@ -564,6 +568,8 @@ function DashboardSidebar({
   activeSectionId,
   getNavBadge,
   onLogout,
+  onOpenProfile,
+  onOpenSettings,
   onClose,
   isLoggingOut,
 }: {
@@ -577,6 +583,8 @@ function DashboardSidebar({
   activeSectionId: SectionId;
   getNavBadge: (id: SectionId) => string | undefined;
   onLogout: () => void;
+  onOpenProfile: () => void;
+  onOpenSettings: () => void;
   onClose?: () => void;
   isLoggingOut: boolean;
 }) {
@@ -667,11 +675,27 @@ function DashboardSidebar({
         </nav>
 
         <div className={bottomClassName}>
-          <div className="rounded-2xl border border-[#eadfca] bg-white/80 p-3">
-            <p className="truncate text-sm font-semibold text-slate-900">
+          <div className="flex items-center justify-between gap-2 rounded-2xl border border-[#eadfca] bg-white/80 p-3">
+          <div className="min-w-0 flex-1">
+            <button
+              type="button"
+              onClick={onOpenProfile}
+              className="block max-w-full truncate text-left text-sm font-semibold text-slate-900 transition hover:text-amber-700"
+            >
               {memberName}
-            </p>
+            </button>
             <p className="mt-1 text-xs text-slate-500">{memberRole}</p>
+          </div>
+          <div className="flex justify-center">
+            <button
+              type="button"
+              onClick={onOpenSettings}
+              className="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-[#e4dac8] bg-[#fff7ea] text-slate-700 transition hover:border-amber-300 hover:text-amber-700"
+              aria-label="Open settings"
+            >
+              <Settings className="h-4 w-4" />
+            </button>
+            </div>
           </div>
         </div>
       </div>
@@ -899,7 +923,7 @@ export function DashboardCard({ section }: DashboardCardProps) {
   const navSections = allowedIds.map((id) => SECTION_LIBRARY[id]);
   const bottomTabs = navSections.slice(0, 5);
   const hideQuickOrderActions =
-  pathname?.startsWith("/dashboard/orders") || pathname?.startsWith("/dashboard/menu");
+  pathname?.startsWith("/dashboard/orders") || pathname?.startsWith("/dashboard/menu") || pathname?.startsWith("/dashboard/settings") || pathname?.startsWith("/dashboard/profile") || pathname?.startsWith("/dashboard/tables") || pathname?.startsWith("/dashboard/kitchen") || pathname?.startsWith("/dashboard/reports") || pathname?.startsWith("/dashboard/inventory") || pathname?.startsWith("/dashboard/staff");
 
   // ── Orders derived ──────────────────────────────────────────────────────────
   const liveOrders = (ordersPayload?.items || []).slice(0, 6).map((order) => ({
@@ -1013,6 +1037,11 @@ export function DashboardCard({ section }: DashboardCardProps) {
       clearStoredSession();
       router.replace("/login");
     }
+  };
+
+  const openSection = (target: SectionId) => {
+    router.push(`/dashboard/${target}`);
+    setDrawerOpen(false);
   };
 
   // ── Guards ──────────────────────────────────────────────────────────────────
@@ -1194,6 +1223,8 @@ export function DashboardCard({ section }: DashboardCardProps) {
           activeSectionId={activeSection.id}
           getNavBadge={getNavBadge}
           onLogout={onLogout}
+          onOpenProfile={() => openSection("profile")}
+          onOpenSettings={() => openSection("settings")}
           isLoggingOut={isLoggingOut}
         />
 
@@ -1592,13 +1623,7 @@ export function DashboardCard({ section }: DashboardCardProps) {
               <StaffWorkspace tenantName={tenantName} />
             ) : activeSection.id === "profile" ||
               activeSection.id === "settings" ? (
-              <ProfileSettingsWorkspace
-                title={
-                  activeSection.id === "settings"
-                    ? "Business Settings"
-                    : "Profile & Settings"
-                }
-              />
+              activeSection.id === "settings" ? <SettingsWorkspace /> : <ProfileWorkspace />
             ) : (
               <section className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
                 {activeSection.modules.map((module) => (
@@ -1641,6 +1666,8 @@ export function DashboardCard({ section }: DashboardCardProps) {
             activeSectionId={activeSection.id}
             getNavBadge={getNavBadge}
             onLogout={onLogout}
+            onOpenProfile={() => openSection("profile")}
+            onOpenSettings={() => openSection("settings")}
             onClose={() => setDrawerOpen(false)}
             isLoggingOut={isLoggingOut}
           />

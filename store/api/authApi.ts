@@ -23,7 +23,10 @@ import type {
   TenantStaffMember,
   TenantStaffMutationPayload,
   TenantProfilePayload,
+  TenantSettings,
+  TenantSettingsPayload,
   UpdateTenantProfilePayload,
+  UpdateTenantSettingsPayload,
   UpdateTenantStaffArgs,
 } from "@/store/types/auth";
 import type {
@@ -71,6 +74,39 @@ function asBoolean(value: unknown): boolean | undefined {
   return undefined;
 }
 
+function parseTenantSettings(value: unknown): TenantSettings {
+  const record = asRecord(value);
+  const invoiceRecord = asRecord(record?.invoice);
+  const taxRecord = asRecord(record?.tax);
+
+  return {
+    orderMode: asString(record?.orderMode),
+    invoice: invoiceRecord
+      ? {
+          prefix: asString(invoiceRecord.prefix) ?? null,
+          footer: asString(invoiceRecord.footer) ?? null,
+          termsAndConditions:
+            asString(invoiceRecord.termsAndConditions) ?? null,
+          showGst: asBoolean(invoiceRecord.showGst),
+          showItemTax: asBoolean(invoiceRecord.showItemTax),
+          logoUrl: asString(invoiceRecord.logoUrl) ?? null,
+          printCopies: asNumber(invoiceRecord.printCopies),
+          headerNote: asString(invoiceRecord.headerNote) ?? null,
+          licenceNumber: asString(invoiceRecord.licenceNumber) ?? null,
+          showCustomerDetails: asBoolean(invoiceRecord.showCustomerDetails),
+          upiId: asString(invoiceRecord.upiId) ?? null,
+        }
+      : null,
+    tax: taxRecord
+      ? {
+          defaultTaxPercentage: asNumber(taxRecord.defaultTaxPercentage),
+          taxInclusive: asBoolean(taxRecord.taxInclusive),
+          taxLabel: asString(taxRecord.taxLabel) ?? null,
+        }
+      : null,
+  };
+}
+
 function parseSession(data: unknown): SessionPayload {
   const parsed = parseAuthPayload(data);
   const root = asRecord(data);
@@ -98,6 +134,7 @@ function parseTenantProfile(data: unknown): TenantProfilePayload {
   const root = asRecord(data);
   const tenantRecord = asRecord(root?.tenant);
   const addressRecord = asRecord(tenantRecord?.address);
+  const settingsRecord = asRecord(tenantRecord?.settings);
   const subscriptionRecord = asRecord(root?.subscription);
   const userRecord = asRecord(root?.user);
 
@@ -139,6 +176,7 @@ function parseTenantProfile(data: unknown): TenantProfilePayload {
               postalCode: asString(addressRecord.postalCode) ?? null,
             }
           : null,
+        settings: settingsRecord ? parseTenantSettings(settingsRecord) : null,
       }
     : null;
 
@@ -358,6 +396,13 @@ function parseDaySummary(value: unknown): ReportsSummaryPayload["days"][number] 
     sales: asNumber(record.sales) ?? 0,
     expenses: asNumber(record.expenses) ?? 0,
     profit: asNumber(record.profit) ?? 0,
+  };
+}
+
+function parseTenantSettingsPayload(data: unknown): TenantSettingsPayload {
+  const root = asRecord(data);
+  return {
+    settings: parseTenantSettings(root?.settings ?? data),
   };
 }
 
@@ -632,6 +677,80 @@ export const authApi = createApi({
         }
 
         return { data: parseTenantProfile(result.data) };
+      },
+      invalidatesTags: [{ type: "TenantProfile", id: "CURRENT" }],
+    }),
+
+    tenantSettings: builder.query<TenantSettingsPayload, void>({
+      async queryFn(_arg, _api, _extraOptions, fetchWithBQ) {
+        const result = await fetchWithBQ({
+          url: "/tenant/settings",
+          method: "GET",
+          credentials: "include",
+        });
+
+        if (result.error) {
+          return { error: result.error };
+        }
+
+        return { data: parseTenantSettingsPayload(result.data) };
+      },
+      providesTags: [{ type: "TenantProfile", id: "CURRENT" }],
+    }),
+
+    updateTenantSettings: builder.mutation<
+      TenantSettingsPayload,
+      UpdateTenantSettingsPayload
+    >({
+      async queryFn(payload, _api, _extraOptions, fetchWithBQ) {
+        const body = {
+          orderMode: payload.orderMode,
+          invoice: payload.invoice
+            ? {
+                prefix: payload.invoice.prefix?.trim() || undefined,
+                footer: payload.invoice.footer?.trim() || undefined,
+                termsAndConditions:
+                  payload.invoice.termsAndConditions?.trim() || undefined,
+                showGst: payload.invoice.showGst,
+                showItemTax: payload.invoice.showItemTax,
+                logoUrl: payload.invoice.logoUrl?.trim() || undefined,
+                printCopies: payload.invoice.printCopies,
+                headerNote: payload.invoice.headerNote?.trim() || undefined,
+                licenceNumber:
+                  payload.invoice.licenceNumber?.trim() || undefined,
+                showCustomerDetails: payload.invoice.showCustomerDetails,
+                upiId: payload.invoice.upiId?.trim() || undefined,
+              }
+            : undefined,
+          tax: payload.tax
+            ? {
+                defaultTaxPercentage: payload.tax.defaultTaxPercentage,
+                taxInclusive: payload.tax.taxInclusive,
+                taxLabel: payload.tax.taxLabel?.trim() || undefined,
+              }
+            : undefined,
+        };
+
+        let result = await requestWithFallback(
+          fetchWithBQ,
+          "PUT",
+          ["/tenant/settings"],
+          body,
+        );
+        if (result.error && isNotFound(result.error)) {
+          result = await requestWithFallback(
+            fetchWithBQ,
+            "PATCH",
+            ["/tenant/settings"],
+            body,
+          );
+        }
+
+        if (result.error) {
+          return { error: result.error };
+        }
+
+        return { data: parseTenantSettingsPayload(result.data) };
       },
       invalidatesTags: [{ type: "TenantProfile", id: "CURRENT" }],
     }),
@@ -953,6 +1072,8 @@ export const {
   useTentantProfileQuery,
   useLazyTentantProfileQuery,
   useUpdateTenantProfileMutation,
+  useTenantSettingsQuery,
+  useUpdateTenantSettingsMutation,
   useStaffRolesQuery,
   useLazyStaffRolesQuery,
   useTenantStaffQuery,
