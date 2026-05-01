@@ -864,11 +864,11 @@ export function DashboardCard({ section }: DashboardCardProps) {
   const { data: paidInvoicesPayload, isFetching: isPaidInvoicesFetching } =
     useGetInvoicesQuery(
       { status: "PAID", page: 1, limit: 100 },
-      {
-        pollingInterval: 30000,
-        refetchOnFocus: true,
-        refetchOnReconnect: true,
-      },
+      // {
+      //   pollingInterval: 30000,
+      //   refetchOnFocus: true,
+      //   refetchOnReconnect: true,
+      // },
     );
 
   const allowedIds = ROLE_SECTIONS[role];

@@ -91,6 +91,12 @@ export type CreateMenuOptionGroupPayload = {
   minSelect?: number;
   maxSelect?: number;
   sortOrder?: number;
+  options?: Array<{
+    name: string;
+    price?: number;
+    isAvailable?: boolean;
+    sortOrder?: number;
+  }>;
 };
 
 export type UpdateMenuOptionGroupArgs = {
@@ -100,6 +106,24 @@ export type UpdateMenuOptionGroupArgs = {
 
 export type DeleteMenuOptionGroupArgs = {
   groupId: string;
+};
+
+export type CreateMenuOptionPayload = {
+  name: string;
+  price?: number;
+  isAvailable?: boolean;
+  sortOrder?: number;
+};
+
+export type UpdateMenuOptionArgs = {
+  groupId?: string;
+  optionId: string;
+  payload: Partial<CreateMenuOptionPayload>;
+};
+
+export type DeleteMenuOptionArgs = {
+  groupId?: string;
+  optionId: string;
 };
 
 export type MenuAggregateCategory = {

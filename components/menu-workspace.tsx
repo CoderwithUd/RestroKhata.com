@@ -18,6 +18,9 @@ import {
   useUpdateMenuOptionGroupMutation,
   useUpdateMenuCategoryMutation,
   useUpdateMenuItemMutation,
+  useCreateMenuOptionMutation,
+  useUpdateMenuOptionMutation,
+  useDeleteMenuOptionMutation,
 } from "@/store/api/menuApi";
 import type {
   CreateMenuItemPayload,
@@ -58,6 +61,20 @@ type OptionGroupForm = {
   name: string;
   minSelect: string;
   maxSelect: string;
+  sortOrder: string;
+  options: Array<{
+    key: string;
+    name: string;
+    price: string;
+    isAvailable: boolean;
+    sortOrder: string;
+  }>;
+};
+
+type OptionForm = {
+  name: string;
+  price: string;
+  isAvailable: boolean;
   sortOrder: string;
 };
 
@@ -334,7 +351,7 @@ function createEmptyForm(): ItemForm {
 }
 
 function createEmptyOptionGroupForm(): OptionGroupForm {
-  return { name: "", minSelect: "0", maxSelect: "1", sortOrder: "0" };
+  return { name: "", minSelect: "0", maxSelect: "1", sortOrder: "0", options: [] };
 }
 
 function resolveSelectedCategoryId(form: ItemForm): string {
@@ -493,6 +510,12 @@ function toOptionGroupPayload(form: OptionGroupForm) {
     minSelect,
     maxSelect,
     sortOrder: Math.max(0, Math.floor(toNumber(form.sortOrder, 0))),
+    options: form.options.length > 0 ? form.options.map((opt, i) => ({
+      name: opt.name.trim(),
+      price: toNumber(opt.price, 0),
+      isAvailable: opt.isAvailable,
+      sortOrder: toNumber(opt.sortOrder, i),
+    })) : undefined,
   };
 }
 
@@ -924,6 +947,13 @@ export function MenuWorkspace({ tenantSlug }: Props) {
   const [deleteMenuItem, { isLoading: isDeletingItem }] =
     useDeleteMenuItemMutation();
 
+  const [createOption, { isLoading: isCreatingOption }] =
+    useCreateMenuOptionMutation();
+  const [updateOption, { isLoading: isUpdatingOption }] =
+    useUpdateMenuOptionMutation();
+  const [deleteOption, { isLoading: isDeletingOption }] =
+    useDeleteMenuOptionMutation();
+
   // ── Panel / View state ──
   const [activePanel, setActivePanel] = useState<MenuPanelTab>(() => {
     const saved = lsGet(PANEL_KEY);
@@ -963,6 +993,14 @@ export function MenuWorkspace({ tenantSlug }: Props) {
   const [editingGroupForm, setEditingGroupForm] = useState<OptionGroupForm>(
     () => createEmptyOptionGroupForm(),
   );
+  const [optionForm, setOptionForm] = useState<OptionForm>({
+    name: "",
+    price: "0",
+    isAvailable: true,
+    sortOrder: "0",
+  });
+  const [isAddingOption, setIsAddingOption] = useState(false);
+  const [editingOptionId, setEditingOptionId] = useState<string | null>(null);
 
   // ── Remembered state ──
   const [lastUsedVariants, setLastUsedVariants] = useState<
@@ -1493,6 +1531,75 @@ async function toggleAvailability(item: MenuItemRecord) {
     }
   }
 
+  // ── Option helpers ──
+  async function submitOption(e: FormEvent, groupId: string) {
+    e.preventDefault();
+    if (!optionForm.name.trim()) {
+      showError("Option name required hai");
+      return;
+    }
+
+    try {
+      if (editingOptionId) {
+        const res = await updateOption({
+          groupId,
+          optionId: editingOptionId,
+          payload: {
+            name: optionForm.name.trim(),
+            price: toNumber(optionForm.price, 0),
+            isAvailable: optionForm.isAvailable,
+            sortOrder: toNumber(optionForm.sortOrder, 0),
+          },
+        }).unwrap();
+        showSuccess(res.message || "Option update ho gaya");
+      } else {
+        const res = await createOption({
+          groupId,
+          payload: {
+            name: optionForm.name.trim(),
+            price: toNumber(optionForm.price, 0),
+            isAvailable: optionForm.isAvailable,
+            sortOrder: toNumber(optionForm.sortOrder, 0),
+          },
+        }).unwrap();
+        showSuccess(res.message || "Option add ho gaya");
+      }
+      setIsAddingOption(false);
+      setEditingOptionId(null);
+      setOptionForm({ name: "", price: "0", isAvailable: true, sortOrder: "0" });
+    } catch (err) {
+      showError(getErrorMessage(err));
+    }
+  }
+
+  async function removeOption(optionId: string, groupId: string, name: string) {
+    const ok = await confirm({
+      title: "Option Delete Karo",
+      message: `"${name}" delete karna chahte ho?`,
+      confirmText: "Delete",
+      cancelText: "Cancel",
+      tone: "danger",
+    });
+    if (!ok) return;
+    try {
+      const res = await deleteOption({ optionId, groupId }).unwrap();
+      showSuccess(res.message || "Option delete ho gaya");
+    } catch (err) {
+      showError(getErrorMessage(err));
+    }
+  }
+
+  function startEditOption(opt: any) {
+    setEditingOptionId(opt.id);
+    setOptionForm({
+      name: opt.name,
+      price: String(opt.price ?? 0),
+      isAvailable: !!opt.isAvailable,
+      sortOrder: String(opt.sortOrder ?? 0),
+    });
+    setIsAddingOption(true);
+  }
+
   const menuPreviewHref = tenantSlug
     ? `/qr?tenantSlug=${encodeURIComponent(tenantSlug)}`
     : "";
@@ -1604,7 +1711,7 @@ async function toggleAvailability(item: MenuItemRecord) {
               <Plus />
               <span>
                 {activePanel === "itemList"
-                  ? "Menu Item"
+                  ? " Item"
                   : activePanel === "category"
                     ? "Category"
                     : "Option Group"}
@@ -1750,6 +1857,35 @@ async function toggleAvailability(item: MenuItemRecord) {
                       </span>
                     ))}
                   </div>
+                  
+                  {/* Detailed Option Groups & Options */}
+                  {item.optionGroupIds && item.optionGroupIds.length > 0 && (
+                    <div className="mb-3 space-y-1.5 border-t border-slate-100 pt-2 mt-2">
+                      {item.optionGroupIds.slice(0, 2).map((ogId) => {
+                        const og = optionGroups.find(g => g.id === ogId);
+                        if (!og) return null;
+                        return (
+                          <div key={ogId} className="space-y-0.5">
+                            <p className="text-[9px] font-bold text-slate-400 uppercase tracking-tighter">{og.name}</p>
+                            <div className="flex flex-wrap gap-1">
+                              {og.options.slice(0, 3).map(opt => (
+                                <span key={opt.id} className="text-[10px] text-slate-500 bg-white border border-slate-100 px-1 py-0.5 rounded-md">
+                                  {opt.name} {toNumber(String(opt.price)) > 0 ? `(+${formatMoney(toNumber(String(opt.price)))})` : ""}
+                                </span>
+                              ))}
+                              {og.options.length > 3 && (
+                                <span className="text-[10px] text-slate-400 font-medium">+{og.options.length - 3}</span>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
+                      {item.optionGroupIds.length > 2 && (
+                        <p className="text-[9px] font-bold text-[#d4a30a]">+ {item.optionGroupIds.length - 2} more groups</p>
+                      )}
+                    </div>
+                  )}
+
                   {item.fulfillmentType && (
                     <span className="mb-3 inline-block rounded-full border border-blue-100 bg-blue-50 px-2 py-0.5 text-[10px] font-bold text-blue-600">
                       {item.fulfillmentType}
@@ -1913,51 +2049,44 @@ async function toggleAvailability(item: MenuItemRecord) {
                   .includes(q),
             );
             return filtered.length ? (
-              <div className="grid gap-2.5 sm:grid-cols-2">
+              <div className="grid gap-3 grid-cols-1 sm:grid-cols-2 md:grid-cols-3">
                 {filtered.map((group) => (
                   <article
                     key={group.id}
-                    className="rounded-2xl border border-[#ead9b8] bg-gradient-to-br from-[#fffcf6] to-[#fff7e8] p-3.5"
+                    onClick={() => openEditOG(group)}
+                    className="group relative rounded-2xl border border-[#ead9b8] bg-white p-4 transition-all hover:shadow-md hover:border-[#d4a30a] cursor-pointer"
                   >
-                    <p className="font-bold text-slate-800 truncate">
-                      {group.name}
-                    </p>
-                    <p className="text-[11px] text-slate-400 mt-0.5">
-                      Min {group.minSelect ?? 0} / Max {group.maxSelect ?? 0} ·{" "}
-                      {group.options.length} options
-                    </p>
+                    <div className="flex items-start justify-between">
+                      <div>
+                        <p className="font-bold text-slate-900 group-hover:text-[#d4a30a] transition-colors">
+                          {group.name}
+                        </p>
+                        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mt-1">
+                          Min {group.minSelect ?? 0} · Max {group.maxSelect ?? 0}
+                        </p>
+                      </div>
+                      <div className="rounded-lg bg-slate-50 px-2 py-1 text-[10px] font-bold text-slate-500">
+                        {group.options.length} options
+                      </div>
+                    </div>
+                    
                     {group.options.length > 0 && (
-                      <div className="mt-2 flex flex-wrap gap-1">
-                        {group.options.slice(0, 4).map((opt) => (
-                          <span
-                            key={opt.id || opt.name}
-                            className="rounded-full border border-[#ead9b8] bg-white px-2 py-0.5 text-[10px] font-semibold text-slate-600"
-                          >
-                            {opt.name}
-                          </span>
+                      <div className="mt-4 space-y-1.5">
+                        {group.options.slice(0, 3).map((opt) => (
+                          <div key={opt.id} className="flex items-center justify-between text-[11px]">
+                            <span className="text-slate-600 font-medium">{opt.name}</span>
+                            <span className="text-slate-400">
+                              {toNumber(String(opt.price)) > 0 ? `+${formatMoney(toNumber(String(opt.price)))}` : "Free"}
+                            </span>
+                          </div>
                         ))}
-                        {group.options.length > 4 && (
-                          <span className="rounded-full border border-[#ead9b8] bg-white px-2 py-0.5 text-[10px] font-semibold text-slate-400">
-                            +{group.options.length - 4}
-                          </span>
+                        {group.options.length > 3 && (
+                          <p className="text-[10px] font-bold text-[#d4a30a] pt-1">
+                            + {group.options.length - 3} more options
+                          </p>
                         )}
                       </div>
                     )}
-                    <div className="mt-3 flex gap-1.5">
-                      <GhostBtn
-                        onClick={() => openEditOG(group)}
-                        className="flex-1 py-2 text-xs"
-                      >
-                        Edit
-                      </GhostBtn>
-                      <DangerBtn
-                        onClick={() => removeOG(group)}
-                        disabled={isDeletingOptionGroup}
-                        className="flex-1 py-2 text-xs"
-                      >
-                        Delete
-                      </DangerBtn>
-                    </div>
                   </article>
                 ))}
               </div>
@@ -2956,56 +3085,444 @@ async function toggleAvailability(item: MenuItemRecord) {
                 </button>
               </div>
             </div>
-            <form onSubmit={submitOG} className="p-4 space-y-4">
-              <div>
-                <FieldLabel>Group Name *</FieldLabel>
-                <TextInput
-                  value={
-                    editingGroupId ? editingGroupForm.name : groupForm.name
-                  }
-                  onChange={(v) =>
-                    editingGroupId
-                      ? setEditingGroupForm((p) => ({ ...p, name: v }))
-                      : setGroupForm((p) => ({ ...p, name: v }))
-                  }
-                  placeholder="e.g. Spice Level, Extra Toppings..."
-                />
-              </div>
-              <div className="grid grid-cols-3 gap-3">
-                {[
-                  { label: "Min Select", field: "minSelect" as const },
-                  { label: "Max Select", field: "maxSelect" as const },
-                  { label: "Sort Order", field: "sortOrder" as const },
-                ].map(({ label, field }) => (
-                  <div key={field}>
-                    <FieldLabel>{label}</FieldLabel>
-                    <NumberInput
+
+            <div className="flex flex-col h-full">
+              <form onSubmit={submitOG} className="p-4 space-y-6 flex-1 overflow-y-auto pb-24">
+                <div className="space-y-4">
+                  <div>
+                    <FieldLabel>Group Name *</FieldLabel>
+                    <TextInput
                       value={
-                        editingGroupId
-                          ? editingGroupForm[field]
-                          : groupForm[field]
+                        editingGroupId ? editingGroupForm.name : groupForm.name
                       }
                       onChange={(v) =>
                         editingGroupId
-                          ? setEditingGroupForm((p) => ({ ...p, [field]: v }))
-                          : setGroupForm((p) => ({ ...p, [field]: v }))
+                          ? setEditingGroupForm((p) => ({ ...p, name: v }))
+                          : setGroupForm((p) => ({ ...p, name: v }))
                       }
-                      placeholder="0"
+                      placeholder="e.g. Spice Level, Extra Toppings..."
                     />
                   </div>
-                ))}
+                  <div className="grid grid-cols-3 gap-3">
+                    {[
+                      { label: "Min Select", field: "minSelect" as const },
+                      { label: "Max Select", field: "maxSelect" as const },
+                      { label: "Sort Order", field: "sortOrder" as const },
+                    ].map(({ label, field }) => (
+                      <div key={field}>
+                        <FieldLabel>{label}</FieldLabel>
+                        <NumberInput
+                          value={
+                            editingGroupId
+                              ? editingGroupForm[field]
+                              : groupForm[field]
+                          }
+                          onChange={(v) =>
+                            editingGroupId
+                              ? setEditingGroupForm((p) => ({ ...p, [field]: v }))
+                              : setGroupForm((p) => ({ ...p, [field]: v }))
+                          }
+                          placeholder="0"
+                        />
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Options Management Section (for NEW group) */}
+                {!editingGroupId && (
+                  <div className="space-y-4">
+                    <div className="flex items-center justify-between">
+                      <SectionLabel>Initial Options (Optional)</SectionLabel>
+                      {!isAddingOption && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setIsAddingOption(true);
+                            setEditingOptionId(null);
+                            setOptionForm({
+                              name: "",
+                              price: "0",
+                              isAvailable: true,
+                              sortOrder: String(groupForm.options.length + 1),
+                            });
+                          }}
+                          className="rounded-full border border-[#d4a30a] bg-[#fffaf0] px-3 py-1.5 text-[11px] font-bold text-[#8a5c00] hover:bg-[#fdf3e3]"
+                        >
+                          + New Option
+                        </button>
+                      )}
+                    </div>
+
+                    {/* Inline Add Form for NEW group */}
+                    {isAddingOption && !editingGroupId && (
+                      <div className="rounded-2xl border border-[#d4a30a]/40 bg-white p-4 shadow-sm ring-4 ring-[#d4a30a]/5">
+                        <p className="mb-4 text-xs font-bold text-[#8a5c00] flex items-center gap-2 uppercase tracking-widest">
+                          <Plus className="w-3 h-3" />
+                          Nayi Option Add Karo
+                        </p>
+                        <div className="space-y-4">
+                          <div>
+                            <FieldLabel>Option Name *</FieldLabel>
+                            <TextInput
+                              value={optionForm.name}
+                              onChange={(v) =>
+                                setOptionForm((p) => ({ ...p, name: v }))
+                              }
+                              placeholder="e.g. Extra Cheese"
+                            />
+                          </div>
+                          <div className="grid grid-cols-2 gap-3">
+                            <div>
+                              <FieldLabel>Extra Price (₹)</FieldLabel>
+                              <NumberInput
+                                value={optionForm.price}
+                                onChange={(v) =>
+                                  setOptionForm((p) => ({ ...p, price: v }))
+                                }
+                                placeholder="0 for Free"
+                              />
+                            </div>
+                            <div>
+                              <FieldLabel>Sort Order</FieldLabel>
+                              <NumberInput
+                                value={optionForm.sortOrder}
+                                onChange={(v) =>
+                                  setOptionForm((p) => ({ ...p, sortOrder: v }))
+                                }
+                              />
+                            </div>
+                          </div>
+                          <div className="flex gap-2 pt-2">
+                            <GhostBtn
+                              onClick={() => {
+                                setIsAddingOption(false);
+                                setEditingOptionId(null);
+                              }}
+                              className="flex-1"
+                            >
+                              Cancel
+                            </GhostBtn>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                if (!optionForm.name.trim()) {
+                                  showError("Name required hai");
+                                  return;
+                                }
+                                setGroupForm((p) => ({
+                                  ...p,
+                                  options: [
+                                    ...p.options,
+                                    {
+                                      key: `temp-${Date.now()}`,
+                                      name: optionForm.name.trim(),
+                                      price: optionForm.price,
+                                      isAvailable: true,
+                                      sortOrder: optionForm.sortOrder,
+                                    },
+                                  ],
+                                }));
+                                setIsAddingOption(false);
+                                setOptionForm({
+                                  name: "",
+                                  price: "0",
+                                  isAvailable: true,
+                                  sortOrder: "0",
+                                });
+                              }}
+                              className="flex-[2] rounded-xl bg-[#d4a30a] px-4 py-2.5 text-sm font-bold text-white shadow-sm transition-all hover:bg-[#b98a06]"
+                            >
+                              Add to Group
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    <div className="space-y-2.5">
+                      {groupForm.options.map((opt, idx) => (
+                        <div
+                          key={opt.key}
+                          className="group flex items-center justify-between rounded-2xl border border-[#ead9b8] bg-white p-3.5"
+                        >
+                          <div className="min-w-0 flex-1">
+                            <p className="text-sm font-bold text-slate-800">
+                              {opt.name}
+                            </p>
+                            <span className="text-[11px] font-bold text-[#8a5c00] bg-[#fdf3e3] px-1.5 py-0.5 rounded mt-1 inline-block">
+                              {toNumber(opt.price) > 0
+                                ? `+ ${formatMoney(toNumber(opt.price))}`
+                                : "Free"}
+                            </span>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setGroupForm((p) => ({
+                                ...p,
+                                options: p.options.filter(
+                                  (o) => o.key !== opt.key,
+                                ),
+                              }));
+                            }}
+                            className="h-9 w-9 flex items-center justify-center rounded-xl bg-rose-50 text-rose-400 hover:text-rose-600"
+                          >
+                            <svg
+                              className="h-4 w-4"
+                              fill="none"
+                              stroke="currentColor"
+                              viewBox="0 0 24 24"
+                            >
+                              <path
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                strokeWidth={2}
+                                d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
+                              />
+                            </svg>
+                          </button>
+                        </div>
+                      ))}
+                      {groupForm.options.length === 0 && !isAddingOption && (
+                        <div className="rounded-2xl border border-dashed border-slate-200 py-10 text-center bg-slate-50/30">
+                          <p className="text-2xl mb-1 opacity-40">🍽️</p>
+                          <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">
+                            No Options Yet
+                          </p>
+                          <p className="text-[10px] text-slate-400 mt-1">Upar + New Option se options add karein</p>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {/* Options Management Section (for EXISTING group) */}
+                {editingGroupId && (
+                  <div className="space-y-4">
+                    <div className="flex items-center justify-between">
+                      <SectionLabel>Group Options</SectionLabel>
+                      {!isAddingOption && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setIsAddingOption(true);
+                            setEditingOptionId(null);
+                            setOptionForm({
+                              name: "",
+                              price: "0",
+                              isAvailable: true,
+                              sortOrder: String(
+                                (
+                                  optionGroups.find((g) => g.id === editingGroupId)
+                                    ?.options.length || 0
+                                ) + 1,
+                              ),
+                            });
+                          }}
+                          className="rounded-full border border-[#d4a30a] bg-[#fffaf0] px-3 py-1.5 text-[11px] font-bold text-[#8a5c00] hover:bg-[#fdf3e3]"
+                        >
+                          + New Option
+                        </button>
+                      )}
+                    </div>
+
+                    {/* Add/Edit Option Form */}
+                    {isAddingOption && (
+                      <div className="rounded-2xl border border-[#d4a30a]/40 bg-white p-4 shadow-sm ring-4 ring-[#d4a30a]/5">
+                        <p className="mb-4 text-xs font-bold text-[#8a5c00] flex items-center gap-2 uppercase tracking-widest">
+                          <Plus className="w-3 h-3" />
+                          {editingOptionId ? "Edit Option" : "Nayi Option Add Karo"}
+                        </p>
+                        <div className="space-y-4">
+                          <div>
+                            <FieldLabel>Option Name *</FieldLabel>
+                            <TextInput
+                              value={optionForm.name}
+                              onChange={(v) =>
+                                setOptionForm((p) => ({ ...p, name: v }))
+                              }
+                              placeholder="e.g. Extra Cheese, Double Spice"
+                            />
+                          </div>
+                          <div className="grid grid-cols-2 gap-3">
+                            <div>
+                              <FieldLabel>Extra Price (₹)</FieldLabel>
+                              <NumberInput
+                                value={optionForm.price}
+                                onChange={(v) =>
+                                  setOptionForm((p) => ({ ...p, price: v }))
+                                }
+                                placeholder="0 for Free"
+                              />
+                            </div>
+                            <div>
+                              <FieldLabel>Sort Order</FieldLabel>
+                              <NumberInput
+                                value={optionForm.sortOrder}
+                                onChange={(v) =>
+                                  setOptionForm((p) => ({ ...p, sortOrder: v }))
+                                }
+                              />
+                            </div>
+                          </div>
+                          <div className="flex items-center justify-between rounded-xl border border-slate-100 bg-slate-50 px-3 py-2.5">
+                            <span className="text-xs font-bold text-slate-600">
+                              Option Available Hai?
+                            </span>
+                            <Toggle
+                              checked={optionForm.isAvailable}
+                              onChange={(v) =>
+                                setOptionForm((p) => ({ ...p, isAvailable: v }))
+                              }
+                            />
+                          </div>
+                          <div className="flex gap-2 pt-2">
+                            <GhostBtn
+                              onClick={() => {
+                                setIsAddingOption(false);
+                                setEditingOptionId(null);
+                              }}
+                              className="flex-1"
+                            >
+                              Cancel
+                            </GhostBtn>
+                            <button
+                              type="button"
+                              onClick={(e) => submitOption(e, editingGroupId)}
+                              disabled={isCreatingOption || isUpdatingOption}
+                              className="flex-[2] rounded-xl bg-[#d4a30a] px-4 py-2.5 text-sm font-bold text-white shadow-sm transition-all hover:bg-[#b98a06] disabled:opacity-50"
+                            >
+                              {isCreatingOption || isUpdatingOption
+                                ? "Saving..."
+                                : editingOptionId
+                                  ? "Update Option"
+                                  : "Add Option"}
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Options List */}
+                    <div className="space-y-2.5">
+                      {optionGroups
+                        .find((g) => g.id === editingGroupId)
+                        ?.options.map((opt) => (
+                          <div
+                            key={opt.id}
+                            className={[
+                              "group flex items-center justify-between rounded-2xl border p-3.5 transition-all",
+                              opt.isAvailable
+                                ? "border-[#ead9b8] bg-white hover:border-[#d4a30a] hover:shadow-sm"
+                                : "border-slate-100 bg-slate-50 opacity-60",
+                            ].join(" ")}
+                          >
+                            <div className="min-w-0 flex-1">
+                              <p className="text-sm font-bold text-slate-800">
+                                {opt.name}
+                              </p>
+                              <div className="flex items-center gap-2 mt-1">
+                                <span className="text-[11px] font-bold text-[#8a5c00] bg-[#fdf3e3] px-1.5 py-0.5 rounded">
+                                  {toNumber(String(opt.price)) > 0
+                                    ? `+ ${formatMoney(toNumber(String(opt.price)))}`
+                                    : "Free"}
+                                </span>
+                                {!opt.isAvailable && (
+                                  <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Hidden</span>
+                                )}
+                              </div>
+                            </div>
+                            <div className="flex gap-2 ml-4">
+                              <button
+                                type="button"
+                                onClick={() => startEditOption(opt)}
+                                className="h-9 w-9 flex items-center justify-center rounded-xl bg-slate-50 text-slate-400 hover:bg-[#fdf3e3] hover:text-[#d4a30a] transition-all"
+                              >
+                                <svg
+                                  className="h-4 w-4"
+                                  fill="none"
+                                  stroke="currentColor"
+                                  viewBox="0 0 24 24"
+                                >
+                                  <path
+                                    strokeLinecap="round"
+                                    strokeLinejoin="round"
+                                    strokeWidth={2}
+                                    d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"
+                                  />
+                                </svg>
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  removeOption(opt.id, editingGroupId, opt.name)
+                                }
+                                disabled={isDeletingOption}
+                                className="h-9 w-9 flex items-center justify-center rounded-xl bg-slate-50 text-slate-400 hover:bg-rose-50 hover:text-rose-600 transition-all"
+                              >
+                                <svg
+                                  className="h-4 w-4"
+                                  fill="none"
+                                  stroke="currentColor"
+                                  viewBox="0 0 24 24"
+                                >
+                                  <path
+                                    strokeLinecap="round"
+                                    strokeLinejoin="round"
+                                    strokeWidth={2}
+                                    d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
+                                  />
+                                </svg>
+                              </button>
+                            </div>
+                          </div>
+                        ))}
+                      {!optionGroups.find((g) => g.id === editingGroupId)?.options
+                        .length &&
+                        !isAddingOption && (
+                          <div className="rounded-2xl border border-dashed border-slate-200 py-10 text-center bg-slate-50/30">
+                            <p className="text-2xl mb-1 opacity-40">📝</p>
+                            <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">
+                              Empty Group
+                            </p>
+                            <p className="text-[10px] text-slate-400 mt-1">Upar + Add Option se options add karein</p>
+                          </div>
+                        )}
+                    </div>
+                  </div>
+                )}
+              </form>
+
+              {/* Sticky Footer */}
+              <div className="p-4 bg-white border-t border-[#eee7d8] flex gap-3 z-30 shadow-[0_-8px_30px_rgb(0,0,0,0.04)]">
+                {editingGroupId && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const group = optionGroups.find(g => g.id === editingGroupId);
+                      if (group) removeOG(group);
+                    }}
+                    disabled={isDeletingOptionGroup}
+                    className="w-[30%] rounded-xl border border-rose-100 bg-rose-50 px-4 py-3 text-sm font-bold text-rose-600 transition-all active:scale-95 disabled:opacity-50"
+                  >
+                    {isDeletingOptionGroup ? "..." : "Delete"}
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={submitOG}
+                  disabled={isCreatingOptionGroup || isUpdatingOptionGroup}
+                  className={`${editingGroupId ? "w-[70%]" : "w-full"} rounded-xl bg-[#d4a30a] px-4 py-3 text-sm font-bold text-white shadow-lg shadow-[#d4a30a]/20 transition-all active:scale-95 disabled:opacity-50`}
+                >
+                  {isCreatingOptionGroup || isUpdatingOptionGroup
+                    ? "Processing..."
+                    : editingGroupId
+                      ? "Update Group"
+                      : "Create Option Group"}
+                </button>
               </div>
-              <PrimaryBtn
-                type="submit"
-                disabled={isCreatingOptionGroup || isUpdatingOptionGroup}
-              >
-                {isCreatingOptionGroup || isUpdatingOptionGroup
-                  ? "Saving..."
-                  : editingGroupId
-                    ? "Update Group"
-                    : "Add Group"}
-              </PrimaryBtn>
-            </form>
+            </div>
           </div>
         </div>
       )}

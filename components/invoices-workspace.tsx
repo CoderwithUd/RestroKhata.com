@@ -644,8 +644,8 @@ export function InvoicesWorkspace({ rawRole }: Props) {
     data: invoicesData,
     isFetching: isInvoicesFetching,
     refetch: refetchInvoices,
-  } = useGetInvoicesQuery({ page: invoicesPage, limit: 100 }, { pollingInterval: 30000 });
-
+  // } = useGetInvoicesQuery({ page: invoicesPage, limit: 100 }, { pollingInterval: 30000 });
+} = useGetInvoicesQuery({ page: invoicesPage, limit: 100 });
   const [createInvoice, { isLoading: isCreating }] = useCreateInvoiceMutation();
   const [createGroupInvoice, { isLoading: isCreatingGroup }] = useCreateGroupInvoiceMutation();
   const [payInvoice, { isLoading: isPaying }] = usePayInvoiceMutation();

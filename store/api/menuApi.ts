@@ -28,6 +28,9 @@ import type {
   UpdateMenuCategoryArgs,
   UpdateMenuItemArgs,
   UpdateMenuItemPayload,
+  CreateMenuOptionPayload,
+  UpdateMenuOptionArgs,
+  DeleteMenuOptionArgs,
 } from "@/store/types/menu";
 
 function asRecord(value: unknown): Record<string, unknown> | null {
@@ -463,6 +466,12 @@ function normalizeOptionGroupPayload(payload: CreateMenuOptionGroupPayload): Cre
     minSelect,
     maxSelect,
     sortOrder: Number.isFinite(payload.sortOrder) ? payload.sortOrder : 0,
+    options: payload.options?.map((opt, i) => ({
+      name: opt.name.trim(),
+      price: Number.isFinite(opt.price) ? opt.price : 0,
+      isAvailable: typeof opt.isAvailable === "boolean" ? opt.isAvailable : true,
+      sortOrder: Number.isFinite(opt.sortOrder) ? opt.sortOrder : i,
+    })),
   };
 }
 
@@ -596,6 +605,63 @@ export const menuApi = createApi({
       ],
     }),
 
+    createMenuOption: builder.mutation<MenuOptionGroupMutationResponse, { groupId: string; payload: CreateMenuOptionPayload }>({
+      query: ({ groupId, payload }) => ({
+        url: `/menu/option-groups/${groupId}/options`,
+        method: "POST",
+        credentials: "include",
+        body: {
+          name: payload.name.trim(),
+          price: Number.isFinite(payload.price) ? payload.price : 0,
+          sortOrder: Number.isFinite(payload.sortOrder) ? payload.sortOrder : 0,
+          isAvailable: typeof payload.isAvailable === "boolean" ? payload.isAvailable : true,
+        },
+      }),
+      transformResponse: (response: unknown) => parseOptionGroupMutation(response, "Option created"),
+      invalidatesTags: (_result, _error, { groupId }) => [
+        { type: "MenuOptionGroups", id: "LIST" },
+        { type: "MenuOptionGroups", id: groupId },
+        { type: "MenuAggregate", id: "TREE" },
+      ],
+    }),
+
+    updateMenuOption: builder.mutation<MenuOptionGroupMutationResponse, UpdateMenuOptionArgs>({
+      query: ({ optionId, payload }) => ({
+        url: `/menu/options/${optionId}`,
+        method: "PUT",
+        credentials: "include",
+        body: {
+          name: payload.name?.trim(),
+          price: Number.isFinite(payload.price) ? payload.price : undefined,
+          sortOrder: Number.isFinite(payload.sortOrder) ? payload.sortOrder : undefined,
+          isAvailable: typeof payload.isAvailable === "boolean" ? payload.isAvailable : undefined,
+        },
+      }),
+      transformResponse: (response: unknown) => parseOptionGroupMutation(response, "Option updated"),
+      invalidatesTags: (_result, _error, { groupId }) => [
+        { type: "MenuOptionGroups", id: "LIST" },
+        ...(groupId ? [{ type: "MenuOptionGroups" as const, id: groupId }] : []),
+        { type: "MenuAggregate", id: "TREE" },
+      ],
+    }),
+
+    deleteMenuOption: builder.mutation<DeleteMenuItemResponse, DeleteMenuOptionArgs>({
+      query: ({ optionId }) => ({
+        url: `/menu/options/${optionId}`,
+        method: "DELETE",
+        credentials: "include",
+      }),
+      transformResponse: (response: unknown) => {
+        const root = asRecord(response);
+        return { message: asString(root?.message) || "Option deleted" };
+      },
+      invalidatesTags: (_result, _error, { groupId }) => [
+        { type: "MenuOptionGroups", id: "LIST" },
+        ...(groupId ? [{ type: "MenuOptionGroups" as const, id: groupId }] : []),
+        { type: "MenuAggregate", id: "TREE" },
+      ],
+    }),
+
     getMenuItems: builder.query<MenuItemsListResponse, MenuItemQueryParams | void>({
       query: (params) => ({
         url: "/menu/items",
@@ -686,6 +752,9 @@ export const {
   useCreateMenuOptionGroupMutation,
   useUpdateMenuOptionGroupMutation,
   useDeleteMenuOptionGroupMutation,
+  useCreateMenuOptionMutation,
+  useUpdateMenuOptionMutation,
+  useDeleteMenuOptionMutation,
   useGetMenuItemsQuery,
   useCreateMenuItemMutation,
   useUpdateMenuItemMutation,
