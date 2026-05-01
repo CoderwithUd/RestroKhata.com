@@ -21,10 +21,25 @@ type PublicItem = {
   image?: string;
   isAvailable: boolean;
   variants: PublicVariant[];
+  optionGroupIds?: string[];
   foodType?: string;
   prepTime?: number;
   tags?: string[];
   isFeatured?: boolean;
+};
+
+type PublicOption = {
+  id: string;
+  name: string;
+  price: number;
+};
+
+type PublicOptionGroup = {
+  id: string;
+  name: string;
+  minSelect: number;
+  maxSelect: number;
+  options: PublicOption[];
 };
 
 type PublicCategory = {
@@ -38,6 +53,7 @@ type PublicMenuPayload = {
   tenant?: { id?: string; name?: string; slug?: string };
   table?: { id?: string; number?: number; name?: string };
   categories: PublicCategory[];
+  optionGroups: PublicOptionGroup[];
 };
 
 type PublicCartEntry = {
@@ -49,6 +65,8 @@ type PublicCartEntry = {
   quantity: number;
   unitPrice: number;
   image?: string;
+  optionIds?: string[];
+  options?: Array<{ id: string; name: string; price: number }>;
 };
 
 type PublicOrderItem = {
@@ -60,6 +78,7 @@ type PublicOrderItem = {
   quantity: number;
   unitPrice: number;
   note?: string;
+  options?: Array<{ optionId: string; name: string; price: number }>;
   lineTotal?: number;
   kitchenStatus?: string;
 };
@@ -142,6 +161,7 @@ function parseItem(v: unknown): PublicItem | null {
     image: asString(r.image) || asString(r.imageUrl) || asString(r.thumbnail),
     isAvailable: asBoolean(r.isAvailable) ?? asBoolean(r.isActive) ?? (resolvedVariants.length ? resolvedVariants.some(x => x.isAvailable) : true),
     variants: resolvedVariants,
+    optionGroupIds: asArray(r.optionGroupIds).map(asString).filter((x): x is string => Boolean(x)),
     foodType: asString(r.foodType),
     prepTime: asNumber(r.prepTime),
     tags: asArray(r.tags).map(asString).filter((t): t is string => Boolean(t)),
@@ -160,7 +180,7 @@ function parseCategory(v: unknown): PublicCategory | null {
 }
 
 function parsePayload(data: unknown): PublicMenuPayload {
-  const rawRoot = asRecord(data); if (!rawRoot) return { categories: [] };
+  const rawRoot = asRecord(data); if (!rawRoot) return { categories: [], optionGroups: [] };
   const root = asRecord(rawRoot.data) || rawRoot;
   const menuRoot = asRecord(root.menu) || root;
   const tableRecord = asRecord(menuRoot.table) || asRecord(root.table) || asRecord(rawRoot.table);
@@ -171,6 +191,23 @@ function parsePayload(data: unknown): PublicMenuPayload {
     tenant: { id: asString(tenantRecord?.id) || asString(tenantRecord?._id), name: asString(tenantRecord?.name), slug: asString(tenantRecord?.slug) },
     table: tableRecord ? { id: asString(tableRecord.id) || asString(tableRecord._id), number: asNumber(tableRecord.number), name: asString(tableRecord.name) } : undefined,
     categories: asArray(categoriesSource).map(parseCategory).filter((x): x is PublicCategory => Boolean(x)),
+    optionGroups: asArray(root.optionGroups || root.optiongroups || rawRoot.optionGroups).map(g => {
+      const gr = asRecord(g); if (!gr) return null;
+      return {
+        id: asString(gr.id) || asString(gr._id) || "",
+        name: asString(gr.name) || "Options",
+        minSelect: asNumber(gr.minSelect) ?? 0,
+        maxSelect: asNumber(gr.maxSelect) ?? 0,
+        options: asArray(gr.options).map(o => {
+          const or = asRecord(o); if (!or) return null;
+          return {
+            id: asString(or.id) || asString(or._id) || "",
+            name: asString(or.name) || "Option",
+            price: asNumber(or.price) ?? 0,
+          };
+        }).filter((x): x is PublicOption => Boolean(x)),
+      };
+    }).filter((x): x is PublicOptionGroup => Boolean(x)),
   };
 }
 
@@ -182,6 +219,14 @@ function parsePublicOrderItem(v: unknown): PublicOrderItem | null {
     itemId, variantId: asString(r.variantId), name: asString(r.name) || "Item",
     variantName: asString(r.variantName), quantity: asNumber(r.quantity) ?? 1,
     unitPrice: asNumber(r.unitPrice) ?? asNumber(r.price) ?? 0, note: asString(r.note),
+    options: asArray(r.options).map(o => {
+      const or = asRecord(o); if (!or) return null;
+      return {
+        optionId: asString(or.optionId) || asString(or.id) || "",
+        name: asString(or.name) || "",
+        price: asNumber(or.price) ?? 0,
+      };
+    }).filter((o): o is { optionId: string; name: string; price: number } => !!o),
     lineTotal: asNumber(r.lineTotal),
     kitchenStatus: asString(r.kitchenStatus) || asString(r.status) || asString(r.itemStatus),
   };
@@ -225,7 +270,10 @@ function flattenCategoryTree(cats: PublicCategory[], depth = 0): Array<{ categor
   return cats.flatMap(c => [{ category: c, depth }, ...flattenCategoryTree(c.children, depth + 1)]);
 }
 
-function entryKey(itemId: string, variantId?: string): string { return `${itemId}::${variantId || "base"}`; }
+function entryKey(itemId: string, variantId?: string, optionIds?: string[]): string {
+  const optPart = (optionIds || []).slice().sort().join(",");
+  return `${itemId}::${variantId || "base"}::${optPart}`;
+}
 
 function sessionStorageKey(args: { token?: string; tenantSlug?: string; tableId?: string; tableNumber?: string }): string {
   return [QR_SESSION_STORAGE_PREFIX, args.token || "no-token", args.tenantSlug || "no-tenant", args.tableId || "no-table", args.tableNumber || "no-number"].join(":");
@@ -717,16 +765,16 @@ function MenuItemCard({
 
           {quantity === 0 ? (
             <button type="button" onClick={onIncrement} disabled={!canAdd}
-              className="flex items-center gap-1 rounded-xl bg-amber-500 px-3.5 py-1.5 text-[12px] font-semibold text-white shadow-[0_2px_10px_rgba(245,158,11,0.4)] hover:bg-amber-600 active:scale-95 disabled:cursor-not-allowed disabled:opacity-40 transition-all">
-              + Add
+              className="flex items-center gap-1 rounded-xl bg-amber-500 px-4 py-2 text-[13px] font-bold text-white shadow-[0_4px_12px_rgba(245,158,11,0.35)] hover:bg-amber-600 active:scale-95 disabled:cursor-not-allowed disabled:opacity-40 transition-all">
+              Add
             </button>
           ) : (
-            <div className="flex items-center gap-2 rounded-xl border border-stone-200 bg-stone-50 px-1 py-1">
+            <div className="flex items-center gap-2 rounded-xl border-2 border-amber-100 bg-amber-50/30 px-1 py-1 shadow-sm">
               <button type="button" onClick={onDecrement}
-                className="flex h-6 w-6 items-center justify-center rounded-lg border border-stone-200 bg-white text-sm font-semibold text-stone-700 hover:bg-stone-100 active:scale-95 transition-all">−</button>
-              <span className="w-5 text-center text-[13px] font-bold text-stone-900">{quantity}</span>
+                className="flex h-7 w-7 items-center justify-center rounded-lg border border-amber-200 bg-white text-sm font-black text-amber-600 hover:bg-amber-50 active:scale-90 transition-all shadow-sm">−</button>
+              <span className="w-5 text-center text-[14px] font-black text-amber-700">{quantity}</span>
               <button type="button" onClick={onIncrement}
-                className="flex h-6 w-6 items-center justify-center rounded-lg bg-amber-500 text-sm font-semibold text-white hover:bg-amber-600 active:scale-95 transition-all">+</button>
+                className="flex h-7 w-7 items-center justify-center rounded-lg bg-amber-500 text-sm font-black text-white hover:bg-amber-600 active:scale-90 transition-all shadow-md shadow-amber-200">+</button>
             </div>
           )}
         </div>
@@ -760,6 +808,10 @@ export function PublicQrMenu({ tenantSlug: tenantSlugFromPath }: PublicQrMenuPro
   const [isCurrentOrderLoading, setIsCurrentOrderLoading] = useState(false);
   const [busyLineId, setBusyLineId] = useState<string | null>(null);
   const [invoiceBusy, setInvoiceBusy] = useState(false);
+
+  // Options state
+  const [activeOptionsItem, setActiveOptionsItem] = useState<{ item: PublicItem; variantId?: string } | null>(null);
+  const [selectedOptions, setSelectedOptions] = useState<Record<string, string[]>>({});
 
   const token = searchParams.get("token")?.trim() || "";
   const tenantSlug = searchParams.get("tenantSlug")?.trim() || tenantSlugFromPath?.trim() || "";
@@ -874,6 +926,28 @@ export function PublicQrMenu({ tenantSlug: tenantSlugFromPath }: PublicQrMenuPro
 
   useEffect(() => { refreshCurrentOrder(); }, [refreshCurrentOrder]);
 
+  function addItemPublicWithOptions(item: PublicItem, variantId?: string, opts?: Array<{ id: string; name: string; price: number }>) {
+    const variant = item.variants.find(v => v.id === variantId) || item.variants[0];
+    const price = variant?.price ?? 0;
+    const optionIds = opts?.map(o => o.id) || [];
+    const key = entryKey(item.id, variantId, optionIds);
+
+    setCart(prev => {
+      const ex = prev.find(e => e.key === key);
+      if (ex) return prev.map(e => e.key === key ? { ...e, quantity: e.quantity + 1 } : e);
+      return [...prev, { key, itemId: item.id, variantId, name: item.name, variantName: variant?.name, quantity: 1, unitPrice: price, image: item.image, optionIds, options: opts }];
+    });
+  }
+
+  function incrementEntry(item: PublicItem, variant: PublicVariant | undefined) {
+    if (item.optionGroupIds && item.optionGroupIds.length > 0) {
+      setActiveOptionsItem({ item, variantId: variant?.id });
+      setSelectedOptions({});
+      return;
+    }
+    addItemPublicWithOptions(item, variant?.id);
+  }
+
   useEffect(() => {
     if (!categoriesWithItems.length) { setActiveCategoryId("all"); return; }
     const exists = categoriesWithItems.some(({ category }) => category.id === activeCategoryId);
@@ -882,20 +956,12 @@ export function PublicQrMenu({ tenantSlug: tenantSlugFromPath }: PublicQrMenuPro
 
   // Cart helpers
   function getQuantity(itemId: string, variantId?: string): number {
-    return cart.find(e => e.key === entryKey(itemId, variantId))?.quantity ?? 0;
+    return cart.filter(e => e.itemId === itemId && e.variantId === variantId).reduce((s, e) => s + e.quantity, 0);
   }
 
-  function incrementEntry(item: PublicItem, variant: PublicVariant | undefined) {
-    const key = entryKey(item.id, variant?.id);
-    setCart(prev => {
-      const ex = prev.find(e => e.key === key);
-      if (ex) return prev.map(e => e.key === key ? { ...e, quantity: e.quantity + 1 } : e);
-      return [...prev, { key, itemId: item.id, variantId: variant?.id, name: item.name, variantName: variant?.name, quantity: 1, unitPrice: variant?.price ?? 0, image: item.image }];
-    });
-  }
 
-  function decrementEntry(itemId: string, variantId?: string) {
-    const key = entryKey(itemId, variantId);
+  function decrementEntry(itemId: string, variantId?: string, optionIds?: string[]) {
+    const key = entryKey(itemId, variantId, optionIds);
     setCart(prev => {
       const t = prev.find(e => e.key === key); if (!t) return prev;
       if (t.quantity <= 1) return prev.filter(e => e.key !== key);
@@ -904,10 +970,14 @@ export function PublicQrMenu({ tenantSlug: tenantSlugFromPath }: PublicQrMenuPro
   }
 
   function incrementFromSummary(entry: PublicCartEntry) {
-    incrementEntry(
+    addItemPublicWithOptions(
       { id: entry.itemId, name: entry.name, description: undefined, image: entry.image, isAvailable: true, variants: entry.variantId ? [{ id: entry.variantId, name: entry.variantName || "Regular", price: entry.unitPrice, isAvailable: true }] : [] },
-      entry.variantId ? { id: entry.variantId, name: entry.variantName || "Regular", price: entry.unitPrice, isAvailable: true } : undefined
+      entry.variantId,
+      entry.options
     );
+  }
+  function decrementFromSummary(entry: PublicCartEntry) {
+    decrementEntry(entry.itemId, entry.variantId, entry.optionIds);
   }
 
   // Submit order
@@ -928,7 +998,7 @@ export function PublicQrMenu({ tenantSlug: tenantSlugFromPath }: PublicQrMenuPro
           ...(!token && tenantSlug ? { tenantSlug } : {}), ...(!token && resolvedTableId ? { tableId: resolvedTableId } : {}),
           ...(!token && !resolvedTableId && resolvedTableNumber ? { tableNumber: Number(resolvedTableNumber) } : {}),
           customerName: trimmedName, customerPhone: normalizedPhone,
-          items: cart.map(i => ({ itemId: i.itemId, variantId: i.variantId, quantity: i.quantity, optionIds: [] })),
+          items: cart.map(i => ({ itemId: i.itemId, variantId: i.variantId, quantity: i.quantity, optionIds: i.optionIds || [] })),
           note: note.trim() || undefined,
         }),
       });
@@ -1022,7 +1092,7 @@ export function PublicQrMenu({ tenantSlug: tenantSlugFromPath }: PublicQrMenuPro
     onCustomerPhoneChange: (v: string) => { setCustomerPhone(v); setSubmitError(""); },
     onNoteChange: setNote,
     onIncrement: incrementFromSummary,
-    onDecrement: (entry: PublicCartEntry) => decrementEntry(entry.itemId, entry.variantId),
+    onDecrement: decrementFromSummary,
     onSubmit: handleSubmitOrder, submitting: isSubmitting,
     canSubmit: Boolean(cart.length && customerName.trim() && customerPhone.trim() && orderEnabled),
     orderEnabled,
@@ -1216,6 +1286,148 @@ export function PublicQrMenu({ tenantSlug: tenantSlugFromPath }: PublicQrMenuPro
 
             <div className="p-4">
               <SummaryPanel {...summaryProps} compact />
+            </div>
+          </div>
+        </div>
+      )}
+      {/* ── Item Options Modal ────────────────────────────────────── */}
+      {activeOptionsItem && (
+        <div className="fixed inset-0 z-[100] flex items-end justify-center sm:items-center">
+          <div className="absolute inset-0 bg-stone-900/60 backdrop-blur-sm" onClick={() => setActiveOptionsItem(null)} />
+          <div className="relative flex w-full max-w-lg flex-col rounded-t-[32px] sm:rounded-[32px] bg-white shadow-2xl overflow-hidden max-h-[90vh]">
+            {/* Modal Header */}
+            <div className="bg-amber-50/50 px-6 py-5 border-b border-amber-100">
+               <div className="flex items-start justify-between gap-4">
+                  <div>
+                    <h3 className="text-lg font-bold text-stone-800 leading-tight">
+                      {activeOptionsItem.item.name}
+                    </h3>
+                    <p className="mt-0.5 text-[11px] font-semibold text-amber-600 uppercase tracking-wider">
+                      Customize your selection
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    {activeOptionsItem.item.optionGroupIds?.every(gid => (data?.optionGroups.find(g => g.id === gid)?.minSelect || 0) === 0) && (
+                      <button 
+                        onClick={() => {
+                          addItemPublicWithOptions(activeOptionsItem.item, activeOptionsItem.variantId, []);
+                          setActiveOptionsItem(null);
+                        }}
+                        className="text-[12px] font-bold text-stone-400 hover:text-amber-600 px-3 py-1.5 rounded-xl border border-stone-100 bg-stone-50 transition-colors"
+                      >
+                        Skip
+                      </button>
+                    )}
+                    <button onClick={() => setActiveOptionsItem(null)} className="rounded-full bg-white p-2 text-stone-400 hover:text-stone-600 shadow-sm border border-stone-100 transition-colors">
+                       <IconX />
+                    </button>
+                  </div>
+               </div>
+            </div>
+
+            {/* Modal Content */}
+            <div className="flex-1 overflow-y-auto no-scrollbar p-6 space-y-8 pb-10">
+               {activeOptionsItem.item.optionGroupIds?.map(groupId => {
+                  const group = data?.optionGroups.find(g => g.id === groupId);
+                  if (!group) return null;
+                  
+                  const selectedCount = (selectedOptions[groupId] || []).length;
+                  const min = group.minSelect || 0;
+                  const max = group.maxSelect || 0;
+                  
+                  return (
+                    <div key={groupId} className="space-y-4">
+                       <div className="flex items-end justify-between">
+                          <div>
+                             <p className="text-[13px] font-bold text-stone-800 uppercase tracking-wide">{group.name}</p>
+                             <p className="text-[11px] font-medium text-stone-400 mt-0.5">
+                                {min > 0 ? `Required: Select ${min}` : "Optional"}
+                                {max > 0 ? ` (Max ${max})` : ""}
+                             </p>
+                          </div>
+                          <span className={`rounded-full px-2.5 py-0.5 text-[10px] font-bold ${selectedCount < min ? 'bg-rose-50 text-rose-600 border border-rose-100' : 'bg-emerald-50 text-emerald-600 border border-emerald-100'}`}>
+                             {selectedCount} Selected
+                          </span>
+                       </div>
+
+                       <div className="grid gap-2.5">
+                          {group.options.map(opt => {
+                             const isSelected = (selectedOptions[groupId] || []).includes(opt.id);
+                             return (
+                                <button
+                                   key={opt.id}
+                                   type="button"
+                                   onClick={() => {
+                                      const current = selectedOptions[groupId] || [];
+                                      if (isSelected) {
+                                         setSelectedOptions(prev => ({ ...prev, [groupId]: current.filter(id => id !== opt.id) }));
+                                      } else {
+                                         if (max === 1) {
+                                            setSelectedOptions(prev => ({ ...prev, [groupId]: [opt.id] }));
+                                         } else if (max === 0 || current.length < max) {
+                                            setSelectedOptions(prev => ({ ...prev, [groupId]: [...current, opt.id] }));
+                                         }
+                                      }
+                                   }}
+                                   className={`flex items-center justify-between rounded-2xl border-2 px-4 py-3.5 transition-all ${isSelected ? 'border-amber-500 bg-amber-50/30 shadow-md shadow-amber-100/50' : 'border-stone-100 bg-stone-50/50 hover:border-stone-200'}`}
+                                >
+                                   <div className="flex items-center gap-3">
+                                      <div className={`flex h-5 w-5 items-center justify-center rounded-full border-2 transition-all ${isSelected ? 'border-amber-500 bg-amber-500' : 'border-stone-300 bg-white'}`}>
+                                         {isSelected && (
+                                            <svg viewBox="0 0 24 24" className="h-3 w-3 text-white" fill="none" stroke="currentColor" strokeWidth="4">
+                                               <path d="M20 6L9 17l-5-5" />
+                                            </svg>
+                                         )}
+                                      </div>
+                                      <span className={`text-[13px] font-semibold ${isSelected ? 'text-stone-900' : 'text-stone-600'}`}>{opt.name}</span>
+                                   </div>
+                                   {opt.price > 0 && (
+                                      <span className={`text-[12px] font-bold ${isSelected ? 'text-amber-600' : 'text-stone-400'}`}>+₹{opt.price}</span>
+                                   )}
+                                </button>
+                             );
+                          })}
+                       </div>
+                    </div>
+                  );
+               })}
+            </div>
+
+            {/* Modal Footer */}
+            <div className="border-t border-stone-100 bg-stone-50/50 p-6">
+               <button
+                  type="button"
+                  onClick={() => {
+                     // Validate selections
+                     for (const groupId of activeOptionsItem.item.optionGroupIds || []) {
+                        const group = data?.optionGroups.find(g => g.id === groupId);
+                        if (!group) continue;
+                        const count = (selectedOptions[groupId] || []).length;
+                        if (count < (group.minSelect || 0)) {
+                           alert(`Please select at least ${group.minSelect} in ${group.name}`);
+                           return;
+                        }
+                     }
+                     
+                     // Collect options objects
+                     const finalOpts: Array<{ id: string; name: string; price: number }> = [];
+                     Object.values(selectedOptions).flat().forEach(optId => {
+                        for (const g of data?.optionGroups || []) {
+                           const o = g.options.find(x => x.id === optId);
+                           if (o) {
+                              finalOpts.push({ id: o.id, name: o.name, price: o.price || 0 });
+                              break;
+                           }
+                        }
+                     });
+                     
+                     addItemPublicWithOptions(activeOptionsItem.item, activeOptionsItem.variantId, finalOpts);
+                     setActiveOptionsItem(null);
+                  }}
+                  className="w-full rounded-2xl bg-stone-900 py-4 text-[15px] font-bold text-white shadow-xl hover:bg-stone-800 active:scale-[0.98] transition-all"
+               >
+                  Add Selection
+               </button>
             </div>
           </div>
         </div>

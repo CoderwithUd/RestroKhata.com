@@ -1482,6 +1482,13 @@ async function toggleAvailability(item: MenuItemRecord) {
       minSelect: String(group.minSelect ?? 0),
       maxSelect: String(group.maxSelect ?? Math.max(1, group.options.length)),
       sortOrder: String(group.sortOrder ?? 0),
+      options: group.options.map((o) => ({
+        key: `existing-${o.id}`,
+        name: o.name,
+        price: String(o.price ?? 0),
+        isAvailable: o.isAvailable ?? true,
+        sortOrder: String(o.sortOrder ?? 0),
+      })),
     });
     setIsOGSheetOpen(true);
   }

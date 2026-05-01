@@ -31,6 +31,7 @@ import {
   selectAuthUser,
 } from "@/store/slices/authSlice";
 import { useGetTablesQuery } from "@/store/api/tablesApi";
+import { useGetKitchenOrderItemsQuery } from "@/store/api/ordersApi";
 
 
 type DashboardCardProps = {
@@ -883,6 +884,17 @@ export function DashboardCard({ section }: DashboardCardProps) {
     { skip: activeId !== "menu" },
   );
 
+  // New queries for badges
+  const { data: pendingInvoicesPayload } = useGetInvoicesQuery(
+    { status: "ISSUED", page: 1, limit: 1 },
+    { pollingInterval: 30000 }
+  );
+
+  const { data: kitchenItemsPayload } = useGetKitchenOrderItemsQuery(
+    { includeDone: false, page: 1, limit: 1 },
+    { pollingInterval: 20000 }
+  );
+
   const activeSection = activeId ? SECTION_LIBRARY[activeId] : null;
   const navSections = allowedIds.map((id) => SECTION_LIBRARY[id]);
   const bottomTabs = navSections.slice(0, 5);
@@ -1026,10 +1038,16 @@ export function DashboardCard({ section }: DashboardCardProps) {
   const tenantSlug = tentantProfile?.tenant?.slug || tenant?.slug || "";
 
   const getNavBadge = (id: SectionId): string | undefined => {
-    if (id === "orders") return `${activeOrderCount}`;
-    if (id === "kitchen") return `${kitchenActiveCount}`;
-    if (id === "tables") return `${totalTablesCount}`;
-    if (id === "menu" && menuTotalCount) return `${menuTotalCount}`;
+    if (id === "orders" && activeOrderCount > 0) return `${activeOrderCount}`;
+    if (id === "kitchen") {
+      const count = kitchenItemsPayload?.pagination?.total ?? 0;
+      return count > 0 ? `${count}` : undefined;
+    }
+    if (id === "invoices") {
+      const count = pendingInvoicesPayload?.pagination?.total ?? 0;
+      return count > 0 ? `${count}` : undefined;
+    }
+    if (id === "tables" && occupiedTablesCount > 0) return `${occupiedTablesCount}`;
     return undefined;
   };
 

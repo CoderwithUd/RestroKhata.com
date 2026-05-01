@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
@@ -21,7 +21,7 @@ import {
   useGetInvoicesQuery,
 } from "@/store/api/invoicesApi";
 import { useGetTablesQuery } from "@/store/api/tablesApi";
-import { useGetMenuAggregateQuery } from "@/store/api/menuApi";
+import { useGetMenuAggregateQuery, useGetMenuOptionGroupsQuery } from "@/store/api/menuApi";
 import { TakeawayView } from "@/components/takeaway-view";
 import { OrdersBoardView } from "@/components/orders-board-view";
 import { OrdersHistoryView } from "@/components/orders-history-view";
@@ -63,6 +63,8 @@ type CartEntry = {
   unitPrice: number;
   quantity: number;
   note?: string;
+  optionIds?: string[];
+  options?: Array<{ id: string; name: string; price: number }>;
 };
 
 type OrderCartSummaryEntry = {
@@ -75,6 +77,8 @@ type OrderCartSummaryEntry = {
   existingQuantity: number;
   addedQuantity: number;
   note?: string;
+  optionIds?: string[];
+  options?: Array<{ id: string; name: string; price: number }>;
 };
 
 type OptionalCustomerDetails = {
@@ -169,11 +173,9 @@ type OrderAppendSignal = {
   byItemKey: Record<string, OrderItemDelta>;
 };
 
-function orderItemKey(
-  item: Pick<OrderItem, "itemId" | "variantId" | "lineId">,
-): string {
-  if (item.lineId) return `line::${item.lineId}`;
-  return `${item.itemId}::${item.variantId || "base"}`;
+function orderItemKey(item: { itemId: string; variantId?: string; options?: Array<{ id?: string; optionId?: string }> }): string {
+  const optionsPart = (item.options || []).map(o => o.id || o.optionId).sort().join(",");
+  return `${item.itemId}::${item.variantId || "base"}${optionsPart ? `::${optionsPart}` : ""}`;
 }
 
 function itemStatusLabel(status?: string): string {
@@ -592,6 +594,9 @@ function MenuBrowser({
   const { data: menuData, isLoading: menuLoading } = useGetMenuAggregateQuery({
     isAvailable: true,
   });
+  const { data: ogData } = useGetMenuOptionGroupsQuery();
+  const optionGroups = useMemo(() => ogData?.items || [], [ogData]);
+  
   const [activeCat, setActiveCat] = useState<string | null>(null);
   const [cart, setCart] = useState<CartEntry[]>([]);
   const [search, setSearch] = useState("");
@@ -600,6 +605,14 @@ function MenuBrowser({
   const [selectedVariants, setSelectedVariants] = useState<
     Record<string, string | undefined>
   >({});
+  
+  // Options Modal State
+  const [activeOptionsItem, setActiveOptionsItem] = useState<{
+    item: MenuItemRecord;
+    variantId?: string;
+  } | null>(null);
+  const [selectedOptions, setSelectedOptions] = useState<Record<string, string[]>>({});
+  
   const searchRef = useRef<HTMLInputElement>(null);
 
   const categories = useMemo(() => menuData?.categories || [], [menuData]);
@@ -640,7 +653,10 @@ function MenuBrowser({
   }, [allItems, activeCat, search, categories]);
 
   const cartTotal = useMemo(
-    () => cart.reduce((s, e) => s + e.unitPrice * e.quantity, 0),
+    () => cart.reduce((s, e) => {
+      const optionsPrice = (e.options || []).reduce((sum, opt) => sum + opt.price, 0);
+      return s + (e.unitPrice + optionsPrice) * e.quantity;
+    }, 0),
     [cart],
   );
   const readyExistingItems = useMemo(
@@ -661,7 +677,8 @@ function MenuBrowser({
 
     for (const item of existingOrder?.items || []) {
       if (normalizeStatus(item.status) === "CANCELLED") continue;
-      const key = `${item.itemId}::${item.variantId || "base"}`;
+      const optionsPart = (item.options || []).map(o => o.optionId).sort().join(",");
+      const key = `${item.itemId}::${item.variantId || "base"}${optionsPart ? `::${optionsPart}` : ""}`;
       const existing = map.get(key);
       if (existing) {
         existing.existingQuantity += item.quantity;
@@ -677,12 +694,15 @@ function MenuBrowser({
           existingQuantity: item.quantity,
           addedQuantity: 0,
           note: item.note,
+          optionIds: item.options?.map(o => o.optionId),
+          options: item.options?.map(o => ({ id: o.optionId, name: o.name, price: o.price })),
         });
       }
     }
 
     for (const item of cart) {
-      const key = `${item.itemId}::${item.variantId || "base"}`;
+      const optionsPart = (item.optionIds || []).sort().join(",");
+      const key = `${item.itemId}::${item.variantId || "base"}${optionsPart ? `::${optionsPart}` : ""}`;
       const existing = map.get(key);
       if (existing) {
         existing.addedQuantity += item.quantity;
@@ -698,6 +718,8 @@ function MenuBrowser({
           existingQuantity: 0,
           addedQuantity: item.quantity,
           note: item.note,
+          optionIds: item.optionIds,
+          options: item.options,
         });
       }
     }
@@ -716,8 +738,8 @@ function MenuBrowser({
 
   function getQty(itemId: string, variantId?: string): number {
     return (
-      cart.find((e) => e.itemId === itemId && e.variantId === variantId)
-        ?.quantity ?? 0
+      cart.filter((e) => e.itemId === itemId && e.variantId === variantId)
+        .reduce((sum, e) => sum + e.quantity, 0) ?? 0
     );
   }
 
@@ -736,17 +758,22 @@ function MenuBrowser({
     setSelectedVariants((prev) => ({ ...prev, [itemId]: variantId }));
   }
 
-  function addItem(item: MenuItemRecord, forcedVariantId?: string) {
-    const variants = availableMenuVariants(item);
-    const variant =
-      variants.find((entry) => entry.id === forcedVariantId) ||
-      variants.find((entry) => entry.id === selectedVariants[item.id]) ||
-      variants[0];
-    const variantId = variant?.id;
+
+  function addItemWithOptions(itemOrId: MenuItemRecord | string, variantId?: string, opts?: Array<{ id: string; name: string; price: number }>) {
+    const item = typeof itemOrId === 'string' ? allItems.find(i => i.id === itemOrId) : itemOrId;
+    if (!item) return;
+
+    const variant = availableMenuVariants(item).find(v => v.id === variantId) || availableMenuVariants(item)[0];
     const price = variant?.price ?? item.price ?? 0;
+    const optionIds = opts?.map(o => o.id) || [];
+    const optionsPart = [...optionIds].sort().join(",");
+    
     setCart((prev) => {
       const idx = prev.findIndex(
-        (e) => e.itemId === item.id && e.variantId === variantId,
+        (e) => {
+          const eOptsPart = (e.optionIds || []).sort().join(",");
+          return e.itemId === item.id && e.variantId === variantId && eOptsPart === optionsPart;
+        }
       );
       if (idx >= 0) {
         return prev.map((e, i) =>
@@ -762,9 +789,28 @@ function MenuBrowser({
           variantName: variant?.name,
           unitPrice: price,
           quantity: 1,
+          optionIds,
+          options: opts,
         },
       ];
     });
+  }
+
+  function addItem(item: MenuItemRecord, forcedVariantId?: string) {
+    const variants = availableMenuVariants(item);
+    const variant =
+      variants.find((entry) => entry.id === forcedVariantId) ||
+      variants.find((entry) => entry.id === selectedVariants[item.id]) ||
+      variants[0];
+    const variantId = variant?.id;
+
+    if (item.optionGroupIds && item.optionGroupIds.length > 0) {
+      setActiveOptionsItem({ item, variantId });
+      setSelectedOptions({});
+      return;
+    }
+
+    addItemWithOptions(item, variantId);
   }
 
   function incrementCartEntry(itemId: string, variantId?: string) {
@@ -777,10 +823,14 @@ function MenuBrowser({
     );
   }
 
-  function removeItem(itemId: string, variantId?: string) {
+  function removeItem(itemId: string, variantId?: string, optionIds?: string[]) {
+    const optionsPart = (optionIds || []).sort().join(",");
     setCart((prev) => {
       const idx = prev.findIndex(
-        (e) => e.itemId === itemId && e.variantId === variantId,
+        (e) => {
+          const eOptsPart = (e.optionIds || []).sort().join(",");
+          return e.itemId === itemId && e.variantId === variantId && eOptsPart === optionsPart;
+        }
       );
       if (idx < 0) return prev;
       const entry = prev[idx];
@@ -1155,24 +1205,20 @@ function MenuBrowser({
                               Add
                             </button>
                           ) : (
-                            <div className="flex items-center gap-1 rounded-xl border border-amber-200 bg-white px-1 py-0.5">
-                              <button
-                                type="button"
-                                onClick={() => removeItem(item.id, variantId)}
-                                className="flex h-6 w-6 items-center justify-center rounded-lg border border-slate-200 text-sm font-bold text-slate-600"
-                              >
-                                −
-                              </button>
-                              <span className="min-w-[14px] text-center text-sm font-bold text-amber-700">
-                                {qty}
-                              </span>
-                              <button
-                                type="button"
-                                onClick={() => addItem(item, variantId)}
-                                className="flex h-6 w-6 items-center justify-center rounded-lg bg-amber-500 text-sm font-bold text-white"
-                              >
-                                +
-                              </button>
+                            <div className="flex flex-col items-end gap-1">
+                              <div className="flex items-center gap-1 rounded-xl border border-amber-200 bg-white px-1 py-0.5">
+                                <span className="px-1.5 text-[11px] font-bold text-amber-700">
+                                  {qty} In Cart
+                                </span>
+                                <button
+                                  type="button"
+                                  onClick={() => addItem(item, variantId)}
+                                  className="flex h-6 w-6 items-center justify-center rounded-lg bg-amber-500 text-sm font-bold text-white"
+                                >
+                                  +
+                                </button>
+                              </div>
+                              <p className="text-[9px] text-slate-400 italic">Options inside cart</p>
                             </div>
                           )}
                         </div>
@@ -1275,48 +1321,56 @@ function MenuBrowser({
                 {existingOrder ? "No new items added yet" : "Tap items to add"}
               </p>
             ) : (
-              <div className="space-y-2">
-                {cart.map((entry) => (
-                  <div
-                    key={`${entry.itemId}-${entry.variantId}`}
-                    className="flex items-start gap-2"
-                  >
-                    <div className="min-w-0 flex-1">
-                      <p className="text-xs font-medium text-slate-800 line-clamp-1">
-                        {entry.name}
-                      </p>
-                      {entry.variantName && (
-                        <p className="text-[10px] text-slate-400">
-                          {entry.variantName}
-                        </p>
+              <div className="space-y-2.5">
+                {cart.map((entry) => {
+                  const optionsPrice = (entry.options || []).reduce((sum, opt) => sum + opt.price, 0);
+                  const totalLinePrice = (entry.unitPrice + optionsPrice) * entry.quantity;
+                  return (
+                    <div
+                      key={`desktop-cart-${entry.itemId}-${entry.variantId}-${(entry.optionIds || []).sort().join(",")}`}
+                      className="flex flex-col gap-1 rounded-xl border border-slate-100 bg-slate-50 p-2"
+                    >
+                      <div className="flex items-start gap-2">
+                        <div className="min-w-0 flex-1">
+                          <p className="text-xs font-semibold text-slate-800 line-clamp-1">
+                            {entry.name}
+                          </p>
+                          {entry.variantName && (
+                            <p className="text-[10px] font-medium text-slate-400">
+                              {entry.variantName}
+                            </p>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-1 shrink-0 rounded-xl border border-slate-200 bg-white p-1 shadow-sm">
+                          <button onClick={() => removeItem(entry.itemId, entry.variantId, entry.optionIds)} 
+                            className="flex h-5 w-5 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-100 transition active:scale-90 font-bold">−</button>
+                          <span className="min-w-[16px] text-center text-[10px] font-black text-amber-700">{entry.quantity}</span>
+                          <button onClick={() => addItemWithOptions(entry.itemId, entry.variantId, entry.options)} 
+                            className="flex h-5 w-5 items-center justify-center rounded-lg bg-amber-500 text-white hover:bg-amber-600 transition active:scale-90 shadow-sm shadow-amber-200">+</button>
+                        </div>
+                      </div>
+
+                      {entry.options && entry.options.length > 0 && (
+                        <div className="flex flex-wrap gap-1 border-t border-slate-200/50 pt-1.5 mt-0.5">
+                          {entry.options.map((opt) => (
+                            <span key={opt.id} className="inline-flex items-center rounded-md bg-white px-1.5 py-0.5 text-[9px] font-medium text-slate-500 border border-slate-200">
+                              {opt.name} {opt.price > 0 ? `(+₹${opt.price})` : ""}
+                            </span>
+                          ))}
+                        </div>
                       )}
-                      <p className="text-xs text-slate-500">
-                        {fmtCurrency(entry.unitPrice)} × {entry.quantity}
-                      </p>
+
+                      <div className="flex justify-between items-center mt-1 border-t border-slate-200/50 pt-1.5">
+                        <p className="text-[10px] text-slate-400">
+                          {fmtCurrency(entry.unitPrice + optionsPrice)} each
+                        </p>
+                        <p className="text-[11px] font-bold text-amber-700">
+                          {fmtCurrency(totalLinePrice)}
+                        </p>
+                      </div>
                     </div>
-                    <div className="flex items-center gap-1">
-                      <button
-                        onClick={() =>
-                          removeItem(entry.itemId, entry.variantId)
-                        }
-                        className="flex h-6 w-6 items-center justify-center rounded-md border border-slate-200 text-xs text-slate-600"
-                      >
-                        −
-                      </button>
-                      <span className="text-xs font-bold w-4 text-center">
-                        {entry.quantity}
-                      </span>
-                      <button
-                        onClick={() =>
-                          incrementCartEntry(entry.itemId, entry.variantId)
-                        }
-                        className="flex h-6 w-6 items-center justify-center rounded-md bg-amber-500 text-xs text-white"
-                      >
-                        +
-                      </button>
-                    </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </div>
@@ -1357,84 +1411,267 @@ function MenuBrowser({
             onClick={(e) => e.stopPropagation()}
           >
             <div className="mb-4 flex items-center justify-between">
-              <p className="text-base font-bold">Cart — Table {table.number}</p>
+              <div>
+                <p className="text-lg font-bold">Your Cart</p>
+                <p className="text-xs text-slate-500">Table {table.number}</p>
+              </div>
               <button
                 onClick={() => setCartOpen(false)}
-                className="text-slate-400"
+                className="rounded-full bg-slate-100 p-2 text-slate-500"
               >
-                ✕
+                <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2.5">
+                  <path d="M18 6L6 18M6 6l12 12" />
+                </svg>
               </button>
             </div>
-            {cart.length === 0 ? (
-              <p className="py-8 text-center text-sm text-slate-400">
-                {existingOrder
-                  ? "No new items added yet"
-                  : "Nothing in cart yet"}
-              </p>
-            ) : (
-              <div className="max-h-64 space-y-3 overflow-y-auto">
-                {cart.map((entry) => (
-                  <div
-                    key={`${entry.itemId}-${entry.variantId}`}
-                    className="flex items-center gap-3"
-                  >
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium truncate">
-                        {entry.name}
-                      </p>
-                      <p className="text-xs text-slate-500">
-                        {fmtCurrency(entry.unitPrice)} × {entry.quantity} ={" "}
-                        {fmtCurrency(entry.unitPrice * entry.quantity)}
-                      </p>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <button
-                        onClick={() =>
-                          removeItem(entry.itemId, entry.variantId)
-                        }
-                        className="h-7 w-7 rounded-lg border border-slate-200 text-sm font-bold"
+
+            <div className="max-h-[60vh] overflow-y-auto no-scrollbar space-y-3">
+              {existingOrder && existingOrder.items.length > 0 && (
+                <div className="rounded-2xl bg-slate-50 p-3 space-y-2.5">
+                   <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">Current Order</p>
+                   {summaryEntries.filter(e => e.existingQuantity > 0).map(entry => (
+                      <div key={`mob-cur-${entry.key}`} className="flex justify-between items-start gap-2">
+                         <div className="min-w-0 flex-1">
+                            <p className="text-sm font-semibold text-slate-700 truncate">{entry.name}</p>
+                            {entry.options && entry.options.length > 0 && (
+                               <p className="text-[10px] text-slate-400 truncate">
+                                  {entry.options.map(o => o.name).join(", ")}
+                               </p>
+                            )}
+                         </div>
+                         <p className="text-sm font-bold text-slate-600">{entry.existingQuantity}x</p>
+                      </div>
+                   ))}
+                </div>
+              )}
+
+              {cart.length === 0 ? (
+                <div className="py-12 text-center">
+                  <p className="text-slate-400">Empty cart. Select items from menu.</p>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  <p className="text-[10px] font-bold uppercase tracking-widest text-amber-500 px-1">Adding New</p>
+                  {cart.map((entry) => {
+                    const optionsPrice = (entry.options || []).reduce((sum, opt) => sum + opt.price, 0);
+                    return (
+                      <div
+                        key={`mob-cart-${entry.itemId}-${entry.variantId}-${(entry.optionIds || []).sort().join(",")}`}
+                        className="flex flex-col gap-2 rounded-2xl border border-slate-100 bg-white p-3 shadow-sm"
                       >
-                        −
-                      </button>
-                      <span className="w-4 text-center text-sm font-bold">
-                        {entry.quantity}
-                      </span>
-                      <button
-                        onClick={() =>
-                          incrementCartEntry(entry.itemId, entry.variantId)
-                        }
-                        className="h-7 w-7 rounded-lg bg-amber-500 text-sm font-bold text-white"
-                      >
-                        +
-                      </button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-            <input
-              value={tableNote}
-              onChange={(e) => setTableNote(e.target.value)}
-              placeholder="Table note (optional)"
-              className="mt-4 h-10 w-full rounded-xl border border-slate-200 px-3 text-sm outline-none focus:ring-2 ring-amber-200"
-            />
-            <div className="mt-3 flex items-center justify-between font-bold">
-              <span>Total</span>
-              <span className="text-amber-700">
-                {fmtCurrency(summaryTotal)}
-              </span>
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="min-w-0 flex-1">
+                            <p className="text-base font-bold text-slate-900 leading-tight truncate">
+                              {entry.name}
+                            </p>
+                            {entry.variantName && (
+                              <p className="text-xs font-medium text-slate-500">
+                                {entry.variantName}
+                              </p>
+                            )}
+                          </div>
+                          <div className="flex items-center gap-2 rounded-xl border border-amber-200 bg-white p-1.5 shadow-sm">
+                            <button
+                              onClick={() => removeItem(entry.itemId, entry.variantId, entry.optionIds)}
+                              className="flex h-8 w-8 items-center justify-center rounded-xl bg-white border-2 border-slate-50 font-black text-slate-500 shadow-sm active:scale-90 transition"
+                            >
+                              −
+                            </button>
+                            <span className="w-6 text-center text-base font-black text-amber-700">
+                              {entry.quantity}
+                            </span>
+                            <button
+                              onClick={() => addItemWithOptions(entry.itemId, entry.variantId, entry.options)}
+                              className="flex h-8 w-8 items-center justify-center rounded-xl bg-amber-500 font-black text-white shadow-lg shadow-amber-200 active:scale-90 transition"
+                            >
+                              +
+                            </button>
+                          </div>
+                        </div>
+
+                        {entry.options && entry.options.length > 0 && (
+                          <div className="flex flex-wrap gap-1.5 border-t border-slate-50 pt-2">
+                            {entry.options.map((opt) => (
+                              <span key={opt.id} className="rounded-lg bg-slate-100 px-2 py-1 text-[10px] font-semibold text-slate-600">
+                                {opt.name} {opt.price > 0 ? `(+₹${opt.price})` : ""}
+                              </span>
+                            ))}
+                          </div>
+                        )}
+
+                        <div className="flex items-center justify-between border-t border-slate-50 pt-2">
+                           <p className="text-xs font-medium text-slate-400">{fmtCurrency(entry.unitPrice + optionsPrice)} each</p>
+                           <p className="text-base font-black text-amber-600">{fmtCurrency((entry.unitPrice + optionsPrice) * entry.quantity)}</p>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
             </div>
-            <button
-              type="button"
-              disabled={cart.length === 0}
-              onClick={() => {
-                setCartOpen(false);
-                onConfirm(cart, tableNote);
-              }}
-              className="mt-3 w-full rounded-2xl bg-amber-500 py-3.5 text-base font-bold text-white shadow-lg shadow-amber-200 disabled:opacity-40"
-            >
-              {composeMode === "force-new" ? "Create New Order" : "Add Items"}
-            </button>
+
+            <div className="mt-6 space-y-4 border-t border-slate-100 pt-5">
+              <div className="flex items-center justify-between">
+                <span className="text-base font-bold text-slate-600">Total Amount</span>
+                <span className="text-2xl font-black text-amber-600">{fmtCurrency(summaryTotal)}</span>
+              </div>
+              <button
+                type="button"
+                disabled={cart.length === 0}
+                onClick={() => {
+                  setCartOpen(false);
+                  onConfirm(cart, tableNote);
+                }}
+                className="flex w-full items-center justify-center gap-2 rounded-2xl bg-amber-500 py-4 text-base font-bold text-white shadow-xl shadow-amber-200 active:scale-95 transition disabled:opacity-50"
+              >
+                {composeMode === "force-new" ? "🚀 Create Order" : "✅ Confirm Add Items"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Item Options Selection Modal ─────────────────────────────────── */}
+      {activeOptionsItem && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm" onClick={() => setActiveOptionsItem(null)} />
+          <div className="relative flex w-full max-w-lg flex-col rounded-3xl bg-white shadow-2xl overflow-hidden max-h-[90vh]">
+            {/* Modal Header */}
+            <div className="bg-amber-50 px-6 py-5 border-b border-amber-100">
+               <div className="flex items-start justify-between gap-4">
+                  <div>
+                    <h3 className="text-xl font-black text-slate-900 leading-tight">
+                      {activeOptionsItem.item.name}
+                    </h3>
+                    <p className="mt-1 text-sm font-semibold text-amber-700">
+                      Customize your item
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    {activeOptionsItem.item.optionGroupIds?.every(gid => (optionGroups.find((g:any) => g.id === gid)?.minSelect || 0) === 0) && (
+                      <button 
+                        onClick={() => {
+                          addItemWithOptions(activeOptionsItem.item, activeOptionsItem.variantId, []);
+                          setActiveOptionsItem(null);
+                        }}
+                        className="text-[11px] font-bold text-slate-400 hover:text-amber-600 px-3 py-1.5 rounded-xl border border-slate-100 bg-slate-50 transition-colors"
+                      >
+                        Skip All
+                      </button>
+                    )}
+                    <button onClick={() => setActiveOptionsItem(null)} className="rounded-xl bg-white/80 p-2 text-slate-400 hover:text-slate-600 shadow-sm border border-amber-100">
+                       <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="3">
+                          <path d="M18 6L6 18M6 6l12 12" />
+                       </svg>
+                    </button>
+                  </div>
+               </div>
+            </div>
+
+            {/* Modal Content */}
+            <div className="flex-1 overflow-y-auto no-scrollbar p-6 space-y-8">
+               {activeOptionsItem.item.optionGroupIds?.map(groupId => {
+                  const group = optionGroups.find(g => g.id === groupId);
+                  if (!group) return null;
+                  
+                  const selectedCount = (selectedOptions[groupId] || []).length;
+                  const min = group.minSelect || 0;
+                  const max = group.maxSelect || 0;
+                  
+                  return (
+                    <div key={groupId} className="space-y-3">
+                       <div className="flex items-end justify-between">
+                          <div>
+                             <p className="text-sm font-black text-slate-800 uppercase tracking-wide">{group.name}</p>
+                             <p className="text-[11px] font-bold text-slate-400">
+                                {min > 0 ? `Required: Select ${min}` : "Optional"}
+                                {max > 0 ? ` (Max ${max})` : ""}
+                             </p>
+                          </div>
+                          <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${selectedCount < min ? 'bg-rose-100 text-rose-600 border border-rose-200' : 'bg-emerald-100 text-emerald-600 border border-emerald-200'}`}>
+                             {selectedCount} Selected
+                          </span>
+                       </div>
+
+                       <div className="grid gap-2">
+                           {group.options.map((opt: { id: string; name: string; price?: number }) => {
+                             const isSelected = (selectedOptions[groupId] || []).includes(opt.id);
+                             return (
+                                <button
+                                   key={opt.id}
+                                   type="button"
+                                   onClick={() => {
+                                      const current = selectedOptions[groupId] || [];
+                                      if (isSelected) {
+                                         setSelectedOptions(prev => ({ ...prev, [groupId]: current.filter(id => id !== opt.id) }));
+                                      } else {
+                                         if (max === 1) {
+                                            setSelectedOptions(prev => ({ ...prev, [groupId]: [opt.id] }));
+                                         } else if (max === 0 || current.length < max) {
+                                            setSelectedOptions(prev => ({ ...prev, [groupId]: [...current, opt.id] }));
+                                         }
+                                      }
+                                   }}
+                                   className={`flex items-center justify-between rounded-2xl border-2 px-4 py-3 transition-all ${isSelected ? 'border-amber-500 bg-amber-50 shadow-md shadow-amber-100 ring-1 ring-amber-200' : 'border-slate-100 bg-slate-50 hover:border-slate-200'}`}
+                                >
+                                   <div className="flex items-center gap-3">
+                                      <div className={`flex h-5 w-5 items-center justify-center rounded-full border-2 transition-all ${isSelected ? 'border-amber-500 bg-amber-500' : 'border-slate-300 bg-white'}`}>
+                                         {isSelected && (
+                                            <svg viewBox="0 0 24 24" className="h-3 w-3 text-white" fill="none" stroke="currentColor" strokeWidth="4">
+                                               <path d="M20 6L9 17l-5-5" />
+                                            </svg>
+                                         )}
+                                      </div>
+                                      <span className={`text-sm font-bold ${isSelected ? 'text-slate-900' : 'text-slate-600'}`}>{opt.name}</span>
+                                   </div>
+                                   {opt.price != null && opt.price > 0 && (
+                                      <span className={`text-xs font-black ${isSelected ? 'text-amber-700' : 'text-slate-400'}`}>+₹{opt.price}</span>
+                                   )}
+                                </button>
+                             );
+                          })}
+                       </div>
+                    </div>
+                  );
+               })}
+            </div>
+
+            {/* Modal Footer */}
+            <div className="border-t border-slate-100 bg-slate-50 p-6">
+               <button
+                  type="button"
+                  onClick={() => {
+                     // Validate selections
+                     for (const groupId of activeOptionsItem.item.optionGroupIds || []) {
+                        const group = optionGroups.find((g: any) => g.id === groupId);
+                        if (!group) continue;
+                        const count = (selectedOptions[groupId] || []).length;
+                        if (count < (group.minSelect || 0)) {
+                           showError(`Please select at least ${group.minSelect} in ${group.name}`);
+                           return;
+                        }
+                     }
+                     
+                     // Collect options objects
+                     const finalOpts: Array<{ id: string; name: string; price: number }> = [];
+                     Object.values(selectedOptions).flat().forEach(optId => {
+                        for (const g of optionGroups) {
+                           const o = g.options.find((x: any) => x.id === optId);
+                           if (o) {
+                              finalOpts.push({ id: o.id, name: o.name, price: o.price || 0 });
+                              break;
+                           }
+                        }
+                     });
+                     
+                     addItemWithOptions(activeOptionsItem.item, activeOptionsItem.variantId, finalOpts);
+                     setActiveOptionsItem(null);
+                  }}
+                  className="w-full rounded-2xl bg-slate-900 py-4 text-base font-bold text-white shadow-xl hover:bg-slate-800 active:scale-95 transition"
+               >
+                  Add Selection
+               </button>
+            </div>
           </div>
         </div>
       )}
@@ -2506,7 +2743,7 @@ function WaiterView({
           ...(entry.variantId ? { variantId: entry.variantId } : {}),
           quantity: entry.quantity,
           ...(entry.note ? { note: entry.note } : {}),
-          optionIds: [],
+          optionIds: entry.optionIds || [],
         }));
 
         const payload = {
@@ -4231,14 +4468,45 @@ function KitchenView() {
                               {item.quantity}x {item.name}
                               {item.variantName ? ` (${item.variantName})` : ""}
                             </p>
-                            {customerLabel ? (
-                              <p className="mt-1 inline-flex rounded-full border border-sky-200 bg-sky-50 px-2 py-0.5 text-[10px] font-semibold text-sky-800">
-                                Customer: {customerLabel}
-                              </p>
+
+                            {(item.options?.length || displayNote) ? (
+                              <div className="mt-3 overflow-hidden rounded-xl border border-amber-200 bg-white shadow-sm transition-all hover:shadow-md">
+                                <div className="flex items-center gap-2 border-b border-amber-100 bg-amber-50/60 px-3 py-1.5">
+                                  <svg viewBox="0 0 24 24" className="h-3.5 w-3.5 text-amber-600" fill="none" stroke="currentColor" strokeWidth="3">
+                                    <path d="M6 13.89L7 22l5-3 5 3 1-8.11M12 2v10m-5 0h10" />
+                                  </svg>
+                                  <span className="text-[10px] font-black uppercase tracking-[0.15em] text-amber-700">
+                                    Special Preparation
+                                  </span>
+                                </div>
+                                <div className="p-2.5 space-y-2">
+                                  {item.options && item.options.length > 0 && (
+                                    <div className="flex flex-wrap gap-2">
+                                      {item.options.map((opt) => (
+                                        <div key={opt.optionId} className="flex items-center gap-1.5 rounded-lg border border-amber-100 bg-amber-50/30 px-2 py-1">
+                                          <div className="h-1.5 w-1.5 rounded-full bg-amber-500 shadow-sm" />
+                                          <span className="text-[11px] font-black tracking-tight text-slate-800">{opt.name.toUpperCase()}</span>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  )}
+                                  {displayNote ? (
+                                    <div className="flex items-start gap-2 rounded-lg border-l-4 border-amber-400 bg-slate-50 p-2.5 shadow-sm">
+                                      <svg viewBox="0 0 24 24" className="mt-0.5 h-3 w-3 shrink-0 text-slate-400" fill="none" stroke="currentColor" strokeWidth="3">
+                                        <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+                                      </svg>
+                                      <p className="text-[11px] font-bold leading-tight text-slate-600 italic">
+                                        &quot;{displayNote}&quot;
+                                      </p>
+                                    </div>
+                                  ) : null}
+                                </div>
+                              </div>
                             ) : null}
-                            {displayNote ? (
-                              <p className="mt-0.5 text-[11px] italic text-amber-700">
-                                {displayNote}
+
+                            {customerLabel ? (
+                              <p className="mt-2 inline-flex rounded-full border border-sky-200 bg-sky-50 px-2 py-0.5 text-[10px] font-semibold text-sky-800">
+                                Customer: {customerLabel}
                               </p>
                             ) : null}
 
@@ -4321,15 +4589,29 @@ function KitchenView() {
                               {item.name}
                               {item.variantName ? ` (${item.variantName})` : ""}
                             </p>
+
+                            {item.options && item.options.length > 0 && (
+                              <div className="mt-2 flex flex-wrap gap-1.5">
+                                {item.options.map((opt) => (
+                                  <div key={opt.optionId} className="flex items-center gap-1 rounded-md bg-amber-50/50 px-1.5 py-0.5 ring-1 ring-amber-100">
+                                    <div className="h-1 w-1 rounded-full bg-amber-500" />
+                                    <span className="text-[10px] font-bold text-slate-800">{opt.name}</span>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+
                             {customerLabel ? (
                               <p className="text-[11px] font-medium text-sky-700">
                                 Customer: {customerLabel}
                               </p>
                             ) : null}
                             {displayNote ? (
-                              <p className="text-[11px] italic text-amber-700">
-                                {displayNote}
-                              </p>
+                              <div className="mt-2 border-l-2 border-amber-400 bg-slate-50/50 px-2 py-1">
+                                <p className="text-[10px] font-bold leading-tight text-slate-600 italic">
+                                  &quot;{displayNote}&quot;
+                                </p>
+                              </div>
                             ) : null}
                             {item.orderStatus ? (
                               <p className="text-[11px] font-medium text-indigo-700">

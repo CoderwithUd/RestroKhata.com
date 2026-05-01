@@ -234,7 +234,12 @@ function buildInvoiceShareText(invoice: InvoiceRecord, customerName: string, pro
   const amount = invoiceAmount(invoice);
   const itemLines = (invoice.items || []).map((item, index) => {
     const line = item.lineTotal ?? item.unitPrice * item.quantity;
-    return `${index + 1}. ${item.name}${item.variantName ? ` (${item.variantName})` : ""} - ${item.quantity} x ${fmtCurrency(item.unitPrice)} = ${fmtCurrency(line)}`;
+    const baseLine = `${index + 1}. ${item.name}${item.variantName ? ` (${item.variantName})` : ""} - ${item.quantity} x ${fmtCurrency(item.unitPrice)} = ${fmtCurrency(line)}`;
+    if (item.options && item.options.length > 0) {
+      const opts = item.options.map(o => `   + ${o.name}${o.price > 0 ? ` (+₹${o.price})` : ""}`).join("\n");
+      return `${baseLine}\n${opts}`;
+    }
+    return baseLine;
   });
   const subtotal = fmtCurrency(invoice.subTotal ?? amount);
   const tax = fmtCurrency(invoice.taxTotal ?? 0);
@@ -498,15 +503,27 @@ function InvoicePreview({
           {invoice.items.map((item, index) => {
             const total = item.lineTotal ?? item.unitPrice * item.quantity;
             return (
-              <div key={`${invoice.id}-${item.itemId}-${item.variantId || "base"}-${index}`} className="grid grid-cols-[1fr_auto] gap-2 text-[11px]">
-                <div className="min-w-0">
-                  <p className="truncate font-semibold text-slate-900">
-                    {index + 1}. {item.name}
-                    {item.variantName ? ` (${item.variantName})` : ""}
-                  </p>
-                  <p className="mt-0.5 text-slate-500">{item.quantity} x {fmtCurrency(item.unitPrice)}</p>
+              <div key={`${invoice.id}-${item.itemId}-${item.variantId || "base"}-${index}`} className="border-b border-dashed border-slate-100 pb-2 last:border-0 last:pb-0">
+                <div className="grid grid-cols-[1fr_auto] gap-2 text-[11px]">
+                  <div className="min-w-0">
+                    <p className="truncate font-semibold text-slate-900">
+                      {index + 1}. {item.name}
+                      {item.variantName ? ` (${item.variantName})` : ""}
+                    </p>
+                    <p className="mt-0.5 text-slate-500">{item.quantity} x {fmtCurrency(item.unitPrice)}</p>
+                  </div>
+                  <p className="font-semibold text-slate-900">{fmtCurrency(total)}</p>
                 </div>
-                <p className="font-semibold text-slate-900">{fmtCurrency(total)}</p>
+                {item.options && item.options.length > 0 && (
+                  <div className="mt-1 ml-4 space-y-0.5">
+                    {item.options.map(opt => (
+                      <div key={opt.optionId} className="flex justify-between text-[9px] text-slate-500">
+                        <span>+ {opt.name}</span>
+                        {opt.price > 0 && <span>{fmtCurrency(opt.price)}</span>}
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             );
           })}

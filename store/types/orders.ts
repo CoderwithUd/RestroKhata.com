@@ -151,6 +151,7 @@ export type KitchenQueueItem = {
   ageMinutes?: number;
   priorityLabel?: string;
   priorityScore?: number;
+  options?: OrderItemOption[];
   raw?: Record<string, unknown>;
   item?: Record<string, unknown>;
 };

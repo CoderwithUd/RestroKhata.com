@@ -569,8 +569,30 @@ function OrderCard({
                           ({item.variantName})
                         </span>
                       )}
+                    </p>
+
+                    {item.options && item.options.length > 0 && (
+                      <div className="flex flex-wrap gap-1 mt-0.5">
+                        {item.options.map((opt) => (
+                          <span
+                            key={opt.optionId}
+                            className="inline-flex items-center rounded-md bg-slate-100 px-1.5 py-0.5 text-[9px] font-bold text-slate-600 border border-slate-200"
+                          >
+                            {opt.name} {opt.price > 0 ? `(+₹${opt.price})` : ""}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+
+                    {item.note && (
+                      <p className="mt-1 text-[10px] italic text-amber-700">
+                        Note: {item.note}
+                      </p>
+                    )}
+
+                    <div className="mt-1 flex items-center gap-2">
                       <span
-                        className={`rounded-full border px-2 py-0.5 text-[10px] font-semibold ${itemStatusClass(
+                        className={`rounded-full border px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider ${itemStatusClass(
                           item.status,
                         )}`}
                       >
@@ -578,25 +600,17 @@ function OrderCard({
                           item.status ||
                           "Pending"}
                       </span>
-                    </p>
-
-                    {item.note && (
-                      <p className="text-[10px] italic text-amber-700 truncate">
-                        {item.note}
+                      <p className="text-[10px] font-medium text-slate-400">
+                        {fmtCurrency(
+                          item.lineTotal ?? item.unitPrice * item.quantity,
+                        )}
                       </p>
-                    )}
-
-                    <p className="mt-0.5 text-[11px] text-slate-400">
-                      {fmtCurrency(
-                        item.lineTotal ?? item.unitPrice * item.quantity,
-                      )}
-                    </p>
+                    </div>
                   </div>
                 </div>
 
                 {/* RIGHT: Status + Actions */}
                 <div className="flex flex-wrap items-center gap-1.5 justify-start w-full sm:w-auto sm:justify-end">
-                  {/* Status */}
                   {/* <span
       className={`rounded-full border px-2 py-0.5 text-[10px] font-semibold ${itemStatusClass(
         item.status

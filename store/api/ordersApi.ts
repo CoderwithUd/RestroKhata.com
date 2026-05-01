@@ -344,6 +344,17 @@ function parseKitchenQueueItem(value: unknown): KitchenQueueItem | null {
     note:
       asString(nestedItem?.note) ||
       asString(record.note),
+    options: asArray(record.options || nestedItem?.options)
+      .map((opt) => {
+        const o = asRecord(opt);
+        if (!o) return null;
+        return {
+          optionId: asString(o.optionId) || asString(o.id) || "",
+          name: asString(o.name) || "",
+          price: asNumber(o.price) ?? 0,
+        };
+      })
+      .filter((o): o is NonNullable<typeof o> => Boolean(o)),
     kitchenStatus:
       (asString(record.kitchenStatus) as KitchenQueueItem["kitchenStatus"]) ||
       (asString(record.itemStatus) as KitchenQueueItem["kitchenStatus"]) ||

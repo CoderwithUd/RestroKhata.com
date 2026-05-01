@@ -13,7 +13,10 @@ import {
   useUpdateOrderMutation,
 } from "@/store/api/ordersApi";
 import { useGetInvoicesQuery } from "@/store/api/invoicesApi";
-import { useGetMenuAggregateQuery } from "@/store/api/menuApi";
+import {
+  useGetMenuOptionGroupsQuery,
+  useGetMenuAggregateQuery,
+} from "@/store/api/menuApi";
 import { useAppSelector } from "@/store/hooks";
 import { selectAuthToken } from "@/store/slices/authSlice";
 import type { MenuItemRecord } from "@/store/types/menu";
@@ -28,6 +31,8 @@ type CartEntry = {
   unitPrice: number;
   quantity: number;
   note?: string;
+  optionIds?: string[];
+  options?: Array<{ id: string; name: string; price: number }>;
 };
 
 // ── Pure helpers ─────────────────────────────────────────────────────────────
@@ -90,6 +95,17 @@ export function TakeawayView() {
   const [appendToOrderId, setAppendToOrderId] = useState<string | null>(null);
   const [lastToken, setLastToken] = useState<string | null>(null);
 
+  // Option Groups Data
+  const { data: ogData } = useGetMenuOptionGroupsQuery();
+  const optionGroups = useMemo(() => ogData?.items || [], [ogData]);
+
+  // Options Modal State
+  const [activeOptionsItem, setActiveOptionsItem] = useState<{
+    item: MenuItemRecord;
+    variantId?: string;
+  } | null>(null);
+  const [selectedOptions, setSelectedOptions] = useState<Record<string, string[]>>({});
+
   // Socket
   useOrderSocket({
     token,
@@ -149,18 +165,40 @@ export function TakeawayView() {
     });
   }, [allItems, activeCat, search, categories]);
 
-  const cartTotal = useMemo(() => cart.reduce((s, e) => s + e.unitPrice * e.quantity, 0), [cart]);
+  const cartTotal = useMemo(() => cart.reduce((s, e) => {
+    const optionsPrice = (e.options || []).reduce((sum, opt) => sum + opt.price, 0);
+    return s + (e.unitPrice + optionsPrice) * e.quantity;
+  }, 0), [cart]);
   const cartCount = useMemo(() => cart.reduce((s, e) => s + e.quantity, 0), [cart]);
 
   // Cart helpers
   function getTAQty(itemId: string, variantId?: string) {
-    return cart.find((e) => e.itemId === itemId && e.variantId === variantId)?.quantity ?? 0;
+    return cart.filter((e) => e.itemId === itemId && e.variantId === variantId).reduce((sum, e) => sum + e.quantity, 0) ?? 0;
   }
 
   function resolveVariant(item: MenuItemRecord) {
     const variants = availableMenuVariants(item);
     if (!variants.length) return undefined;
     return variants.find((v) => v.id === selectedVariants[item.id]) || variants[0];
+  }
+
+  function addItemTAWithOptions(itemOrId: MenuItemRecord | string, variantId?: string, opts?: Array<{ id: string; name: string; price: number }>) {
+    const item = typeof itemOrId === 'string' ? allItems.find(i => i.id === itemOrId) : itemOrId;
+    if (!item) return;
+
+    const variant = availableMenuVariants(item).find(v => v.id === variantId) || availableMenuVariants(item)[0];
+    const price = variant?.price ?? item.price ?? 0;
+    const optionIds = opts?.map(o => o.id) || [];
+    const optionsPart = [...optionIds].sort().join(",");
+
+    setCart((prev) => {
+      const idx = prev.findIndex((e) => {
+        const eOptsPart = (e.optionIds || []).sort().join(",");
+        return e.itemId === item.id && e.variantId === variantId && eOptsPart === optionsPart;
+      });
+      if (idx >= 0) return prev.map((e, i) => (i === idx ? { ...e, quantity: e.quantity + 1 } : e));
+      return [...prev, { itemId: item.id, variantId, name: item.name, variantName: variant?.name, unitPrice: price, quantity: 1, optionIds, options: opts }];
+    });
   }
 
   function addItemTA(item: MenuItemRecord, forcedVariantId?: string) {
@@ -170,25 +208,31 @@ export function TakeawayView() {
       variants.find((v) => v.id === selectedVariants[item.id]) ||
       variants[0];
     const variantId = variant?.id;
-    const price = variant?.price ?? item.price ?? 0;
-    setCart((prev) => {
-      const idx = prev.findIndex((e) => e.itemId === item.id && e.variantId === variantId);
-      if (idx >= 0) return prev.map((e, i) => (i === idx ? { ...e, quantity: e.quantity + 1 } : e));
-      return [...prev, { itemId: item.id, variantId, name: item.name, variantName: variant?.name, unitPrice: price, quantity: 1 }];
-    });
+
+    if (item.optionGroupIds && item.optionGroupIds.length > 0) {
+      setActiveOptionsItem({ item, variantId });
+      setSelectedOptions({});
+      return;
+    }
+
+    addItemTAWithOptions(item, variantId);
   }
 
-  function removeItemTA(itemId: string, variantId?: string) {
+  function removeItemTA(itemId: string, variantId?: string, optionIds?: string[]) {
+    const optionsPart = (optionIds || []).sort().join(",");
     setCart((prev) => {
-      const idx = prev.findIndex((e) => e.itemId === itemId && e.variantId === variantId);
+      const idx = prev.findIndex((e) => {
+        const eOptsPart = (e.optionIds || []).sort().join(",");
+        return e.itemId === itemId && e.variantId === variantId && eOptsPart === optionsPart;
+      });
       if (idx < 0) return prev;
       if (prev[idx].quantity <= 1) return prev.filter((_, i) => i !== idx);
       return prev.map((e, i) => (i === idx ? { ...e, quantity: e.quantity - 1 } : e));
     });
   }
 
-  function incrementCartTA(itemId: string, variantId?: string) {
-    setCart((prev) => prev.map((e) => (e.itemId === itemId && e.variantId === variantId ? { ...e, quantity: e.quantity + 1 } : e)));
+  function incrementCartTA(itemId: string, variantId?: string, options?: any) {
+    addItemTAWithOptions(itemId, variantId, options);
   }
 
   // Place order
@@ -215,7 +259,7 @@ export function TakeawayView() {
         itemId: e.itemId,
         ...(e.variantId ? { variantId: e.variantId } : {}),
         quantity: e.quantity,
-        optionIds: [],
+        optionIds: e.optionIds || [],
       })),
       ...(appendToOrderId ? { appendToOrderId } : { forceNew: true }),
     };
@@ -442,12 +486,13 @@ export function TakeawayView() {
                             Add
                           </button>
                         ) : (
-                          <div className="flex items-center gap-1 rounded-xl border border-violet-200 bg-white px-1 py-0.5">
-                            <button type="button" onClick={() => removeItemTA(item.id, variantId)}
-                              className="flex h-6 w-6 items-center justify-center rounded-lg border border-slate-200 font-bold text-slate-600 text-sm">−</button>
-                            <span className="min-w-[14px] text-center text-sm font-bold text-violet-700">{qty}</span>
-                            <button type="button" onClick={() => addItemTA(item, variantId)}
-                              className="flex h-6 w-6 items-center justify-center rounded-lg bg-violet-600 font-bold text-white text-sm">+</button>
+                          <div className="flex flex-col items-end gap-1">
+                            <div className="flex items-center gap-1 rounded-xl border border-violet-200 bg-white px-1 py-0.5">
+                              <span className="px-1.5 text-[11px] font-bold text-violet-700">{qty} In Cart</span>
+                              <button type="button" onClick={() => addItemTA(item, variantId)}
+                                className="flex h-6 w-6 items-center justify-center rounded-lg bg-violet-600 font-bold text-white text-sm">+</button>
+                            </div>
+                            <p className="text-[9px] text-slate-400 italic">Options inside cart</p>
                           </div>
                         )}
                       </div>
@@ -479,26 +524,49 @@ export function TakeawayView() {
                 <svg viewBox="0 0 24 24" className="h-8 w-8 text-slate-200" fill="none" stroke="currentColor" strokeWidth="1.5">
                   <path d="M6 2L3 6v14a2 2 0 002 2h14a2 2 0 002-2V6l-3-4z" />
                   <line x1="3" y1="6" x2="21" y2="6" />
-                  <path d="M16 10a4 4 0 01-8 0" />
+<path d="M16 10a4 4 0 01-8 0" />
                 </svg>
                 <p className="text-xs text-slate-400">Add items from the menu</p>
               </div>
             ) : (
-              <div className="space-y-2">
-                {cart.map((entry) => (
-                  <div key={`${entry.itemId}-${entry.variantId}`} className="flex items-start gap-2 rounded-xl border border-slate-100 bg-slate-50 p-2">
-                    <div className="min-w-0 flex-1">
-                      <p className="line-clamp-1 text-[12px] font-semibold text-slate-800">{entry.name}</p>
-                      {entry.variantName && <p className="text-[10px] text-slate-400">{entry.variantName}</p>}
-                      <p className="text-[11px] text-slate-500">{fmtCurrency(entry.unitPrice)}</p>
+              <div className="space-y-2.5">
+                {cart.map((entry) => {
+                  const optionsPrice = (entry.options || []).reduce((sum, opt) => sum + opt.price, 0);
+                  const totalLinePrice = (entry.unitPrice + optionsPrice) * entry.quantity;
+                  return (
+                    <div key={`${entry.itemId}-${entry.variantId}-${(entry.optionIds || []).sort().join(",")}`} 
+                      className="flex flex-col gap-1 rounded-xl border border-slate-100 bg-slate-50 p-2.5 shadow-sm">
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="min-w-0 flex-1">
+                          <p className="line-clamp-1 text-[12px] font-bold text-slate-800">{entry.name}</p>
+                          {entry.variantName && <p className="text-[10px] font-medium text-slate-400">{entry.variantName}</p>}
+                        </div>
+                        <div className="flex items-center gap-1 shrink-0 rounded-xl border border-slate-200 bg-white p-1 shadow-sm">
+                          <button onClick={() => removeItemTA(entry.itemId, entry.variantId, entry.optionIds)} 
+                            className="flex h-6 w-6 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-100 transition active:scale-90 font-bold">−</button>
+                          <span className="min-w-[18px] text-center text-xs font-black text-violet-700">{entry.quantity}</span>
+                          <button onClick={() => addItemTAWithOptions(entry.itemId, entry.variantId, entry.options)} 
+                            className="flex h-6 w-6 items-center justify-center rounded-lg bg-violet-600 text-white hover:bg-violet-700 transition active:scale-90 shadow-sm shadow-violet-200">+</button>
+                        </div>
+                      </div>
+
+                      {entry.options && entry.options.length > 0 && (
+                        <div className="flex flex-wrap gap-1 border-t border-slate-200/50 pt-2 mt-1">
+                          {entry.options.map(opt => (
+                            <span key={opt.id} className="rounded bg-white px-1.5 py-0.5 text-[9px] font-semibold text-slate-500 border border-slate-100">
+                              {opt.name} {opt.price > 0 ? `(+₹${opt.price})` : ""}
+                            </span>
+                          ))}
+                        </div>
+                      )}
+
+                      <div className="flex justify-between items-center mt-1 border-t border-slate-200/50 pt-1.5">
+                        <p className="text-[10px] text-slate-400">{fmtCurrency(entry.unitPrice + optionsPrice)} each</p>
+                        <p className="text-[11px] font-bold text-violet-700">{fmtCurrency(totalLinePrice)}</p>
+                      </div>
                     </div>
-                    <div className="flex items-center gap-0.5 rounded-lg border border-slate-200 bg-white px-0.5 py-0.5">
-                      <button onClick={() => removeItemTA(entry.itemId, entry.variantId)} className="flex h-5 w-5 items-center justify-center rounded-md text-slate-500 hover:bg-slate-100">−</button>
-                      <span className="min-w-[16px] text-center text-xs font-bold text-slate-800">{entry.quantity}</span>
-                      <button onClick={() => incrementCartTA(entry.itemId, entry.variantId)} className="flex h-5 w-5 items-center justify-center rounded-md bg-violet-600 text-white hover:bg-violet-700">+</button>
-                    </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </div>
@@ -544,57 +612,225 @@ export function TakeawayView() {
         </div>
       </div>
 
-      {/* ── Mobile cart FAB ───────────────────────────────────────────── */}
-      <button
-        type="button"
-        onClick={() => setCartDrawerOpen(true)}
-        className="fixed bottom-[15%] right-4 z-40 flex items-center gap-2 rounded-2xl bg-violet-600 px-4 py-3 text-sm font-bold text-white shadow-xl shadow-violet-300 md:hidden"
-      >
-        🛒
-        {cartCount > 0 && <span className="rounded-full bg-white px-1.5 py-0.5 text-[10px] font-bold text-violet-700">{cartCount}</span>}
-        <span>{fmtCurrency(cartTotal)}</span>
-      </button>
-
       {/* Mobile cart drawer */}
       {cartDrawerOpen && (
         <div className="fixed inset-0 z-50 flex flex-col md:hidden" onClick={() => setCartDrawerOpen(false)}>
           <div className="flex-1 bg-black/40" />
           <div className="rounded-t-3xl bg-white px-4 pb-6 pt-4 shadow-2xl" onClick={(e) => e.stopPropagation()}>
-            <div className="mb-3 flex items-center justify-between">
-              <p className="text-base font-bold">Takeaway Cart</p>
-              <button onClick={() => setCartDrawerOpen(false)} className="text-xl text-slate-400">✕</button>
+            <div className="mb-4 flex items-center justify-between">
+              <div>
+                <p className="text-lg font-bold">Takeaway Cart</p>
+                <p className="text-xs text-slate-500">Items ready to place</p>
+              </div>
+              <button onClick={() => setCartDrawerOpen(false)} className="rounded-full bg-slate-100 p-2 text-slate-500">
+                 <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2.5">
+                    <path d="M18 6L6 18M6 6l12 12" />
+                 </svg>
+              </button>
             </div>
             {cart.length === 0 ? (
-              <p className="py-8 text-center text-sm text-slate-400">Cart is empty</p>
+              <p className="py-12 text-center text-sm text-slate-400 font-medium">Cart is empty</p>
             ) : (
-              <div className="max-h-56 space-y-2 overflow-y-auto">
-                {cart.map((entry) => (
-                  <div key={`${entry.itemId}-${entry.variantId}`} className="flex items-center gap-3">
-                    <div className="flex-1 min-w-0">
-                      <p className="truncate text-sm font-medium">{entry.name}</p>
-                      <p className="text-xs text-slate-500">{fmtCurrency(entry.unitPrice)}</p>
+              <div className="max-h-[60vh] space-y-3 overflow-y-auto no-scrollbar pb-2">
+                {cart.map((entry) => {
+                  const optionsPrice = (entry.options || []).reduce((sum, opt) => sum + opt.price, 0);
+                  return (
+                    <div key={`mob-ta-${entry.itemId}-${entry.variantId}-${(entry.optionIds || []).sort().join(",")}`} 
+                      className="flex flex-col gap-2 rounded-2xl border border-slate-100 bg-slate-50 p-3 shadow-sm">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate text-base font-bold text-slate-900 leading-tight">{entry.name}</p>
+                          {entry.variantName && <p className="text-xs font-medium text-slate-500">{entry.variantName}</p>}
+                        </div>
+                        <div className="flex items-center gap-2 rounded-xl border border-violet-200 bg-white p-1.5 shadow-sm">
+                          <button onClick={() => removeItemTA(entry.itemId, entry.variantId, entry.optionIds)} 
+                            className="h-8 w-8 rounded-xl border-2 border-slate-100 text-sm font-bold text-slate-600 active:scale-90 transition">−</button>
+                          <span className="w-6 text-center text-base font-black text-violet-700">{entry.quantity}</span>
+                          <button onClick={() => addItemTAWithOptions(entry.itemId, entry.variantId, entry.options)} 
+                            className="h-8 w-8 rounded-xl bg-violet-600 text-sm font-bold text-white shadow-md shadow-violet-200 active:scale-90 transition">+</button>
+                        </div>
+                      </div>
+                      
+                      {entry.options && entry.options.length > 0 && (
+                        <div className="flex flex-wrap gap-1.5 border-t border-slate-200/50 pt-2">
+                          {entry.options.map(opt => (
+                            <span key={opt.id} className="rounded-lg bg-white px-2 py-1 text-[10px] font-semibold text-slate-600 border border-slate-100">
+                              {opt.name} {opt.price > 0 ? `(+₹${opt.price})` : ""}
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                      
+                      <div className="flex items-center justify-between border-t border-slate-200/50 pt-2">
+                         <p className="text-xs font-medium text-slate-400">{fmtCurrency(entry.unitPrice + optionsPrice)} each</p>
+                         <p className="text-base font-black text-violet-700">{fmtCurrency((entry.unitPrice + optionsPrice) * entry.quantity)}</p>
+                      </div>
                     </div>
-                    <div className="flex items-center gap-1.5">
-                      <button onClick={() => removeItemTA(entry.itemId, entry.variantId)} className="h-7 w-7 rounded-lg border text-sm font-bold">−</button>
-                      <span className="w-5 text-center text-sm font-bold">{entry.quantity}</span>
-                      <button onClick={() => incrementCartTA(entry.itemId, entry.variantId)} className="h-7 w-7 rounded-lg bg-violet-600 text-sm font-bold text-white">+</button>
-                    </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
-            <div className="mt-3 flex justify-between font-bold text-base">
-              <span>Total</span>
-              <span className="text-violet-700">{fmtCurrency(cartTotal)}</span>
+            <div className="mt-6 space-y-4 border-t border-slate-100 pt-5">
+              <div className="flex justify-between font-bold text-base items-center">
+                <span className="text-slate-600">Total Amount</span>
+                <span className="text-2xl font-black text-violet-700">{fmtCurrency(cartTotal)}</span>
+              </div>
+              <button
+                type="button"
+                disabled={cart.length === 0 || isCreating}
+                onClick={() => { setCartDrawerOpen(false); handleTAPlaceOrder(); }}
+                className="w-full rounded-2xl bg-violet-600 py-4 text-base font-bold text-white shadow-xl shadow-violet-200 transition active:scale-95 disabled:opacity-40"
+              >
+                {isCreating ? (
+                   <span className="flex items-center justify-center gap-2"><Spinner /> Processing...</span>
+                ) : appendToOrderId ? "✅ Add Items to Order" : "🚀 Place Takeaway Order"}
+              </button>
             </div>
-            <button
-              type="button"
-              disabled={cart.length === 0 || isCreating}
-              onClick={() => { setCartDrawerOpen(false); handleTAPlaceOrder(); }}
-              className="mt-3 w-full rounded-2xl bg-violet-600 py-3.5 text-base font-bold text-white shadow-lg disabled:opacity-40"
-            >
-              {appendToOrderId ? "Add Items to Order" : "Place Takeaway Order"}
-            </button>
+          </div>
+        </div>
+      )}
+
+      {/* ── Item Options Selection Modal ─────────────────────────────────── */}
+      {activeOptionsItem && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm" onClick={() => setActiveOptionsItem(null)} />
+          <div className="relative flex w-full max-w-lg flex-col rounded-3xl bg-white shadow-2xl overflow-hidden max-h-[90vh]">
+            {/* Modal Header */}
+            <div className="bg-violet-50 px-6 py-5 border-b border-violet-100">
+               <div className="flex items-start justify-between gap-4">
+                  <div>
+                    <h3 className="text-xl font-black text-slate-900 leading-tight">
+                      {activeOptionsItem.item.name}
+                    </h3>
+                    <p className="mt-1 text-sm font-semibold text-violet-700">
+                      Customize your item
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    {activeOptionsItem.item.optionGroupIds?.every(gid => (optionGroups.find(g => g.id === gid)?.minSelect || 0) === 0) && (
+                      <button 
+                        onClick={() => {
+                          addItemTAWithOptions(activeOptionsItem.item, activeOptionsItem.variantId, []);
+                          setActiveOptionsItem(null);
+                        }}
+                        className="text-[11px] font-bold text-slate-400 hover:text-violet-700 px-3 py-1.5 rounded-xl border border-slate-100 bg-slate-50 transition-colors"
+                      >
+                        Skip All
+                      </button>
+                    )}
+                    <button onClick={() => setActiveOptionsItem(null)} className="rounded-xl bg-white/80 p-2 text-slate-400 hover:text-slate-600 shadow-sm border border-violet-100">
+                       <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="3">
+                          <path d="M18 6L6 18M6 6l12 12" />
+                       </svg>
+                    </button>
+                  </div>
+               </div>
+            </div>
+
+            {/* Modal Content */}
+            <div className="flex-1 overflow-y-auto no-scrollbar p-6 space-y-8">
+               {activeOptionsItem.item.optionGroupIds?.map(groupId => {
+                  const group = optionGroups.find(g => g.id === groupId);
+                  if (!group) return null;
+                  
+                  const selectedCount = (selectedOptions[groupId] || []).length;
+                  const min = group.minSelect || 0;
+                  const max = group.maxSelect || 0;
+                  
+                  return (
+                    <div key={groupId} className="space-y-3">
+                       <div className="flex items-end justify-between">
+                          <div>
+                             <p className="text-sm font-black text-slate-800 uppercase tracking-wide">{group.name}</p>
+                             <p className="text-[11px] font-bold text-slate-400">
+                                {min > 0 ? `Required: Select ${min}` : "Optional"}
+                                {max > 0 ? ` (Max ${max})` : ""}
+                             </p>
+                          </div>
+                          <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${selectedCount < min ? 'bg-rose-100 text-rose-600 border border-rose-200' : 'bg-emerald-100 text-emerald-600 border border-emerald-200'}`}>
+                             {selectedCount} Selected
+                          </span>
+                       </div>
+
+                       <div className="grid gap-2">
+                          {group.options.map((opt: { id: string; name: string; price?: number }) => {
+                             const isSelected = (selectedOptions[groupId] || []).includes(opt.id);
+                             return (
+                                <button
+                                   key={opt.id}
+                                   type="button"
+                                   onClick={() => {
+                                      const current = selectedOptions[groupId] || [];
+                                      if (isSelected) {
+                                         setSelectedOptions(prev => ({ ...prev, [groupId]: current.filter(id => id !== opt.id) }));
+                                      } else {
+                                         if (max === 1) {
+                                            setSelectedOptions(prev => ({ ...prev, [groupId]: [opt.id] }));
+                                         } else if (max === 0 || current.length < max) {
+                                            setSelectedOptions(prev => ({ ...prev, [groupId]: [...current, opt.id] }));
+                                         }
+                                      }
+                                   }}
+                                   className={`flex items-center justify-between rounded-2xl border-2 px-4 py-3 transition-all ${isSelected ? 'border-violet-500 bg-violet-50 shadow-md shadow-violet-100 ring-1 ring-violet-200' : 'border-slate-100 bg-slate-50 hover:border-slate-200'}`}
+                                >
+                                   <div className="flex items-center gap-3">
+                                      <div className={`flex h-5 w-5 items-center justify-center rounded-full border-2 transition-all ${isSelected ? 'border-violet-500 bg-violet-500' : 'border-slate-300 bg-white'}`}>
+                                         {isSelected && (
+                                            <svg viewBox="0 0 24 24" className="h-3 w-3 text-white" fill="none" stroke="currentColor" strokeWidth="4">
+                                               <path d="M20 6L9 17l-5-5" />
+                                            </svg>
+                                         )}
+                                      </div>
+                                      <span className={`text-sm font-bold ${isSelected ? 'text-slate-900' : 'text-slate-600'}`}>{opt.name}</span>
+                                   </div>
+                                   {opt.price != null && opt.price > 0 && (
+                                      <span className={`text-xs font-black ${isSelected ? 'text-violet-700' : 'text-slate-400'}`}>+₹{opt.price}</span>
+                                   )}
+                                </button>
+                             );
+                          })}
+                       </div>
+                    </div>
+                  );
+               })}
+            </div>
+
+            {/* Modal Footer */}
+            <div className="border-t border-slate-100 bg-slate-50 p-6">
+               <button
+                  type="button"
+                  onClick={() => {
+                     // Validate selections
+                     for (const groupId of activeOptionsItem.item.optionGroupIds || []) {
+                        const group = optionGroups.find(g => g.id === groupId);
+                        if (!group) continue;
+                        const count = (selectedOptions[groupId] || []).length;
+                        if (count < (group.minSelect || 0)) {
+                           showError(`Please select at least ${group.minSelect} in ${group.name}`);
+                           return;
+                        }
+                     }
+                     
+                     // Collect options objects
+                     const finalOpts: Array<{ id: string; name: string; price: number }> = [];
+                     Object.values(selectedOptions).flat().forEach(optId => {
+                        for (const g of optionGroups) {
+                           const o = g.options.find(x => x.id === optId);
+                           if (o) {
+                              finalOpts.push({ id: o.id, name: o.name, price: o.price || 0 });
+                              break;
+                           }
+                        }
+                     });
+                     
+                     addItemTAWithOptions(activeOptionsItem.item, activeOptionsItem.variantId, finalOpts);
+                     setActiveOptionsItem(null);
+                  }}
+                  className="w-full rounded-2xl bg-slate-900 py-4 text-base font-bold text-white shadow-xl hover:bg-slate-800 active:scale-95 transition"
+               >
+                  Add Selection
+               </button>
+            </div>
           </div>
         </div>
       )}

@@ -112,6 +112,13 @@ function buildInvoiceLines(invoice: InvoiceRecord, meta?: InvoicePrintMeta): str
     const lineTotal = itemLineTotal(item.unitPrice, item.quantity, item.lineTotal);
     const itemName = `${index + 1}. ${item.name}${item.variantName ? ` (${item.variantName})` : ""}`;
     lines.push(...wrapLine(itemName));
+    
+    if (item.options && item.options.length > 0) {
+      item.options.forEach(opt => {
+        lines.push(...wrapLine(`   + ${opt.name}${opt.price > 0 ? ` (+${fmtCurrency(opt.price)})` : ""}`, TEXT_WIDTH - 5));
+      });
+    }
+
     lines.push(twoCol(`   ${item.quantity} x ${fmtCurrency(item.unitPrice)}`, fmtCurrency(lineTotal)));
     if (item.note) {
       lines.push(...wrapLine(`   Note: ${item.note}`));
