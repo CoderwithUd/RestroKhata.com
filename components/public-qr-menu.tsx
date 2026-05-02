@@ -4,6 +4,8 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { API_BASE_URL } from "@/lib/constants";
 import { sanitizePhone } from "@/lib/phone";
+import { getCachedMenuResponse, setCachedMenuResponse, clearMenuCache } from "@/lib/menu-cache";
+import { useOrderSocket } from "@/lib/use-order-socket";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -843,35 +845,71 @@ export function PublicQrMenu({ tenantSlug: tenantSlugFromPath }: PublicQrMenuPro
     if (stored) setSessionToken(stored); else setSessionToken("");
   }, [tableId, tableNumber, tenantSlug, token]);
 
-  // Fetch menu
-  useEffect(() => {
-    const controller = new AbortController();
+  const fetchMenu = useCallback(async (forceRefresh = false) => {
     if (!token && !tenantSlug) {
-      setData(null); setIsLoading(false);
+      setData(null);
+      setIsLoading(false);
       setError("QR URL invalid — token or tenantSlug missing.");
-      return () => controller.abort();
+      return;
     }
-    async function fetchMenu() {
-      setIsLoading(true); setError("");
-      const params = new URLSearchParams();
-      if (token) { params.set("token", token); } else {
-        if (tenantSlug) params.set("tenantSlug", tenantSlug);
-        if (tableId) params.set("tableId", tableId);
-        if (tableNumber) params.set("tableNumber", tableNumber);
+
+    const params = new URLSearchParams();
+    if (token) {
+      params.set("token", token);
+    } else {
+      if (tenantSlug) params.set("tenantSlug", tenantSlug);
+      if (tableId) params.set("tableId", tableId);
+      if (tableNumber) params.set("tableNumber", tableNumber);
+    }
+
+    const cacheKey = `/public/menu?${params.toString()}`;
+
+    try {
+      if (!forceRefresh) {
+        const cached = await getCachedMenuResponse(cacheKey);
+        if (cached) {
+          setData(parsePayload(cached));
+          setIsLoading(false);
+          return;
+        }
       }
-      try {
-        const res = await fetch(`${API_BASE_URL}/public/menu?${params.toString()}`, { method: "GET", credentials: "omit", signal: controller.signal });
-        const body = await res.json().catch(() => ({}));
-        if (!res.ok) throw new Error(asString((body as Record<string, unknown>)?.message) || "Failed to load menu");
-        setData(parsePayload(body));
-      } catch (e) {
-        if (controller.signal.aborted) return;
-        setData(null); setError(e instanceof Error ? e.message : "Failed to load menu");
-      } finally { if (!controller.signal.aborted) setIsLoading(false); }
+
+      setIsLoading(true);
+      setError("");
+      const res = await fetch(`${API_BASE_URL}/public/menu?${params.toString()}`, {
+        method: "GET",
+        credentials: "omit",
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(asString((body as Record<string, unknown>)?.message) || "Failed to load menu");
+      
+      await setCachedMenuResponse(cacheKey, body);
+      setData(parsePayload(body));
+    } catch (e) {
+      setData(null);
+      setError(e instanceof Error ? e.message : "Failed to load menu");
+    } finally {
+      setIsLoading(false);
     }
+  }, [tableId, tableNumber, tenantSlug, token]);
+
+  useEffect(() => {
     fetchMenu();
-    return () => controller.abort();
-  }, [queryKey, searchParams, tableId, tableNumber, tenantSlug, token]);
+  }, [fetchMenu]);
+
+  useOrderSocket({
+    token,
+    tenantSlug,
+    enabled: true,
+    role: "all",
+    notifications: false,
+    voice: false,
+    onEvent: (e) => {
+      if (e.type === "refresh") {
+        clearMenuCache().then(() => fetchMenu(true)).catch(() => fetchMenu(true));
+      }
+    },
+  });
 
 
   console.log(data)

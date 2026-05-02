@@ -10,6 +10,7 @@ import { clearStoredSession, readStoredSession, writeStoredSession } from "@/lib
 import { API_BASE_URL } from "@/lib/constants";
 import type { RootState } from "@/store/store";
 import { clearSession, setToken } from "@/store/slices/authSlice";
+import { getCachedMenuResponse, setCachedMenuResponse, clearMenuCache } from "@/lib/menu-cache";
 
 const refreshCandidates = ["/auth/refresh", "/auth/refresh-token"];
 
@@ -48,6 +49,14 @@ function getStatusCode(error: FetchBaseQueryError | undefined): number | undefin
 function getRequestPath(args: string | FetchArgs): string {
   if (typeof args === "string") return args;
   return args.url;
+}
+
+function getCacheKey(args: string | FetchArgs): string {
+  if (typeof args === "string") return args;
+  const url = args.url;
+  if (!args.params) return url;
+  const searchParams = new URLSearchParams(args.params as Record<string, string>);
+  return `${url}?${searchParams.toString()}`;
 }
 
 function buildRefreshRequest(path: string): FetchArgs {
@@ -106,8 +115,38 @@ export const baseQueryWithReauth: BaseQueryFn<string | FetchArgs, unknown, Fetch
   api,
   extraOptions,
 ) => {
-  let result = await rawBaseQuery(args, api, extraOptions);
   const requestPath = getRequestPath(args);
+  const method = (typeof args === "string" ? "GET" : (args.method || "GET")).toUpperCase();
+  const isMenuPath = requestPath.includes("/menu") || requestPath.includes("/public/menu");
+
+  if (isMenuPath && method === "GET") {
+    const cacheKey = getCacheKey(args);
+    try {
+      const cachedData = await getCachedMenuResponse(cacheKey);
+      if (cachedData) {
+        console.info(`[MenuCache] Hit: ${cacheKey}`);
+        return { data: cachedData };
+      }
+    } catch (err) {
+      console.warn("[MenuCache] Read error:", err);
+    }
+  }
+
+  let result = await rawBaseQuery(args, api, extraOptions);
+
+  if (isMenuPath) {
+    if (method === "GET" && result.data && !result.error) {
+      const cacheKey = getCacheKey(args);
+      setCachedMenuResponse(cacheKey, result.data).catch((err) =>
+        console.warn("[MenuCache] Write error:", err)
+      );
+    } else if (method !== "GET" && !result.error) {
+      console.info(`[MenuCache] Mutation detected (${method} ${requestPath}), clearing cache...`);
+      await clearMenuCache();
+      console.info("[MenuCache] Cache cleared.");
+    }
+  }
+
   const isRefreshRequest = refreshCandidates.includes(requestPath);
 
   if (getStatusCode(result.error) === 401 && !isRefreshRequest) {

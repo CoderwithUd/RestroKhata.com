@@ -253,8 +253,8 @@ export function TablesWorkspace({ tenantName, tenantSlug }: Props) {
 
   const queryArg = filter === "all" ? undefined : { isActive: filter === "active" };
   const { data, isLoading, isFetching, refetch } = useGetTablesQuery(queryArg);
-  const { data: ordersData } = useGetOrdersQuery({ status: ["PLACED", "IN_PROGRESS", "READY", "SERVED"], limit: 200 });
-  const { data: invoicesData } = useGetInvoicesQuery({ status: "ISSUED", limit: 200 });
+  const { data: ordersData } = useGetOrdersQuery({ status: ["PLACED", "IN_PROGRESS", "READY", "SERVED"], limit: 100 });
+  const { data: invoicesData } = useGetInvoicesQuery({ status: "ISSUED", limit: 100 });
   const { data: customersData } = useGetCustomersQuery({ limit: 50 });
 
   const [createTable, { isLoading: isCreating }] = useCreateTableMutation();

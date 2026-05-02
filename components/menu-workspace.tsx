@@ -4,7 +4,11 @@ import { FormEvent, useEffect, useMemo, useState } from "react";
 import { useConfirm } from "@/components/confirm-provider";
 import { getErrorMessage } from "@/lib/error";
 import { showError, showSuccess } from "@/lib/feedback";
+import { clearMenuCache } from "@/lib/menu-cache";
 import { Eye, EyeOff, Plus } from "lucide-react";
+import { useOrderSocket } from "@/lib/use-order-socket";
+import { useAppSelector } from "@/store/hooks";
+import { selectAuthToken } from "@/store/slices/authSlice";
 import {
   useCreateMenuOptionGroupMutation,
   useCreateMenuCategoryMutation,
@@ -310,6 +314,16 @@ function flattenCategories(
   return output;
 }
 
+function mergeItemsById(
+  current: MenuItemRecord[],
+  incoming: MenuItemRecord[],
+): MenuItemRecord[] {
+  const map = new Map<string, MenuItemRecord>();
+  current.forEach((item) => map.set(item.id, item));
+  incoming.forEach((item) => map.set(item.id, item));
+  return Array.from(map.values());
+}
+
 function createVariant(index: number): VariantForm {
   return {
     key: `v-${Date.now()}-${Math.random().toString(16).slice(2)}-${index}`,
@@ -412,6 +426,21 @@ function validateForm(form: ItemForm): string | null {
   );
   if (invalidGroup) return `Invalid option group id: ${invalidGroup}`;
   return null;
+}
+
+function mergeItemsById(old: MenuItemRecord[], incoming: MenuItemRecord[]) {
+  const map = new Map<string, MenuItemRecord>();
+  old.forEach((i) => map.set(i.id, i));
+  incoming.forEach((i) => map.set(i.id, i));
+  return Array.from(map.values());
+}
+
+function Spinner() {
+  return (
+    <svg className="h-4 w-4 animate-spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83" />
+    </svg>
+  );
 }
 
 function toVariantsPayload(variants: VariantForm[]) {
@@ -916,16 +945,45 @@ function VariantFields({
   );
 }
 
-// ─── Main Component ───────────────────────────────────────────────────────────
-
 export function MenuWorkspace({ tenantSlug }: Props) {
   const confirm = useConfirm();
+  const token = useAppSelector(selectAuthToken);
+  const loadMoreRef = useRef<HTMLDivElement | null>(null);
+  const [itemsPage, setItemsPage] = useState(1);
+  const [itemsFeed, setItemsFeed] = useState<MenuItemRecord[]>([]);
 
   // ── Queries ──
-  const { data: categoriesPayload } = useGetMenuCategoriesQuery({ flat: true });
-  const { data: optionGroupsPayload, error: optionGroupsError } =
-    useGetMenuOptionGroupsQuery();
-  const { data: itemsPayload } = useGetMenuItemsQuery({ page: 1, limit: 100 });
+  const {
+    data: categoriesPayload,
+    refetch: refetchCategories,
+  } = useGetMenuCategoriesQuery({ flat: true });
+  const {
+    data: optionGroupsPayload,
+    error: optionGroupsError,
+    refetch: refetchOptionGroups,
+  } = useGetMenuOptionGroupsQuery();
+  const {
+    data: itemsPayload,
+    isFetching: isItemsFetching,
+    refetch: refetchItems,
+  } = useGetMenuItemsQuery({ page: itemsPage, limit: 100 });
+
+  useOrderSocket({
+    token,
+    enabled: true,
+    role: "owner",
+    onEvent: (event) => {
+      if (event.type === "refresh") {
+        clearMenuCache().finally(() => {
+          setItemsPage(1);
+          setItemsFeed([]);
+          refetchCategories();
+          refetchOptionGroups();
+          refetchItems();
+        });
+      }
+    },
+  });
 
   // ── Mutations ──
   const [createCategory, { isLoading: isCreatingCategory }] =
@@ -1051,6 +1109,35 @@ export function MenuWorkspace({ tenantSlug }: Props) {
     lsSet(LAST_VARIANTS_KEY, JSON.stringify(lastUsedVariants));
   }, [lastUsedVariants]);
 
+  useEffect(() => {
+    if (!itemsPayload?.items) return;
+    setItemsFeed((current) =>
+      itemsPage === 1
+        ? itemsPayload.items
+        : mergeItemsById(current, itemsPayload.items),
+    );
+  }, [itemsPayload, itemsPage]);
+
+  const hasMoreItems = (itemsPayload?.pagination?.totalPages ?? 1) > itemsPage;
+
+  useEffect(() => {
+    const node = loadMoreRef.current;
+    if (!node || !hasMoreItems) return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const entry = entries[0];
+        if (entry?.isIntersecting && !isItemsFetching) {
+          setItemsPage((prev) => prev + 1);
+        }
+      },
+      { rootMargin: "300px" }
+    );
+
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [hasMoreItems, isItemsFetching]);
+
   // ── Derived data ──
   const categories = useMemo(
     () =>
@@ -1105,10 +1192,10 @@ export function MenuWorkspace({ tenantSlug }: Props) {
   );
   const items = useMemo(
     () =>
-      (itemsPayload?.items || [])
+      (itemsFeed || [])
         .slice()
         .sort((a, b) => a.name.localeCompare(b.name)),
-    [itemsPayload?.items],
+    [itemsFeed],
   );
   const itemCountByCategoryId = useMemo(() => {
     const counts = new Map<string, number>();
@@ -1305,6 +1392,8 @@ export function MenuWorkspace({ tenantSlug }: Props) {
           }));
         if (remembered.length) setLastUsedVariants(remembered.slice(0, 5));
         showSuccess(res.message || "Item add ho gaya");
+        setItemsPage(1);
+        setItemsFeed([]);
       }
       closeItemModal();
     } catch (err) {
@@ -1940,6 +2029,24 @@ async function toggleAvailability(item: MenuItemRecord) {
               </p>
             </div>
           ))}
+
+        {activePanel === "itemList" && (hasMoreItems || isItemsFetching) && (
+          <div
+            ref={loadMoreRef}
+            className="flex items-center justify-center py-8"
+          >
+            {isItemsFetching ? (
+              <div className="flex items-center gap-2 text-slate-400">
+                <Spinner />
+                <span className="text-xs font-semibold">
+                  Items load ho rahe hain...
+                </span>
+              </div>
+            ) : (
+              <div className="h-4 w-full" />
+            )}
+          </div>
+        )}
 
         {/* Categories */}
         {activePanel === "category" &&

@@ -989,6 +989,9 @@ export const authApi = createApi({
         });
 
         socket.on("connect", () => {
+          if (tenantSlug) {
+            socket.emit("tenant:join", { tenantSlug });
+          }
           if (tenantId || tenantSlug || userId) {
             socket.emit("tenant:join", { tenantId, tenantSlug, userId });
           }

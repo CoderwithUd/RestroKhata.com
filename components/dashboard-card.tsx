@@ -1027,17 +1027,47 @@ export function DashboardCard({ section }: DashboardCardProps) {
     setDrawerOpen(false);
   }, [activeId]);
 
-  const onLogout = async () => {
-    try {
-      await logout().unwrap();
-    } catch (error) {
-      console.error(getErrorMessage(error));
-    } finally {
-      dispatch(clearSession());
-      clearStoredSession();
-      router.replace("/login");
+  // const onLogout = async () => {
+  //   try {
+  //     await logout().unwrap();
+  //   } catch (error) {
+  //     console.error(getErrorMessage(error));
+  //   } finally {
+  //     dispatch(clearSession());
+  //     clearStoredSession();
+  //     router.replace("/login");
+  //   }
+  // };
+  
+  
+const onLogout = async () => {
+  try {
+    await logout().unwrap();
+  } catch (error) {
+    console.error(getErrorMessage(error));
+  } finally {
+    dispatch(clearSession());
+
+    clearStoredSession();
+
+    localStorage.clear();
+    sessionStorage.clear();
+
+    document.cookie.split(";").forEach((cookie) => {
+      document.cookie = cookie
+        .replace(/^ +/, "")
+        .replace(/=.*/, "=;expires=" + new Date(0).toUTCString() + ";path=/");
+    });
+
+    if ("caches" in window) {
+      caches.keys().then((names) => {
+        names.forEach((name) => caches.delete(name));
+      });
     }
-  };
+
+    router.replace("/login");
+  }
+};
 
   const openSection = (target: SectionId) => {
     router.push(`/dashboard/${target}`);

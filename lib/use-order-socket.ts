@@ -23,6 +23,7 @@ export type SocketOrderRole = "owner" | "manager" | "waiter" | "kitchen" | "all"
 
 type UseOrderSocketOptions = {
   token: string | null | undefined;
+  tenantSlug?: string;
   enabled?: boolean;
   role?: SocketOrderRole;
   notifications?: boolean;
@@ -161,6 +162,7 @@ type LiveOptions = Pick<
 
 export function useOrderSocket({
   token,
+  tenantSlug,
   enabled = true,
   role = "all",
   notifications = true,
@@ -185,7 +187,7 @@ export function useOrderSocket({
   };
 
   useEffect(() => {
-    if (!enabled || !token || typeof window === "undefined") return;
+    if (!enabled || (!token && !tenantSlug) || typeof window === "undefined") return;
 
     let socket: import("socket.io-client").Socket | null = null;
     let destroyed = false;
@@ -212,8 +214,9 @@ export function useOrderSocket({
         },
         query: tenantId || tenantSlug ? { tenantId, tenantSlug } : undefined,
         transports: ["websocket", "polling"],
-        reconnectionAttempts: 10,
-        reconnectionDelay: 2000,
+        reconnection: true,
+        reconnectionAttempts: Infinity,
+        reconnectionDelay: 1000,
         reconnectionDelayMax: 5000,
       });
 
@@ -294,6 +297,9 @@ export function useOrderSocket({
 
       socket.on("connect", () => {
         console.info("[OrderSocket] Connected:", socket?.id);
+        if (tenantSlug) {
+          socket?.emit("tenant:join", { tenantSlug });
+        }
         if (tenantId || tenantSlug || userId) {
           socket?.emit("tenant:join", { tenantId, tenantSlug, userId });
         }
@@ -313,7 +319,18 @@ export function useOrderSocket({
       ["order.created", "order:created"].forEach((eventName) => socket?.on(eventName, createdHandler));
       ["order.updated", "order:updated"].forEach((eventName) => socket?.on(eventName, updatedHandler));
       ["order.deleted", "order:deleted"].forEach((eventName) => socket?.on(eventName, deletedHandler));
-      ["invoice.created", "invoice.updated", "invoice.deleted", "kitchen.queue.changed", "api.refresh"].forEach((eventName) =>
+      [
+        "invoice.created",
+        "invoice.updated",
+        "invoice.deleted",
+        "invoice.paid",
+        "invoice:created",
+        "invoice:updated",
+        "invoice:deleted",
+        "invoice:paid",
+        "kitchen.queue.changed",
+        "api.refresh",
+      ].forEach((eventName) =>
         socket?.on(eventName, refreshHandler),
       );
     }
@@ -326,5 +343,5 @@ export function useOrderSocket({
       socket?.disconnect();
       socket = null;
     };
-  }, [token, enabled]);
+  }, [token, tenantSlug, enabled]);
 }

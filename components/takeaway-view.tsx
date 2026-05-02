@@ -231,6 +231,14 @@ export function TakeawayView() {
     });
   }
 
+  function clearItemTA(itemId: string, variantId?: string) {
+    setCart((prev) =>
+      prev.filter(
+        (entry) => !(entry.itemId === itemId && entry.variantId === variantId),
+      ),
+    );
+  }
+
   function incrementCartTA(itemId: string, variantId?: string, options?: any) {
     addItemTAWithOptions(itemId, variantId, options);
   }
@@ -478,7 +486,7 @@ export function TakeawayView() {
                       )}
 
                       {/* Price + add button */}
-                      <div className="mt-2.5 flex items-center justify-between gap-1 pt-2 border-t border-slate-100">
+                      <div className="mt-2.5 flex items-center justify-between gap-1 border-t border-slate-100 pt-2">
                         <p className="text-sm font-bold text-violet-700">{fmtCurrency(price)}</p>
                         {qty === 0 ? (
                           <button type="button" onClick={() => addItemTA(item, variantId)}
@@ -488,11 +496,27 @@ export function TakeawayView() {
                         ) : (
                           <div className="flex flex-col items-end gap-1">
                             <div className="flex items-center gap-1 rounded-xl border border-violet-200 bg-white px-1 py-0.5">
-                              <span className="px-1.5 text-[11px] font-bold text-violet-700">{qty} In Cart</span>
+                              <button
+                                type="button"
+                                onClick={() => removeItemTA(item.id, variantId)}
+                                className="flex h-6 w-6 items-center justify-center rounded-lg border border-slate-200 bg-white text-sm font-bold text-slate-600 transition hover:bg-slate-50"
+                              >
+                                -
+                              </button>
+                              <span className="min-w-[25px] px-1 text-center text-[11px] font-bold text-violet-700">{qty} </span>
                               <button type="button" onClick={() => addItemTA(item, variantId)}
                                 className="flex h-6 w-6 items-center justify-center rounded-lg bg-violet-600 font-bold text-white text-sm">+</button>
                             </div>
-                            <p className="text-[9px] text-slate-400 italic">Options inside cart</p>
+                            <div className="flex items-center gap-2">
+                              <button
+                                type="button"
+                                onClick={() => clearItemTA(item.id, variantId)}
+                                className="text-[9px] font-semibold text-slate-500 underline underline-offset-2"
+                              >
+                                Clear
+                              </button>
+                              <p className="text-[9px] text-slate-400 italic">Options inside cart</p>
+                            </div>
                           </div>
                         )}
                       </div>
@@ -612,14 +636,28 @@ export function TakeawayView() {
         </div>
       </div>
 
+      {cartCount > 0 && (
+        <button
+          type="button"
+          onClick={() => setCartDrawerOpen(true)}
+          className="fixed bottom-[calc(env(safe-area-inset-bottom)+1rem)] right-3 z-40 flex items-center gap-2 rounded-xl border border-violet-300 bg-violet-50 px-3 py-2 text-xs font-semibold text-violet-800 shadow-lg shadow-violet-100 md:hidden"
+        >
+          <span className="inline-flex min-w-[20px] items-center justify-center rounded-full bg-violet-600 px-1.5 py-0.5 text-[10px] font-bold text-white">
+            {cartCount}
+          </span>
+          <span>Cart</span>
+          <span className="font-bold">{fmtCurrency(cartTotal)}</span>
+        </button>
+      )}
+
       {/* Mobile cart drawer */}
       {cartDrawerOpen && (
         <div className="fixed inset-0 z-50 flex flex-col md:hidden" onClick={() => setCartDrawerOpen(false)}>
           <div className="flex-1 bg-black/40" />
-          <div className="rounded-t-3xl bg-white px-4 pb-6 pt-4 shadow-2xl" onClick={(e) => e.stopPropagation()}>
-            <div className="mb-4 flex items-center justify-between">
+          <div className="rounded-t-3xl bg-white px-4 pb-5 pt-4 shadow-2xl" onClick={(e) => e.stopPropagation()}>
+            <div className="mb-3 flex items-center justify-between">
               <div>
-                <p className="text-lg font-bold">Takeaway Cart</p>
+                <p className="text-base font-bold">Takeaway Cart</p>
                 <p className="text-xs text-slate-500">Items ready to place</p>
               </div>
               <button onClick={() => setCartDrawerOpen(false)} className="rounded-full bg-slate-100 p-2 text-slate-500">
@@ -670,20 +708,20 @@ export function TakeawayView() {
                 })}
               </div>
             )}
-            <div className="mt-6 space-y-4 border-t border-slate-100 pt-5">
+            <div className="mt-5 space-y-3 border-t border-slate-100 pt-4">
               <div className="flex justify-between font-bold text-base items-center">
-                <span className="text-slate-600">Total Amount</span>
-                <span className="text-2xl font-black text-violet-700">{fmtCurrency(cartTotal)}</span>
+                <span className="text-sm text-slate-600">Total Amount</span>
+                <span className="text-xl font-black text-violet-700">{fmtCurrency(cartTotal)}</span>
               </div>
               <button
                 type="button"
                 disabled={cart.length === 0 || isCreating}
                 onClick={() => { setCartDrawerOpen(false); handleTAPlaceOrder(); }}
-                className="w-full rounded-2xl bg-violet-600 py-4 text-base font-bold text-white shadow-xl shadow-violet-200 transition active:scale-95 disabled:opacity-40"
+                className="w-full rounded-xl bg-violet-600 py-3 text-sm font-bold text-white shadow-lg shadow-violet-200 transition active:scale-95 disabled:opacity-40"
               >
                 {isCreating ? (
                    <span className="flex items-center justify-center gap-2"><Spinner /> Processing...</span>
-                ) : appendToOrderId ? "✅ Add Items to Order" : "🚀 Place Takeaway Order"}
+                ) : appendToOrderId ? "Add Items to Order" : "Place Takeaway Order"}
               </button>
             </div>
           </div>

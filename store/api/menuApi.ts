@@ -1,5 +1,9 @@
 import { createApi } from "@reduxjs/toolkit/query/react";
 import { baseQueryWithReauth } from "@/store/api/baseQuery";
+import {
+  createRealtimeInvalidationSocket,
+  destroyRealtimeInvalidationSocket,
+} from "@/store/api/realtime";
 import type {
   CreateMenuOptionGroupPayload,
   CreateMenuCategoryPayload,
@@ -494,6 +498,16 @@ export const menuApi = createApi({
         { type: "MenuCategories", id: "LIST" },
         ...(result?.items.map((category) => ({ type: "MenuCategories" as const, id: category.id })) ?? []),
       ],
+      async onCacheEntryAdded(_arg, { cacheDataLoaded, cacheEntryRemoved, dispatch, getState }) {
+        if (typeof window === "undefined") return;
+        await cacheDataLoaded;
+        const invalidate = () => {
+          dispatch(menuApi.util.invalidateTags([{ type: "MenuCategories", id: "LIST" }, { type: "MenuAggregate", id: "TREE" }]));
+        };
+        const socket = createRealtimeInvalidationSocket({ getState, invalidate });
+        await cacheEntryRemoved;
+        destroyRealtimeInvalidationSocket(socket, invalidate);
+      },
     }),
 
     createMenuCategory: builder.mutation<MenuCategoryMutationResponse, CreateMenuCategoryPayload>({
@@ -559,6 +573,16 @@ export const menuApi = createApi({
         { type: "MenuOptionGroups", id: "LIST" },
         ...(result?.items.map((group) => ({ type: "MenuOptionGroups" as const, id: group.id })) ?? []),
       ],
+      async onCacheEntryAdded(_arg, { cacheDataLoaded, cacheEntryRemoved, dispatch, getState }) {
+        if (typeof window === "undefined") return;
+        await cacheDataLoaded;
+        const invalidate = () => {
+          dispatch(menuApi.util.invalidateTags([{ type: "MenuOptionGroups", id: "LIST" }, { type: "MenuAggregate", id: "TREE" }]));
+        };
+        const socket = createRealtimeInvalidationSocket({ getState, invalidate });
+        await cacheEntryRemoved;
+        destroyRealtimeInvalidationSocket(socket, invalidate);
+      },
     }),
 
     createMenuOptionGroup: builder.mutation<MenuOptionGroupMutationResponse, CreateMenuOptionGroupPayload>({
@@ -680,6 +704,16 @@ export const menuApi = createApi({
         { type: "MenuItems", id: "LIST" },
         ...(result?.items.map((item) => ({ type: "MenuItems" as const, id: item.id })) ?? []),
       ],
+      async onCacheEntryAdded(_arg, { cacheDataLoaded, cacheEntryRemoved, dispatch, getState }) {
+        if (typeof window === "undefined") return;
+        await cacheDataLoaded;
+        const invalidate = () => {
+          dispatch(menuApi.util.invalidateTags([{ type: "MenuItems", id: "LIST" }, { type: "MenuAggregate", id: "TREE" }]));
+        };
+        const socket = createRealtimeInvalidationSocket({ getState, invalidate });
+        await cacheEntryRemoved;
+        destroyRealtimeInvalidationSocket(socket, invalidate);
+      },
     }),
 
     createMenuItem: builder.mutation<MenuMutationResponse, CreateMenuItemPayload>({
@@ -739,6 +773,16 @@ export const menuApi = createApi({
       }),
       transformResponse: (response: unknown) => parseAggregate(response),
       providesTags: [{ type: "MenuAggregate", id: "TREE" }],
+      async onCacheEntryAdded(_arg, { cacheDataLoaded, cacheEntryRemoved, dispatch, getState }) {
+        if (typeof window === "undefined") return;
+        await cacheDataLoaded;
+        const invalidate = () => {
+          dispatch(menuApi.util.invalidateTags([{ type: "MenuAggregate", id: "TREE" }, { type: "MenuCategories", id: "LIST" }, { type: "MenuItems", id: "LIST" }]));
+        };
+        const socket = createRealtimeInvalidationSocket({ getState, invalidate });
+        await cacheEntryRemoved;
+        destroyRealtimeInvalidationSocket(socket, invalidate);
+      },
     }),
   }),
 });

@@ -1,5 +1,6 @@
 import { io, type Socket } from "socket.io-client";
 import { RAW_API_BASE_URL } from "@/lib/constants";
+import { clearMenuCache } from "@/lib/menu-cache";
 
 type RealtimeState = {
   auth?: {
@@ -44,10 +45,19 @@ export function createRealtimeInvalidationSocket(args: {
   });
 
   REALTIME_REFRESH_EVENTS.forEach((eventName) => {
-    socket.on(eventName, args.invalidate);
+    socket.on(eventName, async (data: any) => {
+      // If scope is explicitly set to something else, we might skip, but it's safer to just clear
+      if (!data?.scope || data.scope === "menu" || data.scope === "all") {
+        await clearMenuCache().catch(() => {});
+      }
+      args.invalidate();
+    });
   });
 
   socket.on("connect", () => {
+    if (tenantSlug) {
+      socket.emit("tenant:join", { tenantSlug });
+    }
     if (tenantId || tenantSlug || userId) {
       socket.emit("tenant:join", { tenantId, tenantSlug, userId });
     }

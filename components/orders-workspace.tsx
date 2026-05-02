@@ -5,7 +5,9 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useConfirm } from "@/components/confirm-provider";
 import { getErrorMessage } from "@/lib/error";
 import { showError, showInfo, showSuccess } from "@/lib/feedback";
+import { clearMenuCache } from "@/lib/menu-cache";
 import { useOrderSocket } from "@/lib/use-order-socket";
+import { useTentantProfileQuery } from "@/store/api/authApi";
 import {
   useCancelOrderItemMutation,
   useCreateOrderMutation,
@@ -841,6 +843,14 @@ function MenuBrowser({
     });
   }
 
+  function clearCartItem(itemId: string, variantId?: string) {
+    setCart((prev) =>
+      prev.filter(
+        (entry) => !(entry.itemId === itemId && entry.variantId === variantId),
+      ),
+    );
+  }
+
   function addFromExisting(orderItem: OrderRecord["items"][number]) {
     setCart((prev) => {
       const idx = prev.findIndex(
@@ -912,7 +922,7 @@ function MenuBrowser({
         <button
           type="button"
           onClick={() => setCartOpen(true)}
-          className="relative flex items-center gap-1.5 rounded-xl border border-amber-300 bg-amber-50 px-3 py-2 text-sm font-semibold text-amber-800 md:hidden"
+          className="relative flex items-center gap-1.5 rounded-xl border border-amber-300 bg-amber-50 px-2.5 py-1.5 text-xs font-semibold text-amber-800 md:hidden"
         >
           🛒{" "}
           {summaryCount > 0 && (
@@ -1192,7 +1202,7 @@ function MenuBrowser({
                           </div>
                         )}
 
-                        <div className="mt-2.5 flex items-center justify-between gap-1 pt-2 border-t border-slate-100">
+                        <div className="mt-2.5 flex items-center justify-between gap-1 border-t border-slate-100 pt-2">
                           <p className="text-sm font-bold text-amber-700">
                             {fmtCurrency(price)}
                           </p>
@@ -1207,8 +1217,15 @@ function MenuBrowser({
                           ) : (
                             <div className="flex flex-col items-end gap-1">
                               <div className="flex items-center gap-1 rounded-xl border border-amber-200 bg-white px-1 py-0.5">
-                                <span className="px-1.5 text-[11px] font-bold text-amber-700">
-                                  {qty} In Cart
+                                <button
+                                  type="button"
+                                  onClick={() => removeItem(item.id, variantId)}
+                                  className="flex h-6 w-6 items-center justify-center rounded-lg border border-slate-200 bg-white text-sm font-bold text-slate-600 transition hover:bg-slate-50"
+                                >
+                                  -
+                                </button>
+                                <span className="min-w-[25px] px-1 text-center text-[11px] font-bold text-amber-700">
+                                  {qty} 
                                 </span>
                                 <button
                                   type="button"
@@ -1218,7 +1235,18 @@ function MenuBrowser({
                                   +
                                 </button>
                               </div>
-                              <p className="text-[9px] text-slate-400 italic">Options inside cart</p>
+                              <div className="flex items-center gap-2">
+                                <button
+                                  type="button"
+                                  onClick={() => clearCartItem(item.id, variantId)}
+                                  className="text-[9px] font-semibold text-slate-500 underline underline-offset-2"
+                                >
+                                  Clear
+                                </button>
+                                <p className="text-[9px] text-slate-400 italic">
+                                  Options inside cart
+                                </p>
+                              </div>
                             </div>
                           )}
                         </div>
@@ -1410,9 +1438,9 @@ function MenuBrowser({
             className="rounded-t-3xl bg-white px-4 pb-6 pt-4 shadow-2xl"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="mb-4 flex items-center justify-between">
+            <div className="mb-3 flex items-center justify-between">
               <div>
-                <p className="text-lg font-bold">Your Cart</p>
+                <p className="text-base font-bold">Your Cart</p>
                 <p className="text-xs text-slate-500">Table {table.number}</p>
               </div>
               <button
@@ -1510,10 +1538,10 @@ function MenuBrowser({
               )}
             </div>
 
-            <div className="mt-6 space-y-4 border-t border-slate-100 pt-5">
+            <div className="mt-5 space-y-3 border-t border-slate-100 pt-4">
               <div className="flex items-center justify-between">
-                <span className="text-base font-bold text-slate-600">Total Amount</span>
-                <span className="text-2xl font-black text-amber-600">{fmtCurrency(summaryTotal)}</span>
+                <span className="text-sm font-bold text-slate-600">Total Amount</span>
+                <span className="text-xl font-black text-amber-600">{fmtCurrency(summaryTotal)}</span>
               </div>
               <button
                 type="button"
@@ -1522,9 +1550,9 @@ function MenuBrowser({
                   setCartOpen(false);
                   onConfirm(cart, tableNote);
                 }}
-                className="flex w-full items-center justify-center gap-2 rounded-2xl bg-amber-500 py-4 text-base font-bold text-white shadow-xl shadow-amber-200 active:scale-95 transition disabled:opacity-50"
+                className="flex w-full items-center justify-center gap-2 rounded-xl bg-amber-500 py-3 text-sm font-bold text-white shadow-lg shadow-amber-200 active:scale-95 transition disabled:opacity-50"
               >
-                {composeMode === "force-new" ? "🚀 Create Order" : "✅ Confirm Add Items"}
+                {composeMode === "force-new" ? "Create Order" : "Confirm Add Items"}
               </button>
             </div>
           </div>
@@ -2416,6 +2444,9 @@ function WaiterView({
         refetchInvoices();
         refetchTables();
       } else {
+        if (event.type === "refresh") {
+          clearMenuCache();
+        }
         if (event.type === "deleted") {
           showInfo("An order was deleted");
         }
@@ -4128,19 +4159,33 @@ const KOT_COLUMNS: {
 
 function KitchenView() {
   const token = useAppSelector(selectAuthToken);
+  const { data: tenantProfile } = useTentantProfileQuery();
+  const isCafeMode =
+    normalizeStatus(tenantProfile?.tenant?.settings?.orderMode) === "CAFE";
+  const kitchenQuery = useMemo(
+    () =>
+      isCafeMode
+        ? {
+            status: ["SERVED"],
+            includeDone: true,
+            limit: 200,
+          }
+        : {
+            status: ["PLACED", "IN_PROGRESS", "READY"],
+            includeDone: false,
+            limit: 200,
+          },
+    [isCafeMode],
+  );
   const {
     data: kitchenData,
     isFetching,
     refetch,
-  } = useGetKitchenOrderItemsQuery(
-    {
-      status: ["PLACED", "IN_PROGRESS", "READY"],
-      includeDone: false,
-      limit: 200,
-    },
+  } = useGetKitchenOrderItemsQuery(kitchenQuery, { pollingInterval: 30000 });
+  const { data: invoicesData } = useGetInvoicesQuery(
+    { page: 1, limit: 100 },
     { pollingInterval: 30000 },
   );
-  console.log("Kitchen data:", kitchenData);
   const [updateOrder] = useUpdateOrderMutation();
   const [toast, setToast] = useState<{
     msg: string;
@@ -4154,7 +4199,22 @@ function KitchenView() {
   >("all");
   const [updatingItemKey, setUpdatingItemKey] = useState<string | null>(null);
 
-  const queueItems = useMemo(() => kitchenData?.items || [], [kitchenData]);
+  const paidInvoiceOrderIds = useMemo(() => {
+    const ids = new Set<string>();
+    for (const invoice of invoicesData?.items || []) {
+      if (normalizeStatus(invoice.status) !== "PAID") continue;
+      if (invoice.orderId) ids.add(invoice.orderId);
+      for (const orderId of invoice.orderIds || []) {
+        if (orderId) ids.add(orderId);
+      }
+    }
+    return ids;
+  }, [invoicesData]);
+  const queueItems = useMemo(() => {
+    const items = kitchenData?.items || [];
+    if (!isCafeMode) return items;
+    return items.filter((item) => !paidInvoiceOrderIds.has(item.orderId));
+  }, [isCafeMode, kitchenData, paidInvoiceOrderIds]);
 
   const filteredItems = useMemo(() => {
     const query = searchText.trim().toLowerCase();
@@ -4300,6 +4360,16 @@ function KitchenView() {
     return timeAgo(item.addedAt);
   }
 
+  const cafeRows = useMemo(
+    () =>
+      [...filteredItems].sort((left, right) => {
+        const a = new Date(left.addedAt || 0).getTime();
+        const b = new Date(right.addedAt || 0).getTime();
+        return a - b;
+      }),
+    [filteredItems],
+  );
+
   return (
     <div>
       <article className="rounded-2xl border border-[#e6dfd1] bg-[#fffdf9] shadow-sm">
@@ -4311,7 +4381,7 @@ function KitchenView() {
                   {filteredItems.length}
                 </span>
                 <span className="text-[10px] font-medium text-slate-700">
-                  items
+                  {isCafeMode ? "unpaid items" : "items"}
                 </span>
               </div>
               <input
@@ -4341,37 +4411,53 @@ function KitchenView() {
             <div className="mt-2 grid grid-cols-1 gap-2 md:grid-cols-10 md:items-center">
               <div className="md:col-span-7">
                 <div className="flex items-center gap-2 overflow-x-auto whitespace-nowrap no-scrollbar">
-                  <span className="shrink-0 text-[11px] font-semibold uppercase tracking-wide text-slate-500">
-                    Status
-                  </span>
-                  <button
-                    type="button"
-                    onClick={() => setStatusFilter("all")}
-                    className={`shrink-0 rounded-full border px-3 py-1 text-[11px] font-semibold ${statusFilter === "all" ? "border-amber-300 bg-amber-100 text-amber-800" : "border-[#ddcfb7] bg-white text-slate-700"}`}
-                  >
-                    All {queueItems.length}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setStatusFilter("PLACED")}
-                    className={`shrink-0 rounded-full border px-3 py-1 text-[11px] font-semibold ${statusFilter === "PLACED" ? "border-amber-300 bg-amber-100 text-amber-800" : "border-[#ddcfb7] bg-white text-slate-700"}`}
-                  >
-                    New {statusCounts.PLACED}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setStatusFilter("IN_PROGRESS")}
-                    className={`shrink-0 rounded-full border px-3 py-1 text-[11px] font-semibold ${statusFilter === "IN_PROGRESS" ? "border-rose-300 bg-rose-100 text-rose-800" : "border-[#ddcfb7] bg-white text-slate-700"}`}
-                  >
-                    Cooking {statusCounts.IN_PROGRESS}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setStatusFilter("READY")}
-                    className={`shrink-0 rounded-full border px-3 py-1 text-[11px] font-semibold ${statusFilter === "READY" ? "border-emerald-300 bg-emerald-100 text-emerald-800" : "border-[#ddcfb7] bg-white text-slate-700"}`}
-                  >
-                    Ready {statusCounts.READY}
-                  </button>
+                  {isCafeMode ? (
+                    <>
+                      <span className="shrink-0 text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                        Cafe Queue
+                      </span>
+                      <span className="shrink-0 rounded-full border border-amber-300 bg-amber-100 px-3 py-1 text-[11px] font-semibold text-amber-800">
+                        Served {queueItems.length}
+                      </span>
+                      <span className="shrink-0 rounded-full border border-sky-200 bg-sky-50 px-3 py-1 text-[11px] font-semibold text-sky-700">
+                        Only unpaid invoices
+                      </span>
+                    </>
+                  ) : (
+                    <>
+                      <span className="shrink-0 text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                        Status
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => setStatusFilter("all")}
+                        className={`shrink-0 rounded-full border px-3 py-1 text-[11px] font-semibold ${statusFilter === "all" ? "border-amber-300 bg-amber-100 text-amber-800" : "border-[#ddcfb7] bg-white text-slate-700"}`}
+                      >
+                        All {queueItems.length}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setStatusFilter("PLACED")}
+                        className={`shrink-0 rounded-full border px-3 py-1 text-[11px] font-semibold ${statusFilter === "PLACED" ? "border-amber-300 bg-amber-100 text-amber-800" : "border-[#ddcfb7] bg-white text-slate-700"}`}
+                      >
+                        New {statusCounts.PLACED}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setStatusFilter("IN_PROGRESS")}
+                        className={`shrink-0 rounded-full border px-3 py-1 text-[11px] font-semibold ${statusFilter === "IN_PROGRESS" ? "border-rose-300 bg-rose-100 text-rose-800" : "border-[#ddcfb7] bg-white text-slate-700"}`}
+                      >
+                        Cooking {statusCounts.IN_PROGRESS}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setStatusFilter("READY")}
+                        className={`shrink-0 rounded-full border px-3 py-1 text-[11px] font-semibold ${statusFilter === "READY" ? "border-emerald-300 bg-emerald-100 text-emerald-800" : "border-[#ddcfb7] bg-white text-slate-700"}`}
+                      >
+                        Ready {statusCounts.READY}
+                      </button>
+                    </>
+                  )}
                   <span className="shrink-0 rounded-full border border-slate-200 bg-white px-3 py-1 text-[11px] font-semibold text-slate-600">
                     Orders {uniqueOrderCount}
                   </span>
@@ -4396,7 +4482,65 @@ function KitchenView() {
         <div className="p-2.5 sm:p-4">
           {filteredItems.length === 0 ? (
             <div className="rounded-2xl border border-dashed border-slate-300 py-12 text-center text-sm text-slate-500">
-              No kitchen items found.
+              {isCafeMode
+                ? "No unpaid cafe items found."
+                : "No kitchen items found."}
+            </div>
+          ) : isCafeMode ? (
+            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+              {cafeRows.map((item) => {
+                const customerLabel = kitchenCustomerLabel(item);
+                const displayNote = kitchenDisplayNote(item);
+
+                return (
+                  <article
+                    key={`${item.orderId}-${item.lineId}`}
+                    className="rounded-2xl border border-[#e6dfd1] bg-white p-3 shadow-sm"
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        <p className="text-sm font-semibold text-slate-900">
+                          {item.quantity}x {item.name}
+                          {item.variantName ? ` (${item.variantName})` : ""}
+                        </p>
+                        <p className="text-[11px] text-slate-500">
+                          {tableLabel(item)} • {item.orderNumber || item.orderId.slice(-6)}
+                        </p>
+                      </div>
+                      <span className="rounded-full border border-sky-200 bg-sky-50 px-2 py-0.5 text-[10px] font-semibold text-sky-700">
+                        Unpaid
+                      </span>
+                    </div>
+
+                    {item.options && item.options.length > 0 ? (
+                      <div className="mt-2 flex flex-wrap gap-1.5">
+                        {item.options.map((opt) => (
+                          <span
+                            key={opt.optionId}
+                            className="rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[10px] font-semibold text-amber-800"
+                          >
+                            {opt.name}
+                          </span>
+                        ))}
+                      </div>
+                    ) : null}
+
+                    {displayNote ? (
+                      <div className="mt-2 rounded-xl border border-amber-200 bg-amber-50/60 px-2.5 py-2 text-[11px] font-medium text-slate-700">
+                        {displayNote}
+                      </div>
+                    ) : null}
+
+                    <div className="mt-3 flex flex-wrap items-center gap-2 text-[11px] text-slate-600">
+                      <span className="rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5">
+                        Served
+                      </span>
+                      <span>Age: {ageLabel(item)}</span>
+                      {customerLabel ? <span>Customer: {customerLabel}</span> : null}
+                    </div>
+                  </article>
+                );
+              })}
             </div>
           ) : viewMode === "cards" ? (
             <div className="grid gap-2.5 sm:grid-cols-3 sm:gap-3">

@@ -412,7 +412,7 @@ export function OrdersHistoryView() {
     pollingInterval: quickFilter === "today" ? 30000 : 0,
   });
 
-  const { data: invoicesData } = useGetInvoicesQuery({ limit: 200 });
+  const { data: invoicesData } = useGetInvoicesQuery({ limit: 100 });
 
   const invoicedOrderIds = useMemo(
     () => new Set((invoicesData?.items || []).map((inv) => inv.orderId).filter(Boolean) as string[]),
