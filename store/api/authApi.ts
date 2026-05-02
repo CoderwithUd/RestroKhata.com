@@ -953,7 +953,9 @@ export const authApi = createApi({
 
         const state = getState() as RootState;
         const token = state.auth.token;
+        const tenantId = state.auth.tenant?.id;
         const tenantSlug = state.auth.tenant?.slug;
+        const userId = state.auth.user?.id;
         const socketBaseUrl = RAW_API_BASE_URL.replace(/\/+$/, "").replace(
           /\/api$/,
           "",
@@ -964,9 +966,11 @@ export const authApi = createApi({
           transports: ["websocket", "polling"],
           auth: {
             token: token ? `Bearer ${token}` : undefined,
+            tenantId,
             tenantSlug,
+            userId,
           },
-          query: tenantSlug ? { tenantSlug } : undefined,
+          query: tenantId || tenantSlug ? { tenantId, tenantSlug } : undefined,
         });
 
         const refreshOrders = () => {
@@ -976,13 +980,8 @@ export const authApi = createApi({
         };
 
         const events = [
-          "order:created",
-          "order:updated",
-          "order:deleted",
-          "orders:updated",
-          "order.created",
-          "order.updated",
-          "order.deleted",
+          "api.refresh",
+          "kitchen.queue.changed",
         ] as const;
 
         events.forEach((eventName) => {
@@ -990,8 +989,8 @@ export const authApi = createApi({
         });
 
         socket.on("connect", () => {
-          if (tenantSlug) {
-            socket.emit("tenant:join", { tenantSlug });
+          if (tenantId || tenantSlug || userId) {
+            socket.emit("tenant:join", { tenantId, tenantSlug, userId });
           }
         });
 

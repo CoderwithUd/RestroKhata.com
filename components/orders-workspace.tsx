@@ -2415,8 +2415,10 @@ function WaiterView({
         refetchOrders();
         refetchInvoices();
         refetchTables();
-      } else if (event.type === "deleted") {
-        showInfo("An order was deleted");
+      } else {
+        if (event.type === "deleted") {
+          showInfo("An order was deleted");
+        }
         refetchOrders();
         refetchInvoices();
         refetchTables();

@@ -1,5 +1,9 @@
 import { createApi } from "@reduxjs/toolkit/query/react";
 import { baseQueryWithReauth } from "@/store/api/baseQuery";
+import {
+  createRealtimeInvalidationSocket,
+  destroyRealtimeInvalidationSocket,
+} from "@/store/api/realtime";
 import type {
   CreateTablePayload,
   CreateTableQrTokenArgs,
@@ -145,6 +149,19 @@ export const tablesApi = createApi({
         { type: "Tables", id: "LIST" },
         ...(result?.items.map((table) => ({ type: "Tables" as const, id: table.id })) ?? []),
       ],
+      async onCacheEntryAdded(_arg, { cacheDataLoaded, cacheEntryRemoved, dispatch, getState }) {
+        if (typeof window === "undefined") return;
+
+        await cacheDataLoaded;
+
+        const invalidate = () => {
+          dispatch(tablesApi.util.invalidateTags([{ type: "Tables", id: "LIST" }]));
+        };
+        const socket = createRealtimeInvalidationSocket({ getState, invalidate });
+
+        await cacheEntryRemoved;
+        destroyRealtimeInvalidationSocket(socket, invalidate);
+      },
     }),
 
     createTable: builder.mutation<CreateTableResponse, CreateTablePayload>({

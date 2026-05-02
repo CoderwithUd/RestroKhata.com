@@ -1,16 +1,22 @@
 "use client";
 
 import { useEffect, useRef } from "react";
+import { readStoredSession } from "@/lib/auth-session";
 import { RAW_API_BASE_URL } from "@/lib/constants";
 
 export type SocketOrderEvent = {
-  type: "created" | "updated" | "deleted";
+  type: "created" | "updated" | "deleted" | "refresh";
   order?: {
     id: string;
     status?: string;
     table?: { id: string; number: number; name: string };
   };
   orderId?: string;
+  invoiceId?: string;
+  tableId?: string;
+  targetTableId?: string;
+  scope?: string;
+  action?: string;
 };
 
 export type SocketOrderRole = "owner" | "manager" | "waiter" | "kitchen" | "all";
@@ -191,12 +197,24 @@ export function useOrderSocket({
 
       const { io } = await import("socket.io-client");
       if (destroyed) return;
+      const session = readStoredSession();
+      const tenantId = session?.tenant?.id?.trim() || undefined;
+      const tenantSlug = session?.tenant?.slug?.trim() || undefined;
+      const userId = session?.user?.id?.trim() || undefined;
 
       socket = io(socketBaseUrl(), {
-        auth: { accessToken: token },
+        auth: {
+          accessToken: token,
+          token: token ? `Bearer ${token}` : undefined,
+          tenantId,
+          tenantSlug,
+          userId,
+        },
+        query: tenantId || tenantSlug ? { tenantId, tenantSlug } : undefined,
         transports: ["websocket", "polling"],
         reconnectionAttempts: 10,
         reconnectionDelay: 2000,
+        reconnectionDelayMax: 5000,
       });
 
       const createdHandler = (data: { order?: SocketOrderEvent["order"] }) => {
@@ -255,8 +273,30 @@ export function useOrderSocket({
         });
       };
 
+      const refreshHandler = (data: {
+        scope?: string;
+        action?: string;
+        orderId?: string;
+        invoiceId?: string;
+        tableId?: string;
+        targetTableId?: string;
+      }) => {
+        liveRef.current.onEvent?.({
+          type: "refresh",
+          scope: data?.scope,
+          action: data?.action,
+          orderId: data?.orderId,
+          invoiceId: data?.invoiceId,
+          tableId: data?.tableId,
+          targetTableId: data?.targetTableId,
+        });
+      };
+
       socket.on("connect", () => {
         console.info("[OrderSocket] Connected:", socket?.id);
+        if (tenantId || tenantSlug || userId) {
+          socket?.emit("tenant:join", { tenantId, tenantSlug, userId });
+        }
         liveRef.current.onConnectionChange?.(true);
       });
 
@@ -273,6 +313,9 @@ export function useOrderSocket({
       ["order.created", "order:created"].forEach((eventName) => socket?.on(eventName, createdHandler));
       ["order.updated", "order:updated"].forEach((eventName) => socket?.on(eventName, updatedHandler));
       ["order.deleted", "order:deleted"].forEach((eventName) => socket?.on(eventName, deletedHandler));
+      ["invoice.created", "invoice.updated", "invoice.deleted", "kitchen.queue.changed", "api.refresh"].forEach((eventName) =>
+        socket?.on(eventName, refreshHandler),
+      );
     }
 
     connect();

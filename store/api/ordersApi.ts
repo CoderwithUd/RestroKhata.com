@@ -1,5 +1,9 @@
 import { createApi } from "@reduxjs/toolkit/query/react";
 import { baseQueryWithReauth } from "@/store/api/baseQuery";
+import {
+  createRealtimeInvalidationSocket,
+  destroyRealtimeInvalidationSocket,
+} from "@/store/api/realtime";
 import type {
   CancelOrderItemArgs,
   CreateOrderPayload,
@@ -442,6 +446,19 @@ export const ordersApi = createApi({
         { type: "Orders", id: "LIST" },
         ...(result?.items.map((o) => ({ type: "Orders" as const, id: o.id })) ?? []),
       ],
+      async onCacheEntryAdded(_arg, { cacheDataLoaded, cacheEntryRemoved, dispatch, getState }) {
+        if (typeof window === "undefined") return;
+
+        await cacheDataLoaded;
+
+        const invalidate = () => {
+          dispatch(ordersApi.util.invalidateTags([{ type: "Orders", id: "LIST" }]));
+        };
+        const socket = createRealtimeInvalidationSocket({ getState, invalidate });
+
+        await cacheEntryRemoved;
+        destroyRealtimeInvalidationSocket(socket, invalidate);
+      },
     }),
 
     // getKitchenOrderItems: builder.query<KitchenItemsResponse, KitchenItemsQueryParams | void>({
@@ -489,6 +506,19 @@ export const ordersApi = createApi({
           id: item.orderId,
         })) ?? []),
       ],
+      async onCacheEntryAdded(_arg, { cacheDataLoaded, cacheEntryRemoved, dispatch, getState }) {
+        if (typeof window === "undefined") return;
+
+        await cacheDataLoaded;
+
+        const invalidate = () => {
+          dispatch(ordersApi.util.invalidateTags([{ type: "Orders", id: "KITCHEN_ITEMS" }]));
+        };
+        const socket = createRealtimeInvalidationSocket({ getState, invalidate });
+
+        await cacheEntryRemoved;
+        destroyRealtimeInvalidationSocket(socket, invalidate);
+      },
     }),
     getOrderById: builder.query<OrderRecord | null, string>({
       query: (orderId) => ({

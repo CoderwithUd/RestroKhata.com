@@ -1,5 +1,9 @@
 import { createApi } from "@reduxjs/toolkit/query/react";
 import { baseQueryWithReauth } from "@/store/api/baseQuery";
+import {
+  createRealtimeInvalidationSocket,
+  destroyRealtimeInvalidationSocket,
+} from "@/store/api/realtime";
 import type {
   CreateInvoicePayload,
   CreateGroupInvoicePayload,
@@ -226,6 +230,19 @@ export const invoicesApi = createApi({
         { type: "Invoices", id: "LIST" },
         ...(result?.items.map((invoice) => ({ type: "Invoices" as const, id: invoice.id })) ?? []),
       ],
+      async onCacheEntryAdded(_arg, { cacheDataLoaded, cacheEntryRemoved, dispatch, getState }) {
+        if (typeof window === "undefined") return;
+
+        await cacheDataLoaded;
+
+        const invalidate = () => {
+          dispatch(invoicesApi.util.invalidateTags([{ type: "Invoices", id: "LIST" }]));
+        };
+        const socket = createRealtimeInvalidationSocket({ getState, invalidate });
+
+        await cacheEntryRemoved;
+        destroyRealtimeInvalidationSocket(socket, invalidate);
+      },
     }),
 
     getInvoiceById: builder.query<InvoiceRecord | null, string>({
