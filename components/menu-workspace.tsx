@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { useConfirm } from "@/components/confirm-provider";
 import { getErrorMessage } from "@/lib/error";
 import { showError, showSuccess } from "@/lib/feedback";
@@ -428,12 +428,6 @@ function validateForm(form: ItemForm): string | null {
   return null;
 }
 
-function mergeItemsById(old: MenuItemRecord[], incoming: MenuItemRecord[]) {
-  const map = new Map<string, MenuItemRecord>();
-  old.forEach((i) => map.set(i.id, i));
-  incoming.forEach((i) => map.set(i.id, i));
-  return Array.from(map.values());
-}
 
 function Spinner() {
   return (
