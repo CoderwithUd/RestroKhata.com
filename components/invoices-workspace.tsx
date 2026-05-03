@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useMemo, useState ,useRef} from "react";
+import { useEffect, useMemo, useState, useRef } from "react";
+import { usePathname, useRouter } from "next/navigation";
 import { useConfirm } from "@/components/confirm-provider";
 import { downloadInvoicePdf } from "@/lib/invoice-pdf";
 import { downloadInvoiceReportPdf } from "@/lib/invoice-report-pdf";
@@ -28,6 +29,8 @@ import { selectAuthToken } from "@/store/slices/authSlice";
 import type { InvoiceRecord } from "@/store/types/invoices";
 import type { OrderRecord } from "@/store/types/orders";
 import type { TableRecord } from "@/store/types/tables";
+import { InvoiceEditView } from "./invoice-edit-view";
+import { InvoicePreviewView } from "./invoice-preview-view";
 
 type Props = {
   rawRole?: string;
@@ -418,11 +421,10 @@ function Spinner() {
 function LiveBadge({ connected }: { connected: boolean }) {
   return (
     <span
-      className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[10px] font-semibold ${
-        connected
+      className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[10px] font-semibold ${connected
           ? "border-emerald-300 bg-emerald-50 text-emerald-700"
           : "border-slate-200 bg-slate-100 text-slate-400"
-      }`}
+        }`}
     >
       <span className={`h-1.5 w-1.5 rounded-full ${connected ? "animate-pulse bg-emerald-500" : "bg-slate-400"}`} />
       {connected ? "Live" : "Offline"}
@@ -469,10 +471,10 @@ function InvoicePreview({
 
   // const due = invoiceAmount(invoice);
   const due = Math.max(
-  (invoice.totalDue ?? 0) -
-  (invoice.payment?.paidAmount ?? 0),
-  0
-);
+    (invoice.totalDue ?? 0) -
+    (invoice.payment?.paidAmount ?? 0),
+    0
+  );
   const isIssued = normalizeStatus(invoice.status) === "ISSUED";
   const canCollectPayment = isPrivilegedBilling && isIssued && due > 0;
 
@@ -620,11 +622,19 @@ function InvoicePreview({
 }
 
 export function InvoicesWorkspace({ rawRole }: Props) {
+  const pathname = usePathname();
+  const router = useRouter();
+  const matchEdit = pathname.match(/\/dashboard\/invoices\/([^/]+)\/edit/);
+  const matchPreview = pathname.match(/\/dashboard\/invoices\/([^/]+)\/preview/);
+  const editInvoiceId = matchEdit?.[1];
+  const previewInvoiceId = matchPreview?.[1];
+
   const confirm = useConfirm();
   const token = useAppSelector(selectAuthToken);
   const role = normalizeRole(rawRole);
   const isPrivilegedBilling = role === "owner" || role === "manager";
   const loadMoreRef = useRef<HTMLDivElement | null>(null);
+  const [viewTab, setViewTab] = useState<"UNPAID" | "PAID">("UNPAID");
   const [tableFilter, setTableFilter] = useState("");
   const [historyRange, setHistoryRange] = useState<HistoryRange>("today");
   const [customStartDate, setCustomStartDate] = useState("");
@@ -661,8 +671,8 @@ export function InvoicesWorkspace({ rawRole }: Props) {
     data: invoicesData,
     isFetching: isInvoicesFetching,
     refetch: refetchInvoices,
-  // } = useGetInvoicesQuery({ page: invoicesPage, limit: 100 }, { pollingInterval: 30000 });
-} = useGetInvoicesQuery({ page: invoicesPage, limit: 100 });
+    // } = useGetInvoicesQuery({ page: invoicesPage, limit: 100 }, { pollingInterval: 30000 });
+  } = useGetInvoicesQuery({ page: invoicesPage, limit: 100 });
   const [createInvoice, { isLoading: isCreating }] = useCreateInvoiceMutation();
   const [createGroupInvoice, { isLoading: isCreatingGroup }] = useCreateGroupInvoiceMutation();
   const [payInvoice, { isLoading: isPaying }] = usePayInvoiceMutation();
@@ -740,10 +750,10 @@ export function InvoicesWorkspace({ rawRole }: Props) {
           ...invoice,
           table: invoice.table || linkedOrder?.table || (linkedTable
             ? {
-                id: linkedTable.id,
-                number: linkedTable.number,
-                name: linkedTable.name,
-              }
+              id: linkedTable.id,
+              number: linkedTable.number,
+              name: linkedTable.name,
+            }
             : undefined),
         };
       }
@@ -807,9 +817,8 @@ export function InvoicesWorkspace({ rawRole }: Props) {
   const issuedInvoicesByTableId = useMemo(() => {
     const map = new Map<string, InvoiceRecord[]>();
     invoices.forEach((invoice) => {
-      const tableId = invoice.table?.id;
-      if (!tableId) return;
       if (normalizeStatus(invoice.status) !== "ISSUED") return;
+      const tableId = invoice.table?.id || "TAKEAWAY";
       const existing = map.get(tableId) || [];
       existing.push(invoice);
       map.set(tableId, existing);
@@ -820,8 +829,8 @@ export function InvoicesWorkspace({ rawRole }: Props) {
   const openOrdersByTable = useMemo(() => {
     const map = new Map<string, OrderRecord[]>();
     orders.forEach((order) => {
-      const tableId = order.table?.id || order.tableId;
-      if (!tableId || invoiceByOrderId.has(order.id)) return;
+      const tableId = order.table?.id || order.tableId || "TAKEAWAY";
+      if (invoiceByOrderId.has(order.id)) return;
       if (!isOpenOrderStatus(order.status)) return;
       const existing = map.get(tableId) || [];
       existing.push(order);
@@ -836,7 +845,7 @@ export function InvoicesWorkspace({ rawRole }: Props) {
   const filterQuery = tableFilter.trim().toLowerCase();
 
   const billingRows = useMemo(() => {
-    return tables
+    const rows = tables
       .filter((table) => {
         const tableId = table.id;
         const tableStatus = normalizeStatus(table.status);
@@ -854,6 +863,20 @@ export function InvoicesWorkspace({ rawRole }: Props) {
         const readyOrders = rowOrders.filter((order) => canGenerateInvoice(order));
         return { table, orders: rowOrders, currentInvoices, readyOrders };
       });
+
+    const takeawayOrders = openOrdersByTable.get("TAKEAWAY") || [];
+    const takeawayInvoices = issuedInvoicesByTableId.get("TAKEAWAY") || [];
+    if (takeawayOrders.length > 0 || takeawayInvoices.length > 0) {
+      const readyTakeaway = takeawayOrders.filter((order) => canGenerateInvoice(order));
+      rows.unshift({
+        table: { id: "TAKEAWAY", name: "Takeaway & Direct Orders", number: 0, status: "OCCUPIED" } as TableRecord,
+        orders: takeawayOrders,
+        currentInvoices: takeawayInvoices,
+        readyOrders: readyTakeaway,
+      });
+    }
+
+    return rows;
   }, [filterQuery, issuedInvoicesByTableId, openOrdersByTable, tables]);
 
   const pendingBillingRows = useMemo(
@@ -880,12 +903,26 @@ export function InvoicesWorkspace({ rawRole }: Props) {
     [invoices],
   );
 
+  const paidInvoicesToday = useMemo(() => {
+    const now = new Date();
+    return paidInvoices.filter(invoice => {
+      const paidAt = invoice.payment?.paidAt || invoice.updatedAt || invoice.createdAt;
+      if (!paidAt) return false;
+      const paidDate = new Date(paidAt);
+      return paidDate.toDateString() === now.toDateString();
+    });
+  }, [paidInvoices]);
+
+  const paidInvoicesTodayAmount = useMemo(() => {
+    return paidInvoicesToday.reduce((sum, invoice) => sum + (invoice.payment?.paidAmount ?? invoice.grandTotal ?? 0), 0);
+  }, [paidInvoicesToday]);
+
   const receiptProfile = useMemo<ReceiptProfile>(() => {
     const tenant = tenantProfile?.tenant;
     const address = tenant?.address
       ? [tenant.address.line1, tenant.address.line2, tenant.address.city, tenant.address.state, tenant.address.postalCode]
-          .filter(Boolean)
-          .join(", ")
+        .filter(Boolean)
+        .join(", ")
       : "";
 
     return {
@@ -916,6 +953,9 @@ export function InvoicesWorkspace({ rawRole }: Props) {
   const historySearch = customerFilter.trim().toLowerCase();
   const historyInvoices = useMemo(() => {
     return invoices.filter((invoice) => {
+      const status = normalizeStatus(invoice.status);
+      if (status !== "PAID" && status !== "COMPLETED") return false;
+
       if (
         !isWithinHistoryRange(
           invoice.createdAt,
@@ -993,29 +1033,29 @@ export function InvoicesWorkspace({ rawRole }: Props) {
     setDraftBilling((current) =>
       current
         ? {
-            ...current,
-            orders: nextOrders,
-          }
+          ...current,
+          orders: nextOrders,
+        }
         : current,
     );
   }, [draftBilling, orders]);
 
   function openInvoiceView(invoiceId: string) {
-    setSelectedInvoiceId(invoiceId);
-    setIsInvoiceViewOpen(true);
+    const inv = invoices.find(i => i.id === invoiceId);
+    if (inv?.status === "PAID") {
+      router.push(`/dashboard/invoices/${invoiceId}/preview`);
+    } else {
+      router.push(`/dashboard/invoices/${invoiceId}/edit`);
+    }
   }
 
   function openDraftInvoice(table: TableRecord, ordersToBill: OrderRecord[]) {
     if (!ordersToBill.length) return;
-    const firstOrder = ordersToBill[0];
-    setDraftCorrection({ quantities: {}, busyKey: null });
-    setDraftBilling({
-      table,
-      orders: ordersToBill,
-      discount: { type: "PERCENTAGE", value: 0 },
-      customerName: firstOrder.customerName || "",
-      customerPhone: firstOrder.customerPhone || "",
-    });
+    if (ordersToBill.length === 1) {
+      handleCreateInvoice(ordersToBill[0]);
+    } else {
+      handleCreateGroupInvoice(table, ordersToBill);
+    }
   }
 
   async function handleCreateInvoice(
@@ -1032,8 +1072,7 @@ export function InvoicesWorkspace({ rawRole }: Props) {
 
       if (response.invoice?.id) {
         setInvoiceOverrides((prev) => ({ ...prev, [response.invoice.id]: response.invoice }));
-        setSelectedInvoiceId(response.invoice.id);
-        setIsInvoiceViewOpen(true);
+        router.push(`/dashboard/invoices/${response.invoice.id}/edit`);
       }
 
       showSuccess(response.message || `Invoice created for ${order.table?.name || `Table ${order.table?.number}`}`);
@@ -1063,13 +1102,12 @@ export function InvoicesWorkspace({ rawRole }: Props) {
 
       if (response.invoice?.id) {
         setInvoiceOverrides((prev) => ({ ...prev, [response.invoice.id]: response.invoice }));
-        setSelectedInvoiceId(response.invoice.id);
-        setIsInvoiceViewOpen(true);
+        router.push(`/dashboard/invoices/${response.invoice.id}/edit`);
       }
 
       showSuccess(
         response.message ||
-          `${ordersToBill.length > 1 ? "Group invoice" : "Invoice"} created for ${table.name || `Table ${table.number}`}`,
+        `${ordersToBill.length > 1 ? "Group invoice" : "Invoice"} created for ${table.name || `Table ${table.number}`}`,
       );
       setDraftBilling(null);
       refetchTables();
@@ -1118,10 +1156,10 @@ export function InvoicesWorkspace({ rawRole }: Props) {
     if (!isPrivilegedBilling) return;
     // const amount = invoiceAmount(invoice);
     const amount = Math.max(
-  (invoice.totalDue ?? 0) -
-  (invoice.payment?.paidAmount ?? 0),
-  0
-);
+      (invoice.totalDue ?? 0) -
+      (invoice.payment?.paidAmount ?? 0),
+      0
+    );
     if (!(amount > 0)) return;
 
     try {
@@ -1133,11 +1171,9 @@ export function InvoicesWorkspace({ rawRole }: Props) {
       showSuccess(response.message || "Payment done");
       if (response.invoice?.id) {
         setInvoiceOverrides((prev) => ({ ...prev, [response.invoice.id]: response.invoice }));
-        setSelectedInvoiceId(response.invoice.id);
-        setIsInvoiceViewOpen(true);
+        router.push(`/dashboard/invoices/${response.invoice.id}/preview`);
       } else {
-        setSelectedInvoiceId(invoice.id);
-        setIsInvoiceViewOpen(true);
+        router.push(`/dashboard/invoices/${invoice.id}/preview`);
       }
       refetchTables();
       refetchOrders();
@@ -1149,9 +1185,7 @@ export function InvoicesWorkspace({ rawRole }: Props) {
 
   function handleApplyInvoiceDiscount(invoice: InvoiceRecord) {
     if (!isPrivilegedBilling) return;
-    setInvoiceEditor(createInvoiceEditorState(invoice));
-    setSelectedInvoiceId(invoice.id);
-    setIsInvoiceViewOpen(true);
+    router.push(`/dashboard/invoices/${invoice.id}/edit`);
   }
 
   async function handleSaveInvoiceEditor() {
@@ -1321,55 +1355,115 @@ export function InvoicesWorkspace({ rawRole }: Props) {
     }
   }
 
+  if (editInvoiceId) {
+    return <InvoiceEditView invoiceId={editInvoiceId} />;
+  }
+
+  if (previewInvoiceId) {
+    return <InvoicePreviewView invoiceId={previewInvoiceId} />;
+  }
+
   return (
-    <div className="h-full">
-      <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
-        <div className="flex flex-wrap items-center gap-2">
-          <input
-            value={tableFilter}
-            onChange={(event) => setTableFilter(event.target.value)}
-            placeholder="Search occupied table"
-            className="h-10 rounded-2xl border border-[#e1d5bf] bg-white px-4 text-sm outline-none ring-amber-200 focus:ring-2"
-          />
-          <LiveBadge connected={socketConnected} />
+    <div className="h-full">      <div className="sticky top-0 z-30 bg-white/95 backdrop-blur-sm border-b border-slate-100 -mx-4 px-4 pt-4 pb-3 mb-6">
+      <div className="flex flex-col gap-4">
+        {/* Header Row */}
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-lg font-bold text-slate-900 tracking-tight">Invoices</h1>
+            <div className="flex items-center gap-2 mt-0.5">
+              <LiveBadge connected={socketConnected} />
+              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{occupiedTablesCount} Tables Occupied</span>
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => {
+                setOrdersPage(1);
+                setInvoicesPage(1);
+                setOrdersFeed([]);
+                setInvoicesFeed([]);
+                refetchTables();
+                refetchOrders();
+                refetchInvoices();
+              }}
+              className="h-9 w-9 flex items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 transition-all"
+            >
+              {isTablesFetching || isOrdersFetching || isInvoicesFetching ? <Spinner /> : (
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={2.5} viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99" />
+                </svg>
+              )}
+            </button>
+          </div>
         </div>
-        <button
-          type="button"
-          onClick={() => {
-            setOrdersPage(1);
-            setInvoicesPage(1);
-            setOrdersFeed([]);
-            setInvoicesFeed([]);
-            refetchTables();
-            refetchOrders();
-            refetchInvoices();
-          }}
-          className="rounded-2xl border border-slate-200 bg-white px-4 py-2 text-xs font-semibold text-slate-700"
-        >
-          {isTablesFetching || isOrdersFetching || isInvoicesFetching ? <Spinner /> : "Refresh"}
-        </button>
+
+        {/* Search & Tabs Row */}
+        <div className="flex flex-col sm:flex-row items-center gap-3">
+          <div className="relative flex-1 w-full">
+            <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+            </svg>
+            <input
+              value={viewTab === "UNPAID" ? tableFilter : customerFilter}
+              onChange={(e) => viewTab === "UNPAID" ? setTableFilter(e.target.value) : setCustomerFilter(e.target.value)}
+              placeholder={viewTab === "UNPAID" ? "Search table or order..." : "Search invoice, guest or phone..."}
+              className="w-full h-10 pl-10 pr-4 rounded-xl border border-slate-200 bg-slate-50 text-sm placeholder-slate-400 focus:bg-white focus:border-indigo-400 focus:ring-4 focus:ring-indigo-100 transition-all outline-none"
+            />
+          </div>
+
+          <div className="flex items-center gap-1 rounded-xl bg-slate-100 p-1 shrink-0 w-full sm:w-auto">
+            <button
+              onClick={() => setViewTab("UNPAID")}
+              className={`flex-1 sm:flex-none rounded-lg px-6 py-2 text-xs font-bold transition-all ${viewTab === "UNPAID" ? "bg-white text-indigo-600 shadow-sm" : "text-slate-500 hover:text-slate-700"
+                }`}
+            >
+              UNPAID
+            </button>
+            <button
+              onClick={() => setViewTab("PAID")}
+              className={`flex-1 sm:flex-none rounded-lg px-6 py-2 text-xs font-bold transition-all ${viewTab === "PAID" ? "bg-white text-indigo-600 shadow-sm" : "text-slate-500 hover:text-slate-700"
+                }`}
+            >
+              HISTORY
+            </button>
+          </div>
+        </div>
       </div>
+    </div>
 
-      <section className="mb-5 grid gap-3 md:grid-cols-4">
-        <article className="rounded-[26px] border border-amber-200 bg-amber-50 p-4">
-          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-amber-800">Occupied Tables</p>
-          <p className="mt-2 text-3xl font-semibold text-amber-950">{occupiedTablesCount}</p>
-        </article>
-        <article className="rounded-[26px] border border-orange-200 bg-orange-50 p-4">
-          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-orange-800">Pending Billing</p>
-          <p className="mt-2 text-3xl font-semibold text-orange-950">{pendingBillingRows.length}</p>
-        </article>
-        <article className="rounded-[26px] border border-blue-200 bg-blue-50 p-4">
-          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-blue-800">Issued</p>
-          <p className="mt-2 text-3xl font-semibold text-blue-950">{issuedInvoices.length}</p>
-        </article>
-        <article className="rounded-[26px] border border-emerald-200 bg-emerald-50 p-4">
-          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-emerald-800">Paid History</p>
-          <p className="mt-2 text-3xl font-semibold text-emerald-950">{paidInvoices.length}</p>
-        </article>
+      {/* Stats Section */}
+      <section className="mb-8 overflow-x-auto">
+        <div className="flex sm:grid sm:grid-cols-2 lg:grid-cols-4 gap-3 min-w-max sm:min-w-0">
+
+          <div className="bg-white rounded-2xl border border-slate-100 p-4 shadow-sm min-w-[160px]">
+            <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Actionable</p>
+            <p className="mt-1 text-xl font-black text-slate-900">{pendingBillingRows.length}</p>
+            <div className="mt-2 h-1 w-8 rounded-full bg-orange-400" />
+          </div>
+
+          <div className="bg-white rounded-2xl border border-slate-100 p-4 shadow-sm min-w-[160px]">
+            <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Issued</p>
+            <p className="mt-1 text-xl font-black text-slate-900">{issuedInvoices.length}</p>
+            <div className="mt-2 h-1 w-8 rounded-full bg-blue-400" />
+          </div>
+
+          <div className="bg-white rounded-2xl border border-slate-100 p-4 shadow-sm min-w-[160px]">
+            <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Paid Today</p>
+            <p className="mt-1 text-xl font-black text-slate-900">{paidInvoicesToday.length}</p>
+            <div className="mt-2 h-1 w-8 rounded-full bg-emerald-400" />
+          </div>
+
+          <div className="bg-white rounded-2xl border border-slate-100 p-4 shadow-sm min-w-[160px]">
+            <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Today Sales</p>
+            <p className="mt-1 text-xl font-black text-slate-900">{fmtCurrency(paidInvoicesTodayAmount)}</p>
+            <div className="mt-2 h-1 w-8 rounded-full bg-indigo-400" />
+          </div>
+
+        </div>
       </section>
-
-      <section className="space-y-4">
+      {viewTab === "UNPAID" ? (
+        <section className="space-y-4">
           <article className="rounded-[28px] border border-[#eadfc9] bg-[linear-gradient(160deg,#fffcf6_0%,#fff6e8_100%)] p-4">
             <div className="mb-4 flex items-center justify-between gap-3">
               <div>
@@ -1504,142 +1598,143 @@ export function InvoicesWorkspace({ rawRole }: Props) {
 
                   <div className="hidden overflow-x-auto md:block">
                     <table className="min-w-full text-left text-sm">
-                    <thead className="bg-[#fff5e5] text-[11px] uppercase tracking-[0.16em] text-slate-600">
-                      <tr>
-                        <th className="px-3 py-2">Table</th>
-                        <th className="px-3 py-2">Order</th>
-                        <th className="px-3 py-2">Amount</th>
-                        <th className="px-3 py-2">Invoice</th>
-                        <th className="px-3 py-2 text-right">Action</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {billingRows.map(({ table, orders: tableOrders, currentInvoices, readyOrders }) => {
-                        const primaryInvoice = currentInvoices[0] || null;
-                        const rowAmount = primaryInvoice
-                          ? currentInvoices.reduce((sum, invoice) => sum + invoiceAmount(invoice), 0)
-                          : tableOrders.reduce((sum, order) => sum + itemTotal(order), 0);
-                        const selectedOrders = selectedReadyOrders(table.id, readyOrders);
-                        const orderHint =
-                          currentInvoices.length > 0
-                            ? `${currentInvoices.length} issued invoice${currentInvoices.length === 1 ? "" : "s"} pending payment`
-                            : readyOrders.length > 0
-                              ? `${readyOrders.length} order${readyOrders.length === 1 ? "" : "s"} ready to bill`
-                              : `${tableOrders.length} running order${tableOrders.length === 1 ? "" : "s"}`;
+                      <thead className="bg-[#fff5e5] text-[11px] uppercase tracking-[0.16em] text-slate-600">
+                        <tr>
+                          <th className="px-3 py-2">Table</th>
+                          <th className="px-3 py-2">Order</th>
+                          <th className="px-3 py-2">Amount</th>
+                          <th className="px-3 py-2">Invoice</th>
+                          <th className="px-3 py-2 text-right">Action</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {billingRows.map(({ table, orders: tableOrders, currentInvoices, readyOrders }) => {
+                          const primaryInvoice = currentInvoices[0] || null;
+                          const rowAmount = primaryInvoice
+                            ? currentInvoices.reduce((sum, invoice) => sum + invoiceAmount(invoice), 0)
+                            : tableOrders.reduce((sum, order) => sum + itemTotal(order), 0);
+                          const selectedOrders = selectedReadyOrders(table.id, readyOrders);
+                          const orderHint =
+                            currentInvoices.length > 0
+                              ? `${currentInvoices.length} issued invoice${currentInvoices.length === 1 ? "" : "s"} pending payment`
+                              : readyOrders.length > 0
+                                ? `${readyOrders.length} order${readyOrders.length === 1 ? "" : "s"} ready to bill`
+                                : `${tableOrders.length} running order${tableOrders.length === 1 ? "" : "s"}`;
 
-                        return (
-                          <tr key={table.id} className="border-t border-[#eee4d1]">
-                            <td className="px-3 py-3">
-                              <p className="font-semibold text-slate-900">{table.name}</p>
-                              <p className="mt-1 text-xs text-slate-500">T{table.number}</p>
-                            </td>
-                            <td className="px-3 py-3">
-                              <div className="space-y-1.5">
-                                {tableOrders.length === 0 ? (
-                                  <span className="text-xs text-slate-500">No open order</span>
-                                ) : (
-                                  tableOrders.map((order) => (
-                                    <div key={order.id} className="rounded-xl border border-slate-100 bg-slate-50 px-2.5 py-2">
-                                      <div className="flex items-center justify-between gap-2">
-                                        <span className={`inline-flex rounded-full border px-2.5 py-1 text-[10px] font-semibold ${statusPill(order.status)}`}>
-                                          {order.orderNumber ? `#${order.orderNumber}` : order.id.slice(-4)} {order.status}
-                                        </span>
-                                        <span className="text-[11px] font-semibold text-slate-800">{fmtCurrency(itemTotal(order))}</span>
-                                      </div>
-                                      <p className="mt-1 text-xs text-slate-500">
-                                        {order.items.length} item(s) | {timeAgo(order.updatedAt || order.createdAt)}
-                                        {order.customerName ? ` | ${order.customerName}` : ""}
-                                      </p>
-                                      {canGenerateInvoice(order) ? (
-                                        <label className="mt-2 flex items-center gap-2 text-[11px] text-slate-700">
-                                          <input
-                                            type="checkbox"
-                                            checked={selectedOrders.some((entry) => entry.id === order.id)}
-                                            onChange={() => toggleBillingOrder(table.id, order.id)}
-                                            className="h-4 w-4 rounded border-slate-300"
-                                          />
-                                          Select for next invoice
-                                        </label>
-                                      ) : null}
+                          return (
+                            <tr key={table.id} className="border-t border-[#eee4d1]">
+                              <td className="px-3 py-3">
+                                <p className="font-semibold text-slate-900">{table.name}</p>
+                                <p className="mt-1 text-xs text-slate-500">T{table.number}</p>
+                              </td>
+                              <td className="px-3 py-3">
+                                <div className="space-y-2">
+                                  {tableOrders.length === 0 ? (
+                                    <span className="text-xs text-slate-400">No open orders</span>
+                                  ) : (
+                                    <div className="flex flex-col gap-2">
+                                      {tableOrders.map((order) => (
+                                        <div key={order.id} className="group rounded-xl border border-slate-100 bg-white p-3 transition-colors hover:border-amber-200 hover:bg-amber-50/30">
+                                          <div className="flex items-center justify-between">
+                                            <div className="flex items-center gap-2">
+                                              <span className={`inline-flex rounded-md border px-2 py-0.5 text-[10px] font-bold tracking-tight ${statusPill(order.status)}`}>
+                                                #{order.orderNumber || order.id.slice(-4)}
+                                              </span>
+                                              <span className="text-xs font-bold text-slate-700">{fmtCurrency(itemTotal(order))}</span>
+                                            </div>
+                                            {canGenerateInvoice(order) && (
+                                              <input
+                                                type="checkbox"
+                                                checked={selectedOrders.some((entry) => entry.id === order.id)}
+                                                onChange={() => toggleBillingOrder(table.id, order.id)}
+                                                className="h-4 w-4 rounded-md border-slate-300 text-indigo-600 focus:ring-indigo-500"
+                                              />
+                                            )}
+                                          </div>
+                                          <div className="mt-2 flex items-center justify-between text-[10px] font-semibold text-slate-400">
+                                            <span>{order.items.length} Items • {timeAgo(order.updatedAt || order.createdAt)}</span>
+                                            {order.customerName && <span className="text-slate-500">{order.customerName}</span>}
+                                          </div>
+                                        </div>
+                                      ))}
                                     </div>
-                                  ))
-                                )}
-                                <p className="text-[11px] font-medium text-slate-700">{orderHint}</p>
-                                {readyOrders.length > 0 ? (
-                                  <div className="flex gap-3 text-[11px] font-semibold text-slate-600">
-                                    <button type="button" onClick={() => selectAllBillingOrders(table.id, readyOrders)}>
-                                      Select all ready
-                                    </button>
-                                    <button type="button" onClick={() => clearBillingSelection(table.id)}>
-                                      Clear
-                                    </button>
-                                  </div>
-                                ) : null}
-                              </div>
-                            </td>
-                            <td className="px-3 py-3 text-sm font-semibold text-slate-900">{fmtCurrency(rowAmount)}</td>
-                            <td className="px-3 py-3">
-                              {currentInvoices.length === 0 ? (
-                                <span className="text-xs text-slate-500">Not generated</span>
-                              ) : (
-                                <div className="flex flex-wrap gap-2">
-                                  {currentInvoices.map((invoice) => (
-                                    <span key={invoice.id} className={`inline-flex rounded-full border px-2.5 py-1 text-[10px] font-semibold ${statusPill(invoice.status)}`}>
-                                      INV {shortInvoiceId(invoice.id)}{invoice.isGroupInvoice ? " Group" : ""}
-                                    </span>
-                                  ))}
+                                  )}
+                                  {readyOrders.length > 0 && (
+                                    <div className="flex items-center justify-between gap-3 pt-1">
+                                      <p className="text-[10px] font-bold text-amber-600 uppercase tracking-wider">{orderHint}</p>
+                                      <div className="flex gap-3 text-[10px] font-black text-indigo-600 uppercase tracking-widest">
+                                        <button type="button" onClick={() => selectAllBillingOrders(table.id, readyOrders)} className="hover:underline">Select All</button>
+                                        <button type="button" onClick={() => clearBillingSelection(table.id)} className="text-slate-400 hover:text-slate-600">Clear</button>
+                                      </div>
+                                    </div>
+                                  )}
                                 </div>
-                              )}
-                            </td>
-                            <td className="px-3 py-3">
-                              <div className="flex justify-end gap-2">
-                                {currentInvoices.length > 0 ? (
-                                  <>
+                              </td>
+                              <td className="px-3 py-3 text-sm font-semibold text-slate-900">{fmtCurrency(rowAmount)}</td>
+                              <td className="px-3 py-3">
+                                {currentInvoices.length === 0 ? (
+                                  <span className="text-xs text-slate-500">Not generated</span>
+                                ) : (
+                                  <div className="flex flex-wrap gap-2">
                                     {currentInvoices.map((invoice) => (
-                                      <button
-                                        key={invoice.id}
-                                        type="button"
-                                        onClick={() => openInvoiceView(invoice.id)}
-                                        className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-semibold text-slate-700"
-                                      >
-                                        View INV {shortInvoiceId(invoice.id)}
-                                      </button>
+                                      <span key={invoice.id} className={`inline-flex rounded-full border px-2.5 py-1 text-[10px] font-semibold ${statusPill(invoice.status)}`}>
+                                        INV {shortInvoiceId(invoice.id)}{invoice.isGroupInvoice ? " Group" : ""}
+                                      </span>
                                     ))}
-                                  </>
-                                ) : null}
-                                {selectedOrders.length === 1 ? (
-                                  <button
-                                    type="button"
-                                    disabled={isCreating}
-                                    onClick={() => openDraftInvoice(table, selectedOrders)}
-                                    className="rounded-xl bg-amber-500 px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-50"
-                                  >
-                                    {isCreating ? "Creating..." : "Bill Selected"}
-                                  </button>
-                                ) : null}
-                                {selectedOrders.length > 1 ? (
-                                  <button
-                                    type="button"
-                                    disabled={isCreatingGroup}
-                                    onClick={() => openDraftInvoice(table, selectedOrders)}
-                                    className="rounded-xl bg-slate-900 px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-50"
-                                  >
-                                    {isCreatingGroup ? "Creating..." : `Bill Selected ${selectedOrders.length}`}
-                                  </button>
-                                ) : null}
-                              </div>
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
+                                  </div>
+                                )}
+                              </td>
+                              <td className="px-3 py-3">
+                                <div className="flex justify-end gap-2">
+                                  {currentInvoices.length > 0 ? (
+                                    <>
+                                      {currentInvoices.map((invoice) => (
+                                        <button
+                                          key={invoice.id}
+                                          type="button"
+                                          onClick={() => openInvoiceView(invoice.id)}
+                                          className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-semibold text-slate-700"
+                                        >
+                                          View INV {shortInvoiceId(invoice.id)}
+                                        </button>
+                                      ))}
+                                    </>
+                                  ) : null}
+                                  {selectedOrders.length === 1 ? (
+                                    <button
+                                      type="button"
+                                      disabled={isCreating}
+                                      onClick={() => openDraftInvoice(table, selectedOrders)}
+                                      className="rounded-xl bg-amber-500 px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-50"
+                                    >
+                                      {isCreating ? "Creating..." : "Bill Selected"}
+                                    </button>
+                                  ) : null}
+                                  {selectedOrders.length > 1 ? (
+                                    <button
+                                      type="button"
+                                      disabled={isCreatingGroup}
+                                      onClick={() => openDraftInvoice(table, selectedOrders)}
+                                      className="rounded-xl bg-slate-900 px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-50"
+                                    >
+                                      {isCreatingGroup ? "Creating..." : `Bill Selected ${selectedOrders.length}`}
+                                    </button>
+                                  ) : null}
+                                </div>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
                     </table>
                   </div>
                 </>
               )}
             </div>
           </article>
-
+        </section>
+      ) : (
+        <section className="space-y-4">
           <article className="rounded-[28px] border border-slate-200 bg-white p-4">
             <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
               <div>
@@ -1666,11 +1761,10 @@ export function InvoicesWorkspace({ rawRole }: Props) {
                   key={range}
                   type="button"
                   onClick={() => setHistoryRange(range)}
-                  className={`rounded-full border px-3 py-1.5 text-xs font-semibold ${
-                    historyRange === range
+                  className={`rounded-full border px-3 py-1.5 text-xs font-semibold ${historyRange === range
                       ? "border-amber-200 bg-amber-50 text-amber-800"
                       : "border-slate-200 bg-white text-slate-600"
-                  }`}
+                    }`}
                 >
                   {range === "quarter"
                     ? "3 Months"
@@ -1678,9 +1772,9 @@ export function InvoicesWorkspace({ rawRole }: Props) {
                       ? "6 Months"
                       : range === "custom"
                         ? "Custom Range"
-                      : range === "all"
-                        ? "All"
-                        : range.charAt(0).toUpperCase() + range.slice(1)}
+                        : range === "all"
+                          ? "All"
+                          : range.charAt(0).toUpperCase() + range.slice(1)}
                 </button>
               ))}
               {historyRange === "custom" ? (
@@ -1766,68 +1860,69 @@ export function InvoicesWorkspace({ rawRole }: Props) {
 
                   <div className="hidden overflow-x-auto md:block">
                     <table className="min-w-full text-left text-sm">
-                    <thead className="bg-slate-50 text-[11px] uppercase tracking-[0.16em] text-slate-600">
-                      <tr>
-                        <th className="px-3 py-2">Invoice</th>
-                        <th className="px-3 py-2">Date</th>
-                        <th className="px-3 py-2">Table</th>
-                        <th className="px-3 py-2">Customer</th>
-                        <th className="px-3 py-2">Status</th>
-                        <th className="px-3 py-2">Amount</th>
-                        <th className="px-3 py-2 text-right">Actions</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {historyInvoices.map((invoice) => {
-                        const customerName = invoiceCustomerMap.get(invoice.id) || "-";
-                        const active = activeInvoiceId === invoice.id;
+                      <thead className="bg-slate-50 text-[11px] uppercase tracking-[0.16em] text-slate-600">
+                        <tr>
+                          <th className="px-3 py-2">Invoice</th>
+                          <th className="px-3 py-2">Date</th>
+                          <th className="px-3 py-2">Table</th>
+                          <th className="px-3 py-2">Customer</th>
+                          <th className="px-3 py-2">Status</th>
+                          <th className="px-3 py-2">Amount</th>
+                          <th className="px-3 py-2 text-right">Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {historyInvoices.map((invoice) => {
+                          const customerName = invoiceCustomerMap.get(invoice.id) || "-";
+                          const active = activeInvoiceId === invoice.id;
 
-                        return (
-                          <tr key={invoice.id} className={`border-t border-slate-200 ${active ? "bg-amber-50/70" : "bg-white"}`}>
-                            <td className="px-3 py-3 font-semibold text-slate-900">INV {shortInvoiceId(invoice.id)}</td>
-                            <td className="px-3 py-3 text-xs text-slate-600">{fmtDateTime(invoice.createdAt)}</td>
-                            <td className="px-3 py-3 text-slate-700">{invoice.table?.name || `Table ${invoice.table?.number ?? "-"}`}</td>
-                            <td className="px-3 py-3 text-slate-700">{customerName}</td>
-                            <td className="px-3 py-3">
-                              <span className={`inline-flex rounded-full border px-2.5 py-1 text-[10px] font-semibold ${statusPill(invoice.status)}`}>
-                                {invoice.status}
-                              </span>
-                            </td>
-                            <td className="px-3 py-3 font-semibold text-slate-900">{fmtCurrency(invoiceAmount(invoice))}</td>
-                            <td className="px-3 py-3">
-                              <div className="flex justify-end gap-2">
-                                <button
-                                  type="button"
-                                  onClick={() => openInvoiceView(invoice.id)}
-                                  className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-semibold text-slate-700"
-                                >
-                                  View
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={() =>
-                                    downloadInvoicePdf(invoice, {
-                                      ...receiptProfile,
-                                      customerName: invoiceCustomerMap.get(invoice.id) || "-",
-                                    })
-                                  }
-                                  className="rounded-xl border border-blue-200 bg-blue-50 px-3 py-1.5 text-xs font-semibold text-blue-700"
-                                >
-                                  Download PDF
-                                </button>
-                              </div>
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
+                          return (
+                            <tr key={invoice.id} className={`border-t border-slate-200 ${active ? "bg-amber-50/70" : "bg-white"}`}>
+                              <td className="px-3 py-3 font-semibold text-slate-900">INV {shortInvoiceId(invoice.id)}</td>
+                              <td className="px-3 py-3 text-xs text-slate-600">{fmtDateTime(invoice.createdAt)}</td>
+                              <td className="px-3 py-3 text-slate-700">{invoice.table?.name || `Table ${invoice.table?.number ?? "-"}`}</td>
+                              <td className="px-3 py-3 text-slate-700">{customerName}</td>
+                              <td className="px-3 py-3">
+                                <span className={`inline-flex rounded-full border px-2.5 py-1 text-[10px] font-semibold ${statusPill(invoice.status)}`}>
+                                  {invoice.status}
+                                </span>
+                              </td>
+                              <td className="px-3 py-3 font-semibold text-slate-900">{fmtCurrency(invoiceAmount(invoice))}</td>
+                              <td className="px-3 py-3">
+                                <div className="flex justify-end gap-2">
+                                  <button
+                                    type="button"
+                                    onClick={() => openInvoiceView(invoice.id)}
+                                    className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-semibold text-slate-700"
+                                  >
+                                    View
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      downloadInvoicePdf(invoice, {
+                                        ...receiptProfile,
+                                        customerName: invoiceCustomerMap.get(invoice.id) || "-",
+                                      })
+                                    }
+                                    className="rounded-xl border border-blue-200 bg-blue-50 px-3 py-1.5 text-xs font-semibold text-blue-700"
+                                  >
+                                    Download PDF
+                                  </button>
+                                </div>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
                     </table>
                   </div>
                 </>
               )}
             </div>
           </article>
-      </section>
+        </section>
+      )}
 
       {draftBilling ? (
         <div className="fixed inset-0 z-50 flex items-end justify-center bg-slate-900/55 p-0 sm:items-center sm:p-4">
@@ -1843,354 +1938,354 @@ export function InvoicesWorkspace({ rawRole }: Props) {
 
               return (
                 <>
-            <div className="mb-4 flex items-center justify-between gap-2">
-              <div>
-                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Invoice Preview</p>
-                <h4 className="mt-1 text-lg font-semibold text-slate-900">
-                  {draftBilling.orders.length > 1 ? `Group bill for ${draftBilling.table.name}` : `Bill for ${draftBilling.table.name}`}
-                </h4>
-              </div>
-              <button
-                type="button"
-                onClick={() => setDraftBilling(null)}
-                className="rounded-xl border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700"
-              >
-                Close
-              </button>
-            </div>
-
-            <div className="rounded-[28px] border border-[#dfd2bb] bg-[linear-gradient(170deg,#fffef9_0%,#fff6e8_100%)] p-4">
-              <div className="space-y-3">
-                {draftBilling.orders.map((order) => (
-                  <article key={order.id} className="rounded-2xl border border-[#eadfc9] bg-white/85 p-3">
-                    <div className="flex items-center justify-between gap-2">
-                      <div>
-                        <p className="text-sm font-semibold text-slate-900">
-                          {order.orderNumber ? `#${order.orderNumber}` : order.id.slice(-4)} {order.customerName ? `| ${order.customerName}` : ""}
-                        </p>
-                        <p className="text-xs text-slate-500">{order.items.length} item(s)</p>
-                      </div>
-                      <span className="text-sm font-semibold text-slate-900">{fmtCurrency(itemTotal(order))}</span>
-                    </div>
-                    <div className="mt-3 space-y-2">
-                      {order.items.some((item) => Boolean(item.lineId) && canCorrectItemStatus(item.status)) ? (
-                        <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] font-semibold text-amber-800">
-                          Item correction: `Exchange` = dusre order me bhejo, `Reduce/Remove` = qty ghatao ya hatao, `Cancel Item` = line cancel karo.
-                        </div>
-                      ) : null}
-                      {order.items.map((item, index) => {
-                        const lineKey = item.lineId ? `${order.id}:${item.lineId}` : `${order.id}:${item.itemId}:${index}`;
-                        const selectedQty = correctionQty(item.quantity, draftCorrection.quantities[lineKey]);
-                        const busy = draftCorrection.busyKey === `${order.id}:${item.lineId || ""}`;
-                        const normalizedStatus = normalizeStatus(item.status);
-                        const canCorrectItem = Boolean(item.lineId) && canCorrectItemStatus(item.status);
-                        const moveTargets = draftMoveTargets.filter((candidate) => candidate.id !== order.id);
-                        const tableTargets = tables.filter((table) => table.id !== draftBilling.table.id);
-                        const billable = normalizedStatus === "SERVED" || normalizedStatus === "CANCELLED";
-
-                        return (
-                          <div key={`${order.id}-${item.itemId}-${item.variantId || "base"}-${index}`} className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm">
-                            <div className="flex items-start justify-between gap-3">
-                              <div className="min-w-0">
-                                <p className="font-medium text-slate-900">
-                                  {item.quantity}x {item.name}
-                                  {item.variantName ? ` (${item.variantName})` : ""}
-                                </p>
-                                <p className="mt-1 text-[11px] font-medium text-slate-500">
-                                  Status: {normalizedStatus || "PLACED"}
-                                </p>
-                                <div className="mt-1 flex flex-wrap items-center gap-2">
-                                  <span className={`inline-flex rounded-full border px-2.5 py-1 text-[10px] font-semibold ${itemStatusPill(item.status)}`}>
-                                    {normalizedStatus || "PLACED"}
-                                  </span>
-                                  <span className="text-xs text-slate-500">{fmtCurrency(item.lineTotal ?? item.unitPrice * item.quantity)}</span>
-                                </div>
-                                {!billable ? (
-                                  <p className="mt-2 text-[11px] text-rose-700">
-                                    Ye item abhi bill-ready nahi hai. Pehle correct karo ya service status fix karo.
-                                  </p>
-                                ) : null}
-                              </div>
-                              <span className="font-semibold text-slate-900">{fmtCurrency(item.lineTotal ?? item.unitPrice * item.quantity)}</span>
-                            </div>
-
-                            {canCorrectItem ? (
-                              <div className="mt-3 flex flex-wrap items-center gap-2">
-                                {item.quantity && item.quantity > 1 ? (
-                                  <select
-                                    value={String(selectedQty)}
-                                    disabled={busy}
-                                    onChange={(event) => handleDraftCorrectionQuantityChange(lineKey, Number(event.target.value) || 1)}
-                                    className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 disabled:opacity-50"
-                                  >
-                                    {Array.from({ length: item.quantity }, (_, idx) => idx + 1).map((qty) => (
-                                      <option key={qty} value={qty}>
-                                        Qty {qty}
-                                      </option>
-                                    ))}
-                                  </select>
-                                ) : null}
-                                {moveTargets.length > 0 ? (
-                                  <select
-                                    defaultValue=""
-                                    disabled={busy}
-                                    onChange={(event) => {
-                                      const targetOrderId = event.target.value;
-                                      if (!targetOrderId || !item.lineId) return;
-                                      handleDraftMoveItem(order.id, item.lineId, item.name, { targetOrderId }, selectedQty, item.quantity);
-                                      event.currentTarget.value = "";
-                                    }}
-                                    className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 disabled:opacity-50"
-                                  >
-                                    <option value="">Exchange order</option>
-                                    {moveTargets.map((candidate) => (
-                                      <option key={candidate.id} value={candidate.id}>
-                                        {candidate.orderNumber ? `#${candidate.orderNumber}` : candidate.id.slice(-4)}
-                                        {candidate.customerName ? ` | ${candidate.customerName}` : ""}
-                                      </option>
-                                    ))}
-                                  </select>
-                                ) : null}
-                                {tableTargets.length > 0 ? (
-                                  <select
-                                    defaultValue=""
-                                    disabled={busy}
-                                    onChange={(event) => {
-                                      const targetTableId = event.target.value;
-                                      if (!targetTableId || !item.lineId) return;
-                                      handleDraftMoveItem(order.id, item.lineId, item.name, { targetTableId }, selectedQty, item.quantity);
-                                      event.currentTarget.value = "";
-                                    }}
-                                    className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 disabled:opacity-50"
-                                  >
-                                    <option value="">Exchange table</option>
-                                    {tableTargets.map((table) => (
-                                      <option key={table.id} value={table.id}>
-                                        T{table.number} {table.name}
-                                      </option>
-                                    ))}
-                                  </select>
-                                ) : null}
-                                <button
-                                  type="button"
-                                  disabled={busy || !item.lineId}
-                                  onClick={() =>
-                                    item.lineId &&
-                                    handleDraftRemoveItem(order.id, item.lineId, item.name, selectedQty, item.quantity)
-                                  }
-                                  className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-700 disabled:opacity-50"
-                                >
-                                  {busy ? "Working..." : item.quantity > 1 ? `Reduce ${selectedQty}` : "Remove Item"}
-                                </button>
-                                <button
-                                  type="button"
-                                  disabled={busy || !item.lineId}
-                                  onClick={() => item.lineId && handleDraftCancelItem(order.id, item.lineId, item.name)}
-                                  className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 disabled:opacity-50"
-                                >
-                                  Cancel Item
-                                </button>
-                              </div>
-                            ) : null}
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </article>
-                ))}
-              </div>
-
-              <div className="mt-4 rounded-2xl border border-[#eadfc9] bg-white/90 p-4">
-                <div className="mb-4 rounded-2xl border border-slate-200 bg-slate-50 p-4">
-                  <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div className="mb-4 flex items-center justify-between gap-2">
                     <div>
-                      <p className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">
-                        Optional Customer
-                      </p>
-                      <p className="mt-1 text-sm text-slate-600">
-                        Invoice create karte waqt customer info add kar sakte ho,
-                        ya blank chhod sakte ho.
-                      </p>
+                      <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Invoice Preview</p>
+                      <h4 className="mt-1 text-lg font-semibold text-slate-900">
+                        {draftBilling.orders.length > 1 ? `Group bill for ${draftBilling.table.name}` : `Bill for ${draftBilling.table.name}`}
+                      </h4>
                     </div>
                     <button
                       type="button"
-                      onClick={() =>
-                        setDraftBilling((current) =>
-                          current
-                            ? { ...current, customerName: "", customerPhone: "" }
-                            : current,
-                        )
-                      }
+                      onClick={() => setDraftBilling(null)}
                       className="rounded-xl border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700"
                     >
-                      Clear Customer
+                      Close
                     </button>
                   </div>
-                  <div className="mt-3 grid gap-3 sm:grid-cols-2">
-                    <label className="text-sm text-slate-700">
-                      <span className="mb-1 block text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">
-                        Customer Name
-                      </span>
-                      <input
-                        value={draftBilling.customerName}
-                        onChange={(event) =>
-                          setDraftBilling((current) =>
-                            current
-                              ? { ...current, customerName: event.target.value }
-                              : current,
-                          )
-                        }
-                        placeholder="Optional guest name"
-                        className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm outline-none ring-amber-200 focus:ring-2"
-                      />
-                    </label>
-                    <label className="text-sm text-slate-700">
-                      <span className="mb-1 block text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">
-                        Customer Phone / WhatsApp
-                      </span>
-                      <input
-                        value={draftBilling.customerPhone}
-                        onChange={(event) =>
-                          setDraftBilling((current) =>
-                            current
-                              ? {
-                                  ...current,
-                                  customerPhone: normalizePhoneInput(
-                                    event.target.value,
-                                  ),
-                                }
-                              : current,
-                          )
-                        }
-                        placeholder="Optional phone number"
-                        className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm outline-none ring-amber-200 focus:ring-2"
-                      />
-                    </label>
-                  </div>
-                </div>
 
-                <div className="grid gap-3 sm:grid-cols-2">
-                  <label className="text-sm text-slate-700">
-                    <span className="mb-1 block text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">Discount Type</span>
-                    <select
-                      value={draftBilling.discount.type}
-                      disabled={!isPrivilegedBilling}
-                      onChange={(event) =>
-                        setDraftBilling((current) =>
-                          current
-                            ? { ...current, discount: { ...current.discount, type: event.target.value as DiscountInput["type"] } }
-                            : current,
-                        )
-                      }
-                      className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm disabled:opacity-50"
-                    >
-                      <option value="PERCENTAGE">Percentage</option>
-                      <option value="FLAT">Flat</option>
-                    </select>
-                  </label>
-                  <label className="text-sm text-slate-700">
-                    <span className="mb-1 block text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">Discount Value</span>
-                    <input
-                      type="number"
-                      min="0"
-                      value={draftBilling.discount.value}
-                      disabled={!isPrivilegedBilling}
-                      onChange={(event) =>
-                        setDraftBilling((current) =>
-                          current
-                            ? {
-                                ...current,
-                                discount: { ...current.discount, value: Math.max(0, Number(event.target.value) || 0) },
-                              }
-                            : current,
-                        )
-                      }
-                      className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm disabled:opacity-50"
-                    />
-                  </label>
-                </div>
-                {!isPrivilegedBilling ? (
-                  <p className="mt-2 text-xs text-slate-500">Discount sirf manager ya owner set kar sakta hai.</p>
-                ) : null}
-                {(() => {
-                  const total = draftItemsTotal(draftBilling.orders);
-                  const discountAmount = draftDiscountAmount(total, draftBilling.discount);
-                  const finalTotal = Math.max(total - discountAmount, 0);
-                  return (
-                    <div className="mt-4 space-y-1 text-sm">
-                      <div className="flex items-center justify-between text-slate-600">
-                        <span>Items total</span>
-                        <span>{fmtCurrency(total)}</span>
-                      </div>
-                      <div className="flex items-center justify-between text-slate-600">
-                        <span>Discount</span>
-                        <span>{fmtCurrency(discountAmount)}</span>
-                      </div>
-                      <div className="flex items-center justify-between border-t border-dashed border-[#d8ccb6] pt-2 text-base font-semibold text-slate-900">
-                        <span>Estimated total</span>
-                        <span>{fmtCurrency(finalTotal)}</span>
-                      </div>
+                  <div className="rounded-[28px] border border-[#dfd2bb] bg-[linear-gradient(170deg,#fffef9_0%,#fff6e8_100%)] p-4">
+                    <div className="space-y-3">
+                      {draftBilling.orders.map((order) => (
+                        <article key={order.id} className="rounded-2xl border border-[#eadfc9] bg-white/85 p-3">
+                          <div className="flex items-center justify-between gap-2">
+                            <div>
+                              <p className="text-sm font-semibold text-slate-900">
+                                {order.orderNumber ? `#${order.orderNumber}` : order.id.slice(-4)} {order.customerName ? `| ${order.customerName}` : ""}
+                              </p>
+                              <p className="text-xs text-slate-500">{order.items.length} item(s)</p>
+                            </div>
+                            <span className="text-sm font-semibold text-slate-900">{fmtCurrency(itemTotal(order))}</span>
+                          </div>
+                          <div className="mt-3 space-y-2">
+                            {order.items.some((item) => Boolean(item.lineId) && canCorrectItemStatus(item.status)) ? (
+                              <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] font-semibold text-amber-800">
+                                Item correction: `Exchange` = dusre order me bhejo, `Reduce/Remove` = qty ghatao ya hatao, `Cancel Item` = line cancel karo.
+                              </div>
+                            ) : null}
+                            {order.items.map((item, index) => {
+                              const lineKey = item.lineId ? `${order.id}:${item.lineId}` : `${order.id}:${item.itemId}:${index}`;
+                              const selectedQty = correctionQty(item.quantity, draftCorrection.quantities[lineKey]);
+                              const busy = draftCorrection.busyKey === `${order.id}:${item.lineId || ""}`;
+                              const normalizedStatus = normalizeStatus(item.status);
+                              const canCorrectItem = Boolean(item.lineId) && canCorrectItemStatus(item.status);
+                              const moveTargets = draftMoveTargets.filter((candidate) => candidate.id !== order.id);
+                              const tableTargets = tables.filter((table) => table.id !== draftBilling.table.id);
+                              const billable = normalizedStatus === "SERVED" || normalizedStatus === "CANCELLED";
+
+                              return (
+                                <div key={`${order.id}-${item.itemId}-${item.variantId || "base"}-${index}`} className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm">
+                                  <div className="flex items-start justify-between gap-3">
+                                    <div className="min-w-0">
+                                      <p className="font-medium text-slate-900">
+                                        {item.quantity}x {item.name}
+                                        {item.variantName ? ` (${item.variantName})` : ""}
+                                      </p>
+                                      <p className="mt-1 text-[11px] font-medium text-slate-500">
+                                        Status: {normalizedStatus || "PLACED"}
+                                      </p>
+                                      <div className="mt-1 flex flex-wrap items-center gap-2">
+                                        <span className={`inline-flex rounded-full border px-2.5 py-1 text-[10px] font-semibold ${itemStatusPill(item.status)}`}>
+                                          {normalizedStatus || "PLACED"}
+                                        </span>
+                                        <span className="text-xs text-slate-500">{fmtCurrency(item.lineTotal ?? item.unitPrice * item.quantity)}</span>
+                                      </div>
+                                      {!billable ? (
+                                        <p className="mt-2 text-[11px] text-rose-700">
+                                          Ye item abhi bill-ready nahi hai. Pehle correct karo ya service status fix karo.
+                                        </p>
+                                      ) : null}
+                                    </div>
+                                    <span className="font-semibold text-slate-900">{fmtCurrency(item.lineTotal ?? item.unitPrice * item.quantity)}</span>
+                                  </div>
+
+                                  {canCorrectItem ? (
+                                    <div className="mt-3 flex flex-wrap items-center gap-2">
+                                      {item.quantity && item.quantity > 1 ? (
+                                        <select
+                                          value={String(selectedQty)}
+                                          disabled={busy}
+                                          onChange={(event) => handleDraftCorrectionQuantityChange(lineKey, Number(event.target.value) || 1)}
+                                          className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 disabled:opacity-50"
+                                        >
+                                          {Array.from({ length: item.quantity }, (_, idx) => idx + 1).map((qty) => (
+                                            <option key={qty} value={qty}>
+                                              Qty {qty}
+                                            </option>
+                                          ))}
+                                        </select>
+                                      ) : null}
+                                      {moveTargets.length > 0 ? (
+                                        <select
+                                          defaultValue=""
+                                          disabled={busy}
+                                          onChange={(event) => {
+                                            const targetOrderId = event.target.value;
+                                            if (!targetOrderId || !item.lineId) return;
+                                            handleDraftMoveItem(order.id, item.lineId, item.name, { targetOrderId }, selectedQty, item.quantity);
+                                            event.currentTarget.value = "";
+                                          }}
+                                          className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 disabled:opacity-50"
+                                        >
+                                          <option value="">Exchange order</option>
+                                          {moveTargets.map((candidate) => (
+                                            <option key={candidate.id} value={candidate.id}>
+                                              {candidate.orderNumber ? `#${candidate.orderNumber}` : candidate.id.slice(-4)}
+                                              {candidate.customerName ? ` | ${candidate.customerName}` : ""}
+                                            </option>
+                                          ))}
+                                        </select>
+                                      ) : null}
+                                      {tableTargets.length > 0 ? (
+                                        <select
+                                          defaultValue=""
+                                          disabled={busy}
+                                          onChange={(event) => {
+                                            const targetTableId = event.target.value;
+                                            if (!targetTableId || !item.lineId) return;
+                                            handleDraftMoveItem(order.id, item.lineId, item.name, { targetTableId }, selectedQty, item.quantity);
+                                            event.currentTarget.value = "";
+                                          }}
+                                          className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 disabled:opacity-50"
+                                        >
+                                          <option value="">Exchange table</option>
+                                          {tableTargets.map((table) => (
+                                            <option key={table.id} value={table.id}>
+                                              T{table.number} {table.name}
+                                            </option>
+                                          ))}
+                                        </select>
+                                      ) : null}
+                                      <button
+                                        type="button"
+                                        disabled={busy || !item.lineId}
+                                        onClick={() =>
+                                          item.lineId &&
+                                          handleDraftRemoveItem(order.id, item.lineId, item.name, selectedQty, item.quantity)
+                                        }
+                                        className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-700 disabled:opacity-50"
+                                      >
+                                        {busy ? "Working..." : item.quantity > 1 ? `Reduce ${selectedQty}` : "Remove Item"}
+                                      </button>
+                                      <button
+                                        type="button"
+                                        disabled={busy || !item.lineId}
+                                        onClick={() => item.lineId && handleDraftCancelItem(order.id, item.lineId, item.name)}
+                                        className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 disabled:opacity-50"
+                                      >
+                                        Cancel Item
+                                      </button>
+                                    </div>
+                                  ) : null}
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </article>
+                      ))}
                     </div>
-                  );
-                })()}
-              </div>
-            </div>
 
-            {hasUnbillableItems ? (
-              <div className="mt-4 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
-                Kuch items abhi `SERVED/CANCELLED` nahi hain. Pehle unko correct ya complete karo, fir invoice banao.
-              </div>
-            ) : null}
+                    <div className="mt-4 rounded-2xl border border-[#eadfc9] bg-white/90 p-4">
+                      <div className="mb-4 rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <div>
+                            <p className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">
+                              Optional Customer
+                            </p>
+                            <p className="mt-1 text-sm text-slate-600">
+                              Invoice create karte waqt customer info add kar sakte ho,
+                              ya blank chhod sakte ho.
+                            </p>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setDraftBilling((current) =>
+                                current
+                                  ? { ...current, customerName: "", customerPhone: "" }
+                                  : current,
+                              )
+                            }
+                            className="rounded-xl border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700"
+                          >
+                            Clear Customer
+                          </button>
+                        </div>
+                        <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                          <label className="text-sm text-slate-700">
+                            <span className="mb-1 block text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">
+                              Customer Name
+                            </span>
+                            <input
+                              value={draftBilling.customerName}
+                              onChange={(event) =>
+                                setDraftBilling((current) =>
+                                  current
+                                    ? { ...current, customerName: event.target.value }
+                                    : current,
+                                )
+                              }
+                              placeholder="Optional guest name"
+                              className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm outline-none ring-amber-200 focus:ring-2"
+                            />
+                          </label>
+                          <label className="text-sm text-slate-700">
+                            <span className="mb-1 block text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">
+                              Customer Phone / WhatsApp
+                            </span>
+                            <input
+                              value={draftBilling.customerPhone}
+                              onChange={(event) =>
+                                setDraftBilling((current) =>
+                                  current
+                                    ? {
+                                      ...current,
+                                      customerPhone: normalizePhoneInput(
+                                        event.target.value,
+                                      ),
+                                    }
+                                    : current,
+                                )
+                              }
+                              placeholder="Optional phone number"
+                              className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm outline-none ring-amber-200 focus:ring-2"
+                            />
+                          </label>
+                        </div>
+                      </div>
 
-            <div className="mt-4 flex flex-wrap justify-end gap-2">
-              <button
-                type="button"
-                onClick={() => setDraftBilling(null)}
-                className="rounded-2xl border border-slate-300 bg-white px-4 py-3 text-sm font-semibold text-slate-700"
-              >
-                Back
-              </button>
-              <button
-                type="button"
-                disabled={hasUnbillableItems || (draftBilling.orders.length === 1 ? isCreating : isCreatingGroup)}
-                onClick={() => {
-                  const customer = {
-                    customerName: draftBilling.customerName.trim(),
-                    customerPhone: normalizePhoneInput(
-                      draftBilling.customerPhone.trim(),
-                    ),
-                  };
-                  const validationError = validateOptionalCustomer(customer);
-                  if (validationError) {
-                    showError(validationError);
-                    return;
-                  }
-                  if (draftBilling.orders.length === 1) {
-                    handleCreateInvoice(
-                      draftBilling.orders[0],
-                      isPrivilegedBilling ? draftBilling.discount : undefined,
-                      customer,
-                    );
-                    return;
-                  }
-                  handleCreateGroupInvoice(
-                    draftBilling.table,
-                    draftBilling.orders,
-                    isPrivilegedBilling ? draftBilling.discount : undefined,
-                    customer,
-                  );
-                }}
-                className="rounded-2xl bg-slate-900 px-4 py-3 text-sm font-semibold text-white disabled:opacity-50"
-              >
-                {draftBilling.orders.length === 1
-                  ? isCreating
-                    ? "Creating..."
-                    : "Create Invoice"
-                  : isCreatingGroup
-                    ? "Creating..."
-                    : "Create Group Invoice"}
-              </button>
-            </div>
+                      <div className="grid gap-3 sm:grid-cols-2">
+                        <label className="text-sm text-slate-700">
+                          <span className="mb-1 block text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">Discount Type</span>
+                          <select
+                            value={draftBilling.discount.type}
+                            disabled={!isPrivilegedBilling}
+                            onChange={(event) =>
+                              setDraftBilling((current) =>
+                                current
+                                  ? { ...current, discount: { ...current.discount, type: event.target.value as DiscountInput["type"] } }
+                                  : current,
+                              )
+                            }
+                            className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm disabled:opacity-50"
+                          >
+                            <option value="PERCENTAGE">Percentage</option>
+                            <option value="FLAT">Flat</option>
+                          </select>
+                        </label>
+                        <label className="text-sm text-slate-700">
+                          <span className="mb-1 block text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">Discount Value</span>
+                          <input
+                            type="number"
+                            min="0"
+                            value={draftBilling.discount.value}
+                            disabled={!isPrivilegedBilling}
+                            onChange={(event) =>
+                              setDraftBilling((current) =>
+                                current
+                                  ? {
+                                    ...current,
+                                    discount: { ...current.discount, value: Math.max(0, Number(event.target.value) || 0) },
+                                  }
+                                  : current,
+                              )
+                            }
+                            className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm disabled:opacity-50"
+                          />
+                        </label>
+                      </div>
+                      {!isPrivilegedBilling ? (
+                        <p className="mt-2 text-xs text-slate-500">Discount sirf manager ya owner set kar sakta hai.</p>
+                      ) : null}
+                      {(() => {
+                        const total = draftItemsTotal(draftBilling.orders);
+                        const discountAmount = draftDiscountAmount(total, draftBilling.discount);
+                        const finalTotal = Math.max(total - discountAmount, 0);
+                        return (
+                          <div className="mt-4 space-y-1 text-sm">
+                            <div className="flex items-center justify-between text-slate-600">
+                              <span>Items total</span>
+                              <span>{fmtCurrency(total)}</span>
+                            </div>
+                            <div className="flex items-center justify-between text-slate-600">
+                              <span>Discount</span>
+                              <span>{fmtCurrency(discountAmount)}</span>
+                            </div>
+                            <div className="flex items-center justify-between border-t border-dashed border-[#d8ccb6] pt-2 text-base font-semibold text-slate-900">
+                              <span>Estimated total</span>
+                              <span>{fmtCurrency(finalTotal)}</span>
+                            </div>
+                          </div>
+                        );
+                      })()}
+                    </div>
+                  </div>
+
+                  {hasUnbillableItems ? (
+                    <div className="mt-4 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+                      Kuch items abhi `SERVED/CANCELLED` nahi hain. Pehle unko correct ya complete karo, fir invoice banao.
+                    </div>
+                  ) : null}
+
+                  <div className="mt-4 flex flex-wrap justify-end gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setDraftBilling(null)}
+                      className="rounded-2xl border border-slate-300 bg-white px-4 py-3 text-sm font-semibold text-slate-700"
+                    >
+                      Back
+                    </button>
+                    <button
+                      type="button"
+                      disabled={hasUnbillableItems || (draftBilling.orders.length === 1 ? isCreating : isCreatingGroup)}
+                      onClick={() => {
+                        const customer = {
+                          customerName: draftBilling.customerName.trim(),
+                          customerPhone: normalizePhoneInput(
+                            draftBilling.customerPhone.trim(),
+                          ),
+                        };
+                        const validationError = validateOptionalCustomer(customer);
+                        if (validationError) {
+                          showError(validationError);
+                          return;
+                        }
+                        if (draftBilling.orders.length === 1) {
+                          handleCreateInvoice(
+                            draftBilling.orders[0],
+                            isPrivilegedBilling ? draftBilling.discount : undefined,
+                            customer,
+                          );
+                          return;
+                        }
+                        handleCreateGroupInvoice(
+                          draftBilling.table,
+                          draftBilling.orders,
+                          isPrivilegedBilling ? draftBilling.discount : undefined,
+                          customer,
+                        );
+                      }}
+                      className="rounded-2xl bg-slate-900 px-4 py-3 text-sm font-semibold text-white disabled:opacity-50"
+                    >
+                      {draftBilling.orders.length === 1
+                        ? isCreating
+                          ? "Creating..."
+                          : "Create Invoice"
+                        : isCreatingGroup
+                          ? "Creating..."
+                          : "Create Group Invoice"}
+                    </button>
+                  </div>
                 </>
               );
             })()}
@@ -2234,9 +2329,9 @@ export function InvoicesWorkspace({ rawRole }: Props) {
                       setInvoiceEditor((current) =>
                         current
                           ? {
-                              ...current,
-                              discount: { ...current.discount, type: event.target.value as DiscountInput["type"] },
-                            }
+                            ...current,
+                            discount: { ...current.discount, type: event.target.value as DiscountInput["type"] },
+                          }
                           : current,
                       )
                     }
@@ -2256,9 +2351,9 @@ export function InvoicesWorkspace({ rawRole }: Props) {
                       setInvoiceEditor((current) =>
                         current
                           ? {
-                              ...current,
-                              discount: { ...current.discount, value: Math.max(0, Number(event.target.value) || 0) },
-                            }
+                            ...current,
+                            discount: { ...current.discount, value: Math.max(0, Number(event.target.value) || 0) },
+                          }
                           : current,
                       )
                     }

@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import { useConfirm } from "@/components/confirm-provider";
 import { getErrorMessage } from "@/lib/error";
 import { showError, showSuccess } from "@/lib/feedback";
@@ -610,7 +611,7 @@ function OrderCard({
                 </div>
 
                 {/* RIGHT: Status + Actions */}
-                <div className="flex flex-wrap items-center gap-1.5 justify-start w-full sm:w-auto sm:justify-end">
+                <div className="flex flex-wrap items-center gap-1.5 justify-end w-full sm:w-auto ">
                   {/* <span
       className={`rounded-full border px-2 py-0.5 text-[10px] font-semibold ${itemStatusClass(
         item.status
@@ -748,6 +749,7 @@ function OrderCard({
 export function OrdersBoardView() {
   const token = useAppSelector(selectAuthToken);
   const confirm = useConfirm();
+  const router = useRouter();
 
   const { data: ordersData, refetch: refetchOrders } = useGetOrdersQuery({
     status: ["PLACED", "IN_PROGRESS", "READY", "SERVED"],
@@ -911,6 +913,7 @@ export function OrdersBoardView() {
       showSuccess(r.message || "Invoice created");
       refetchOrders();
       refetchInvoices();
+      router.push(`/dashboard/invoices/${r.invoice.id}/edit`);
     } catch (e) {
       showError(getErrorMessage(e));
     } finally {

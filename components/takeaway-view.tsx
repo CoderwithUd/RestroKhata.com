@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import { getErrorMessage } from "@/lib/error";
 import { sanitizePhone, isValidIndianPhone } from "@/lib/phone";
 import { showError, showSuccess } from "@/lib/feedback";
@@ -12,7 +13,7 @@ import {
   useRemoveOrderItemMutation,
   useUpdateOrderMutation,
 } from "@/store/api/ordersApi";
-import { useGetInvoicesQuery } from "@/store/api/invoicesApi";
+import { useGetInvoicesQuery, useCreateInvoiceMutation } from "@/store/api/invoicesApi";
 import {
   useGetMenuOptionGroupsQuery,
   useGetMenuAggregateQuery,
@@ -81,6 +82,8 @@ export function TakeawayView() {
   });
   const { data: invoicesData, refetch: refetchInvoices } = useGetInvoicesQuery({ limit: 100 });
   const [createOrder, { isLoading: isCreating }] = useCreateOrderMutation();
+  const [createInvoice, { isLoading: isCreatingInvoice }] = useCreateInvoiceMutation();
+  const router = useRouter();
 
   // Cart + order state
   const [cart, setCart] = useState<CartEntry[]>([]);
@@ -274,7 +277,13 @@ export function TakeawayView() {
 
     try {
       const result = await createOrder(payload).unwrap();
-      const tokenNum = result.order?.orderNumber || result.order?.id?.slice(-6);
+      const orderId = result.order?.id;
+      if (!orderId) throw new Error("Order creation failed");
+
+      // Auto create invoice for takeaway
+      const invoiceResult = await createInvoice({ orderId }).unwrap();
+
+      const tokenNum = result.order?.orderNumber || orderId.slice(-6);
       const msg = appendToOrderId ? `Items added to #${tokenNum}!` : `Order placed! Token: #${tokenNum}`;
       showSuccess(msg);
       setLastToken(String(tokenNum || ""));
@@ -285,10 +294,11 @@ export function TakeawayView() {
       setAppendToOrderId(null);
       refetchOrders();
       refetchInvoices();
+      router.push(`/dashboard/invoices/${invoiceResult.invoice.id}/edit`);
     } catch (error) {
       showError(getErrorMessage(error));
     }
-  }, [appendToOrderId, cart, createOrder, customerName, customerPhone, packingNote, refetchInvoices, refetchOrders]);
+  }, [appendToOrderId, cart, createOrder, createInvoice, customerName, customerPhone, packingNote, refetchInvoices, refetchOrders, router]);
 
   return (
     <div className="flex h-full flex-col gap-3">
@@ -507,7 +517,7 @@ export function TakeawayView() {
                               <button type="button" onClick={() => addItemTA(item, variantId)}
                                 className="flex h-6 w-6 items-center justify-center rounded-lg bg-violet-600 font-bold text-white text-sm">+</button>
                             </div>
-                            <div className="flex items-center gap-2">
+                            {/* <div className="flex items-center gap-2">
                               <button
                                 type="button"
                                 onClick={() => clearItemTA(item.id, variantId)}
@@ -516,7 +526,7 @@ export function TakeawayView() {
                                 Clear
                               </button>
                               <p className="text-[9px] text-slate-400 italic">Options inside cart</p>
-                            </div>
+                            </div> */}
                           </div>
                         )}
                       </div>
@@ -614,11 +624,11 @@ export function TakeawayView() {
             <button
               id="ta-place-order-btn"
               type="button"
-              disabled={cart.length === 0 || isCreating}
+              disabled={cart.length === 0 || isCreating || isCreatingInvoice}
               onClick={handleTAPlaceOrder}
               className="w-full rounded-xl bg-violet-600 py-3 text-sm font-bold text-white shadow-md shadow-violet-200 transition active:scale-95 hover:bg-violet-700 disabled:opacity-40"
             >
-              {isCreating ? (
+              {isCreating || isCreatingInvoice ? (
                 <span className="flex items-center justify-center gap-2"><Spinner /> Placing...</span>
               ) : appendToOrderId ? (
                 "Add Items to Order"
@@ -715,11 +725,11 @@ export function TakeawayView() {
               </div>
               <button
                 type="button"
-                disabled={cart.length === 0 || isCreating}
+                disabled={cart.length === 0 || isCreating || isCreatingInvoice}
                 onClick={() => { setCartDrawerOpen(false); handleTAPlaceOrder(); }}
                 className="w-full rounded-xl bg-violet-600 py-3 text-sm font-bold text-white shadow-lg shadow-violet-200 transition active:scale-95 disabled:opacity-40"
               >
-                {isCreating ? (
+                {isCreating || isCreatingInvoice ? (
                    <span className="flex items-center justify-center gap-2"><Spinner /> Processing...</span>
                 ) : appendToOrderId ? "Add Items to Order" : "Place Takeaway Order"}
               </button>
