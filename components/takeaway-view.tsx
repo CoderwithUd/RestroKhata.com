@@ -281,7 +281,7 @@ export function TakeawayView() {
       if (!orderId) throw new Error("Order creation failed");
 
       // Auto create invoice for takeaway
-      const invoiceResult = await createInvoice({ orderId }).unwrap();
+      // const invoiceResult = await createInvoice({ orderId }).unwrap();
 
       const tokenNum = result.order?.orderNumber || orderId.slice(-6);
       const msg = appendToOrderId ? `Items added to #${tokenNum}!` : `Order placed! Token: #${tokenNum}`;
@@ -294,7 +294,7 @@ export function TakeawayView() {
       setAppendToOrderId(null);
       refetchOrders();
       refetchInvoices();
-      router.push(`/dashboard/invoices/${invoiceResult.invoice.id}/edit`);
+      // router.push(`/dashboard/invoices/${invoiceResult.invoice.id}/edit`);
     } catch (error) {
       showError(getErrorMessage(error));
     }

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState, useRef } from "react";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useConfirm } from "@/components/confirm-provider";
 import { downloadInvoicePdf } from "@/lib/invoice-pdf";
 import { downloadInvoiceReportPdf } from "@/lib/invoice-report-pdf";
@@ -634,7 +634,9 @@ export function InvoicesWorkspace({ rawRole }: Props) {
   const role = normalizeRole(rawRole);
   const isPrivilegedBilling = role === "owner" || role === "manager";
   const loadMoreRef = useRef<HTMLDivElement | null>(null);
-  const [viewTab, setViewTab] = useState<"UNPAID" | "PAID">("UNPAID");
+  const searchParams = useSearchParams();
+  const initialTab = searchParams.get("tab") === "PAID" ? "PAID" : "UNPAID";
+  const [viewTab, setViewTab] = useState<"UNPAID" | "PAID">(initialTab);
   const [tableFilter, setTableFilter] = useState("");
   const [historyRange, setHistoryRange] = useState<HistoryRange>("today");
   const [customStartDate, setCustomStartDate] = useState("");
@@ -652,6 +654,7 @@ export function InvoicesWorkspace({ rawRole }: Props) {
   const [ordersFeed, setOrdersFeed] = useState<OrderRecord[]>([]);
   const [invoicesPage, setInvoicesPage] = useState(1);
   const [invoicesFeed, setInvoicesFeed] = useState<InvoiceRecord[]>([]);
+  const [draftOrders, setDraftOrders] = useState<OrderRecord[] | null>(null);
   const { data: tenantProfile } = useTentantProfileQuery();
 
   const {
@@ -1041,21 +1044,16 @@ export function InvoicesWorkspace({ rawRole }: Props) {
   }, [draftBilling, orders]);
 
   function openInvoiceView(invoiceId: string) {
-    const inv = invoices.find(i => i.id === invoiceId);
-    if (inv?.status === "PAID") {
-      router.push(`/dashboard/invoices/${invoiceId}/preview`);
-    } else {
-      router.push(`/dashboard/invoices/${invoiceId}/edit`);
-    }
+    router.push(`/dashboard/invoices/${invoiceId}/preview`);
+  }
+
+  function openInvoiceEdit(invoiceId: string) {
+    router.push(`/dashboard/invoices/${invoiceId}/edit`);
   }
 
   function openDraftInvoice(table: TableRecord, ordersToBill: OrderRecord[]) {
     if (!ordersToBill.length) return;
-    if (ordersToBill.length === 1) {
-      handleCreateInvoice(ordersToBill[0]);
-    } else {
-      handleCreateGroupInvoice(table, ordersToBill);
-    }
+    setDraftOrders(ordersToBill);
   }
 
   async function handleCreateInvoice(
@@ -1359,6 +1357,15 @@ export function InvoicesWorkspace({ rawRole }: Props) {
     return <InvoiceEditView invoiceId={editInvoiceId} />;
   }
 
+  if (draftOrders) {
+    return (
+      <InvoiceEditView
+        orderIds={draftOrders.map((o) => o.id)}
+        onBack={() => setDraftOrders(null)}
+      />
+    );
+  }
+
   if (previewInvoiceId) {
     return <InvoicePreviewView invoiceId={previewInvoiceId} />;
   }
@@ -1557,18 +1564,26 @@ export function InvoicesWorkspace({ rawRole }: Props) {
                           ) : null}
                           <div className="mt-3 flex flex-wrap gap-2">
                             {currentInvoices.length > 0 ? (
-                              <>
+                              <div className="flex gap-2 w-full">
                                 {currentInvoices.map((invoice) => (
-                                  <button
-                                    key={invoice.id}
-                                    type="button"
-                                    onClick={() => openInvoiceView(invoice.id)}
-                                    className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-semibold text-slate-700"
-                                  >
-                                    View INV {shortInvoiceId(invoice.id)}
-                                  </button>
+                                  <div key={invoice.id} className="flex gap-2 flex-1">
+                                    <button
+                                      type="button"
+                                      onClick={() => openInvoiceEdit(invoice.id)}
+                                      className="flex-1 rounded-xl border border-indigo-200 bg-indigo-50 px-3 py-2 text-[10px] font-black text-indigo-700 uppercase tracking-widest hover:bg-indigo-100 transition-colors"
+                                    >
+                                      Edit Bill
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => openInvoiceView(invoice.id)}
+                                      className="flex-1 rounded-xl border border-slate-200 bg-slate-900 px-3 py-2 text-[10px] font-black text-white uppercase tracking-widest hover:bg-slate-800 transition-colors"
+                                    >
+                                      Preview
+                                    </button>
+                                  </div>
                                 ))}
-                              </>
+                              </div>
                             ) : null}
                             {selectedOrders.length === 1 ? (
                               <button
@@ -1687,18 +1702,26 @@ export function InvoicesWorkspace({ rawRole }: Props) {
                               <td className="px-3 py-3">
                                 <div className="flex justify-end gap-2">
                                   {currentInvoices.length > 0 ? (
-                                    <>
+                                    <div className="flex gap-2">
                                       {currentInvoices.map((invoice) => (
-                                        <button
-                                          key={invoice.id}
-                                          type="button"
-                                          onClick={() => openInvoiceView(invoice.id)}
-                                          className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-semibold text-slate-700"
-                                        >
-                                          View INV {shortInvoiceId(invoice.id)}
-                                        </button>
+                                        <div key={invoice.id} className="flex gap-2">
+                                          <button
+                                            type="button"
+                                            onClick={() => openInvoiceEdit(invoice.id)}
+                                            className="rounded-xl border border-indigo-200 bg-indigo-50 px-4 py-2 text-[10px] font-black text-indigo-700 uppercase tracking-widest hover:bg-indigo-100"
+                                          >
+                                            Edit
+                                          </button>
+                                          <button
+                                            type="button"
+                                            onClick={() => openInvoiceView(invoice.id)}
+                                            className="rounded-xl bg-slate-900 px-4 py-2 text-[10px] font-black text-white uppercase tracking-widest hover:bg-slate-800"
+                                          >
+                                            Preview
+                                          </button>
+                                        </div>
                                       ))}
-                                    </>
+                                    </div>
                                   ) : null}
                                   {selectedOrders.length === 1 ? (
                                     <button

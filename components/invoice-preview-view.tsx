@@ -185,7 +185,12 @@ export function InvoicePreviewView({ invoiceId }: { invoiceId: string }) {
          {/* Header - Responsive Sticky */}
          <div className="sticky top-0 z-30 flex-shrink-0 flex items-center justify-between border-b border-slate-100 bg-white/95 backdrop-blur px-4 py-3 shadow-sm no-print">
             <div className="flex items-center gap-3">
-               <button onClick={() => router.back()} className="p-1 text-slate-500 hover:text-slate-900 transition-colors">
+               <button 
+                  onClick={() => {
+                     router.push("/dashboard/invoices" + (invoice?.status === "PAID" ? "?tab=PAID" : ""));
+                  }} 
+                  className="p-1 text-slate-500 hover:text-slate-900 transition-colors"
+               >
                   <ChevronLeft size={24} />
                </button>
                <h1 className="text-sm font-bold text-slate-900 sm:text-base">Invoice Preview</h1>

@@ -1,7 +1,7 @@
 import type { OrderItem } from "@/store/types/orders";
 
 export type InvoiceStatus = "ISSUED" | "PAID" | "VOID" | "DRAFT" | string;
-export type InvoiceDiscountType = "PERCENTAGE" | "FLAT" | string;
+export type InvoiceDiscountType = "PERCENTAGE" | "FLAT" | "FIXED" | string;
 
 export type InvoiceTableRef = {
   id: string;
@@ -69,6 +69,14 @@ export type InvoicesQueryParams = {
   limit?: number;
 };
 
+export type UpdateInvoiceItemPayload = {
+  itemId: string;
+  variantId?: string;
+  quantity: number;
+  optionIds?: string[];
+  note?: string;
+};
+
 export type CreateInvoicePayload = {
   orderId: string;
   note?: string;
@@ -76,6 +84,7 @@ export type CreateInvoicePayload = {
   customerPhone?: string;
   discountType?: InvoiceDiscountType;
   discountValue?: number;
+  items?: UpdateInvoiceItemPayload[];
 };
 
 export type CreateGroupInvoicePayload = {
@@ -92,6 +101,9 @@ export type UpdateInvoicePayload = {
   note?: string;
   discountType?: InvoiceDiscountType;
   discountValue?: number;
+  customerName?: string;
+  customerPhone?: string;
+  items?: UpdateInvoiceItemPayload[];
 };
 
 export type UpdateInvoiceArgs = {
