@@ -912,7 +912,6 @@ export function PublicQrMenu({ tenantSlug: tenantSlugFromPath }: PublicQrMenuPro
   });
 
 
-  console.log(data)
 
   // Derived data
   const flatCategories = useMemo(() => flattenCategoryTree(data?.categories || []), [data?.categories]);

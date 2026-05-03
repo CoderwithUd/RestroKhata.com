@@ -1245,7 +1245,6 @@ export function MenuWorkspace({ tenantSlug }: Props) {
     mainCategoryFilter,
     searchText,
   ]);
-  console.log(filteredItems);
 
   const totalItems = items.length;
   const availableItems = items.filter((i) => i.isAvailable).length;

@@ -1,6 +1,7 @@
-"use client";
+﻿"use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Printer, Clock, User, ChefHat } from "lucide-react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useConfirm } from "@/components/confirm-provider";
 import { getErrorMessage } from "@/lib/error";
@@ -37,7 +38,7 @@ import type {
 } from "@/store/types/orders";
 import type { TableRecord } from "@/store/types/tables";
 import type { MenuItemRecord, MenuVariantRecord } from "@/store/types/menu";
-import {normalizePhoneInput } from "@/lib/phone";
+import { normalizePhoneInput } from "@/lib/phone";
 
 // ─── Role ────────────────────────────────────────────────────────────────────
 type RoleKey = "owner" | "manager" | "waiter" | "kitchen";
@@ -427,16 +428,14 @@ function Spinner() {
 function LiveBadge({ connected }: { connected: boolean }) {
   return (
     <span
-      className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[10px] font-semibold ${
-        connected
+      className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[10px] font-semibold ${connected
           ? "border-emerald-300 bg-emerald-50 text-emerald-700"
           : "border-slate-200 bg-slate-100 text-slate-400"
-      }`}
+        }`}
     >
       <span
-        className={`h-1.5 w-1.5 rounded-full ${
-          connected ? "bg-emerald-500 animate-pulse" : "bg-slate-400"
-        }`}
+        className={`h-1.5 w-1.5 rounded-full ${connected ? "bg-emerald-500 animate-pulse" : "bg-slate-400"
+          }`}
       />
       {connected ? "Live" : "Offline"}
     </span>
@@ -598,7 +597,7 @@ function MenuBrowser({
   });
   const { data: ogData } = useGetMenuOptionGroupsQuery();
   const optionGroups = useMemo(() => ogData?.items || [], [ogData]);
-  
+
   const [activeCat, setActiveCat] = useState<string | null>(null);
   const [cart, setCart] = useState<CartEntry[]>([]);
   const [search, setSearch] = useState("");
@@ -607,14 +606,14 @@ function MenuBrowser({
   const [selectedVariants, setSelectedVariants] = useState<
     Record<string, string | undefined>
   >({});
-  
+
   // Options Modal State
   const [activeOptionsItem, setActiveOptionsItem] = useState<{
     item: MenuItemRecord;
     variantId?: string;
   } | null>(null);
   const [selectedOptions, setSelectedOptions] = useState<Record<string, string[]>>({});
-  
+
   const searchRef = useRef<HTMLInputElement>(null);
 
   const categories = useMemo(() => menuData?.categories || [], [menuData]);
@@ -633,8 +632,8 @@ function MenuBrowser({
   const displayedItems = useMemo(() => {
     const bySearch = search.trim()
       ? allItems.filter((i) =>
-          i.name.toLowerCase().includes(search.toLowerCase().trim()),
-        )
+        i.name.toLowerCase().includes(search.toLowerCase().trim()),
+      )
       : allItems;
 
     if (!activeCat || search.trim()) return bySearch;
@@ -769,7 +768,7 @@ function MenuBrowser({
     const price = variant?.price ?? item.price ?? 0;
     const optionIds = opts?.map(o => o.id) || [];
     const optionsPart = [...optionIds].sort().join(",");
-    
+
     setCart((prev) => {
       const idx = prev.findIndex(
         (e) => {
@@ -952,33 +951,30 @@ function MenuBrowser({
                   <button
                     type="button"
                     onClick={() => onComposeModeChange("append-latest")}
-                    className={`rounded-full border px-3 py-1 text-[11px] font-semibold ${
-                      composeMode === "append-latest"
+                    className={`rounded-full border px-3 py-1 text-[11px] font-semibold ${composeMode === "append-latest"
                         ? "border-amber-300 bg-amber-100 text-amber-900"
                         : "border-slate-200 bg-slate-50 text-slate-600"
-                    }`}
+                      }`}
                   >
                     Add to latest
                   </button>
                   <button
                     type="button"
                     onClick={() => onComposeModeChange("append-specific")}
-                    className={`rounded-full border px-3 py-1 text-[11px] font-semibold ${
-                      composeMode === "append-specific"
+                    className={`rounded-full border px-3 py-1 text-[11px] font-semibold ${composeMode === "append-specific"
                         ? "border-amber-300 bg-amber-100 text-amber-900"
                         : "border-slate-200 bg-slate-50 text-slate-600"
-                    }`}
+                      }`}
                   >
                     Pick order
                   </button>
                   <button
                     type="button"
                     onClick={() => onComposeModeChange("force-new")}
-                    className={`rounded-full border px-3 py-1 text-[11px] font-semibold ${
-                      composeMode === "force-new"
+                    className={`rounded-full border px-3 py-1 text-[11px] font-semibold ${composeMode === "force-new"
                         ? "border-emerald-300 bg-emerald-100 text-emerald-900"
                         : "border-slate-200 bg-slate-50 text-slate-600"
-                    }`}
+                      }`}
                   >
                     Start new
                   </button>
@@ -991,11 +987,10 @@ function MenuBrowser({
                       key={order.id}
                       type="button"
                       onClick={() => onSelectedOrderIdChange(order.id)}
-                      className={`rounded-xl border px-3 py-2 text-left text-[11px] font-semibold ${
-                        selectedOrderId === order.id
+                      className={`rounded-xl border px-3 py-2 text-left text-[11px] font-semibold ${selectedOrderId === order.id
                           ? "border-amber-300 bg-amber-50 text-amber-900"
                           : "border-slate-200 bg-slate-50 text-slate-700"
-                      }`}
+                        }`}
                     >
                       {order.orderNumber
                         ? `#${order.orderNumber}`
@@ -1025,7 +1020,7 @@ function MenuBrowser({
                     className="rounded-full border border-emerald-300 bg-emerald-100 px-2.5 py-1 text-[10px] font-bold text-emerald-900 disabled:opacity-50"
                   >
                     {servingItemKey ===
-                    orderBatchActionKey(existingOrder.id, "SERVED")
+                      orderBatchActionKey(existingOrder.id, "SERVED")
                       ? "Serving..."
                       : readyExistingItems.length === 1
                         ? "Serve Ready Item"
@@ -1041,10 +1036,10 @@ function MenuBrowser({
                   );
                   const itemActionKey = orderItem.lineId
                     ? orderItemActionKey(
-                        existingOrder.id,
-                        orderItem.lineId,
-                        itemNextStatus,
-                      )
+                      existingOrder.id,
+                      orderItem.lineId,
+                      itemNextStatus,
+                    )
                     : null;
                   return (
                     <div
@@ -1190,11 +1185,10 @@ function MenuBrowser({
                                 onClick={() =>
                                   setItemVariant(item.id, variant.id)
                                 }
-                                className={`rounded-full border px-2 py-0.5 text-[10px] font-semibold transition ${
-                                  variant.id === variantId
+                                className={`rounded-full border px-2 py-0.5 text-[10px] font-semibold transition ${variant.id === variantId
                                     ? "border-amber-400 bg-amber-100 text-amber-900"
                                     : "border-slate-200 bg-white text-slate-600"
-                                }`}
+                                  }`}
                               >
                                 {variant.name}
                               </button>
@@ -1225,7 +1219,7 @@ function MenuBrowser({
                                   -
                                 </button>
                                 <span className="min-w-[25px] px-1 text-center text-[11px] font-bold text-amber-700">
-                                  {qty} 
+                                  {qty}
                                 </span>
                                 <button
                                   type="button"
@@ -1298,7 +1292,7 @@ function MenuBrowser({
                       <span className="text-xs font-semibold text-slate-600">
                         {fmtCurrency(
                           entry.unitPrice *
-                            (entry.existingQuantity + entry.addedQuantity),
+                          (entry.existingQuantity + entry.addedQuantity),
                         )}
                       </span>
                     </div>
@@ -1337,7 +1331,7 @@ function MenuBrowser({
                       <span className="text-sm font-semibold text-slate-700">
                         {fmtCurrency(
                           entry.unitPrice *
-                            (entry.existingQuantity + entry.addedQuantity),
+                          (entry.existingQuantity + entry.addedQuantity),
                         )}
                       </span>
                     </div>
@@ -1370,10 +1364,10 @@ function MenuBrowser({
                           )}
                         </div>
                         <div className="flex items-center gap-1 shrink-0 rounded-xl border border-slate-200 bg-white p-1 shadow-sm">
-                          <button onClick={() => removeItem(entry.itemId, entry.variantId, entry.optionIds)} 
+                          <button onClick={() => removeItem(entry.itemId, entry.variantId, entry.optionIds)}
                             className="flex h-5 w-5 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-100 transition active:scale-90 font-bold">−</button>
                           <span className="min-w-[16px] text-center text-[10px] font-black text-amber-700">{entry.quantity}</span>
-                          <button onClick={() => addItemWithOptions(entry.itemId, entry.variantId, entry.options)} 
+                          <button onClick={() => addItemWithOptions(entry.itemId, entry.variantId, entry.options)}
                             className="flex h-5 w-5 items-center justify-center rounded-lg bg-amber-500 text-white hover:bg-amber-600 transition active:scale-90 shadow-sm shadow-amber-200">+</button>
                         </div>
                       </div>
@@ -1456,20 +1450,20 @@ function MenuBrowser({
             <div className="max-h-[60vh] overflow-y-auto no-scrollbar space-y-3">
               {existingOrder && existingOrder.items.length > 0 && (
                 <div className="rounded-2xl bg-slate-50 p-3 space-y-2.5">
-                   <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">Current Order</p>
-                   {summaryEntries.filter(e => e.existingQuantity > 0).map(entry => (
-                      <div key={`mob-cur-${entry.key}`} className="flex justify-between items-start gap-2">
-                         <div className="min-w-0 flex-1">
-                            <p className="text-sm font-semibold text-slate-700 truncate">{entry.name}</p>
-                            {entry.options && entry.options.length > 0 && (
-                               <p className="text-[10px] text-slate-400 truncate">
-                                  {entry.options.map(o => o.name).join(", ")}
-                               </p>
-                            )}
-                         </div>
-                         <p className="text-sm font-bold text-slate-600">{entry.existingQuantity}x</p>
+                  <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">Current Order</p>
+                  {summaryEntries.filter(e => e.existingQuantity > 0).map(entry => (
+                    <div key={`mob-cur-${entry.key}`} className="flex justify-between items-start gap-2">
+                      <div className="min-w-0 flex-1">
+                        <p className="text-sm font-semibold text-slate-700 truncate">{entry.name}</p>
+                        {entry.options && entry.options.length > 0 && (
+                          <p className="text-[10px] text-slate-400 truncate">
+                            {entry.options.map(o => o.name).join(", ")}
+                          </p>
+                        )}
                       </div>
-                   ))}
+                      <p className="text-sm font-bold text-slate-600">{entry.existingQuantity}x</p>
+                    </div>
+                  ))}
                 </div>
               )}
 
@@ -1528,8 +1522,8 @@ function MenuBrowser({
                         )}
 
                         <div className="flex items-center justify-between border-t border-slate-50 pt-2">
-                           <p className="text-xs font-medium text-slate-400">{fmtCurrency(entry.unitPrice + optionsPrice)} each</p>
-                           <p className="text-base font-black text-amber-600">{fmtCurrency((entry.unitPrice + optionsPrice) * entry.quantity)}</p>
+                          <p className="text-xs font-medium text-slate-400">{fmtCurrency(entry.unitPrice + optionsPrice)} each</p>
+                          <p className="text-base font-black text-amber-600">{fmtCurrency((entry.unitPrice + optionsPrice) * entry.quantity)}</p>
                         </div>
                       </div>
                     );
@@ -1566,139 +1560,139 @@ function MenuBrowser({
           <div className="relative flex w-full max-w-lg flex-col rounded-3xl bg-white shadow-2xl overflow-hidden max-h-[90vh]">
             {/* Modal Header */}
             <div className="bg-amber-50 px-6 py-5 border-b border-amber-100">
-               <div className="flex items-start justify-between gap-4">
-                  <div>
-                    <h3 className="text-xl font-black text-slate-900 leading-tight">
-                      {activeOptionsItem.item.name}
-                    </h3>
-                    <p className="mt-1 text-sm font-semibold text-amber-700">
-                      Customize your item
-                    </p>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    {activeOptionsItem.item.optionGroupIds?.every(gid => (optionGroups.find((g:any) => g.id === gid)?.minSelect || 0) === 0) && (
-                      <button 
-                        onClick={() => {
-                          addItemWithOptions(activeOptionsItem.item, activeOptionsItem.variantId, []);
-                          setActiveOptionsItem(null);
-                        }}
-                        className="text-[11px] font-bold text-slate-400 hover:text-amber-600 px-3 py-1.5 rounded-xl border border-slate-100 bg-slate-50 transition-colors"
-                      >
-                        Skip All
-                      </button>
-                    )}
-                    <button onClick={() => setActiveOptionsItem(null)} className="rounded-xl bg-white/80 p-2 text-slate-400 hover:text-slate-600 shadow-sm border border-amber-100">
-                       <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="3">
-                          <path d="M18 6L6 18M6 6l12 12" />
-                       </svg>
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <h3 className="text-xl font-black text-slate-900 leading-tight">
+                    {activeOptionsItem.item.name}
+                  </h3>
+                  <p className="mt-1 text-sm font-semibold text-amber-700">
+                    Customize your item
+                  </p>
+                </div>
+                <div className="flex items-center gap-2">
+                  {activeOptionsItem.item.optionGroupIds?.every(gid => (optionGroups.find((g: any) => g.id === gid)?.minSelect || 0) === 0) && (
+                    <button
+                      onClick={() => {
+                        addItemWithOptions(activeOptionsItem.item, activeOptionsItem.variantId, []);
+                        setActiveOptionsItem(null);
+                      }}
+                      className="text-[11px] font-bold text-slate-400 hover:text-amber-600 px-3 py-1.5 rounded-xl border border-slate-100 bg-slate-50 transition-colors"
+                    >
+                      Skip All
                     </button>
-                  </div>
-               </div>
+                  )}
+                  <button onClick={() => setActiveOptionsItem(null)} className="rounded-xl bg-white/80 p-2 text-slate-400 hover:text-slate-600 shadow-sm border border-amber-100">
+                    <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="3">
+                      <path d="M18 6L6 18M6 6l12 12" />
+                    </svg>
+                  </button>
+                </div>
+              </div>
             </div>
 
             {/* Modal Content */}
             <div className="flex-1 overflow-y-auto no-scrollbar p-6 space-y-8">
-               {activeOptionsItem.item.optionGroupIds?.map(groupId => {
-                  const group = optionGroups.find(g => g.id === groupId);
-                  if (!group) return null;
-                  
-                  const selectedCount = (selectedOptions[groupId] || []).length;
-                  const min = group.minSelect || 0;
-                  const max = group.maxSelect || 0;
-                  
-                  return (
-                    <div key={groupId} className="space-y-3">
-                       <div className="flex items-end justify-between">
-                          <div>
-                             <p className="text-sm font-black text-slate-800 uppercase tracking-wide">{group.name}</p>
-                             <p className="text-[11px] font-bold text-slate-400">
-                                {min > 0 ? `Required: Select ${min}` : "Optional"}
-                                {max > 0 ? ` (Max ${max})` : ""}
-                             </p>
-                          </div>
-                          <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${selectedCount < min ? 'bg-rose-100 text-rose-600 border border-rose-200' : 'bg-emerald-100 text-emerald-600 border border-emerald-200'}`}>
-                             {selectedCount} Selected
-                          </span>
-                       </div>
+              {activeOptionsItem.item.optionGroupIds?.map(groupId => {
+                const group = optionGroups.find(g => g.id === groupId);
+                if (!group) return null;
 
-                       <div className="grid gap-2">
-                           {group.options.map((opt: { id: string; name: string; price?: number }) => {
-                             const isSelected = (selectedOptions[groupId] || []).includes(opt.id);
-                             return (
-                                <button
-                                   key={opt.id}
-                                   type="button"
-                                   onClick={() => {
-                                      const current = selectedOptions[groupId] || [];
-                                      if (isSelected) {
-                                         setSelectedOptions(prev => ({ ...prev, [groupId]: current.filter(id => id !== opt.id) }));
-                                      } else {
-                                         if (max === 1) {
-                                            setSelectedOptions(prev => ({ ...prev, [groupId]: [opt.id] }));
-                                         } else if (max === 0 || current.length < max) {
-                                            setSelectedOptions(prev => ({ ...prev, [groupId]: [...current, opt.id] }));
-                                         }
-                                      }
-                                   }}
-                                   className={`flex items-center justify-between rounded-2xl border-2 px-4 py-3 transition-all ${isSelected ? 'border-amber-500 bg-amber-50 shadow-md shadow-amber-100 ring-1 ring-amber-200' : 'border-slate-100 bg-slate-50 hover:border-slate-200'}`}
-                                >
-                                   <div className="flex items-center gap-3">
-                                      <div className={`flex h-5 w-5 items-center justify-center rounded-full border-2 transition-all ${isSelected ? 'border-amber-500 bg-amber-500' : 'border-slate-300 bg-white'}`}>
-                                         {isSelected && (
-                                            <svg viewBox="0 0 24 24" className="h-3 w-3 text-white" fill="none" stroke="currentColor" strokeWidth="4">
-                                               <path d="M20 6L9 17l-5-5" />
-                                            </svg>
-                                         )}
-                                      </div>
-                                      <span className={`text-sm font-bold ${isSelected ? 'text-slate-900' : 'text-slate-600'}`}>{opt.name}</span>
-                                   </div>
-                                   {opt.price != null && opt.price > 0 && (
-                                      <span className={`text-xs font-black ${isSelected ? 'text-amber-700' : 'text-slate-400'}`}>+₹{opt.price}</span>
-                                   )}
-                                </button>
-                             );
-                          })}
-                       </div>
+                const selectedCount = (selectedOptions[groupId] || []).length;
+                const min = group.minSelect || 0;
+                const max = group.maxSelect || 0;
+
+                return (
+                  <div key={groupId} className="space-y-3">
+                    <div className="flex items-end justify-between">
+                      <div>
+                        <p className="text-sm font-black text-slate-800 uppercase tracking-wide">{group.name}</p>
+                        <p className="text-[11px] font-bold text-slate-400">
+                          {min > 0 ? `Required: Select ${min}` : "Optional"}
+                          {max > 0 ? ` (Max ${max})` : ""}
+                        </p>
+                      </div>
+                      <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${selectedCount < min ? 'bg-rose-100 text-rose-600 border border-rose-200' : 'bg-emerald-100 text-emerald-600 border border-emerald-200'}`}>
+                        {selectedCount} Selected
+                      </span>
                     </div>
-                  );
-               })}
+
+                    <div className="grid gap-2">
+                      {group.options.map((opt: { id: string; name: string; price?: number }) => {
+                        const isSelected = (selectedOptions[groupId] || []).includes(opt.id);
+                        return (
+                          <button
+                            key={opt.id}
+                            type="button"
+                            onClick={() => {
+                              const current = selectedOptions[groupId] || [];
+                              if (isSelected) {
+                                setSelectedOptions(prev => ({ ...prev, [groupId]: current.filter(id => id !== opt.id) }));
+                              } else {
+                                if (max === 1) {
+                                  setSelectedOptions(prev => ({ ...prev, [groupId]: [opt.id] }));
+                                } else if (max === 0 || current.length < max) {
+                                  setSelectedOptions(prev => ({ ...prev, [groupId]: [...current, opt.id] }));
+                                }
+                              }
+                            }}
+                            className={`flex items-center justify-between rounded-2xl border-2 px-4 py-3 transition-all ${isSelected ? 'border-amber-500 bg-amber-50 shadow-md shadow-amber-100 ring-1 ring-amber-200' : 'border-slate-100 bg-slate-50 hover:border-slate-200'}`}
+                          >
+                            <div className="flex items-center gap-3">
+                              <div className={`flex h-5 w-5 items-center justify-center rounded-full border-2 transition-all ${isSelected ? 'border-amber-500 bg-amber-500' : 'border-slate-300 bg-white'}`}>
+                                {isSelected && (
+                                  <svg viewBox="0 0 24 24" className="h-3 w-3 text-white" fill="none" stroke="currentColor" strokeWidth="4">
+                                    <path d="M20 6L9 17l-5-5" />
+                                  </svg>
+                                )}
+                              </div>
+                              <span className={`text-sm font-bold ${isSelected ? 'text-slate-900' : 'text-slate-600'}`}>{opt.name}</span>
+                            </div>
+                            {opt.price != null && opt.price > 0 && (
+                              <span className={`text-xs font-black ${isSelected ? 'text-amber-700' : 'text-slate-400'}`}>+₹{opt.price}</span>
+                            )}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              })}
             </div>
 
             {/* Modal Footer */}
             <div className="border-t border-slate-100 bg-slate-50 p-6">
-               <button
-                  type="button"
-                  onClick={() => {
-                     // Validate selections
-                     for (const groupId of activeOptionsItem.item.optionGroupIds || []) {
-                        const group = optionGroups.find((g: any) => g.id === groupId);
-                        if (!group) continue;
-                        const count = (selectedOptions[groupId] || []).length;
-                        if (count < (group.minSelect || 0)) {
-                           showError(`Please select at least ${group.minSelect} in ${group.name}`);
-                           return;
-                        }
-                     }
-                     
-                     // Collect options objects
-                     const finalOpts: Array<{ id: string; name: string; price: number }> = [];
-                     Object.values(selectedOptions).flat().forEach(optId => {
-                        for (const g of optionGroups) {
-                           const o = g.options.find((x: any) => x.id === optId);
-                           if (o) {
-                              finalOpts.push({ id: o.id, name: o.name, price: o.price || 0 });
-                              break;
-                           }
-                        }
-                     });
-                     
-                     addItemWithOptions(activeOptionsItem.item, activeOptionsItem.variantId, finalOpts);
-                     setActiveOptionsItem(null);
-                  }}
-                  className="w-full rounded-2xl bg-slate-900 py-4 text-base font-bold text-white shadow-xl hover:bg-slate-800 active:scale-95 transition"
-               >
-                  Add Selection
-               </button>
+              <button
+                type="button"
+                onClick={() => {
+                  // Validate selections
+                  for (const groupId of activeOptionsItem.item.optionGroupIds || []) {
+                    const group = optionGroups.find((g: any) => g.id === groupId);
+                    if (!group) continue;
+                    const count = (selectedOptions[groupId] || []).length;
+                    if (count < (group.minSelect || 0)) {
+                      showError(`Please select at least ${group.minSelect} in ${group.name}`);
+                      return;
+                    }
+                  }
+
+                  // Collect options objects
+                  const finalOpts: Array<{ id: string; name: string; price: number }> = [];
+                  Object.values(selectedOptions).flat().forEach(optId => {
+                    for (const g of optionGroups) {
+                      const o = g.options.find((x: any) => x.id === optId);
+                      if (o) {
+                        finalOpts.push({ id: o.id, name: o.name, price: o.price || 0 });
+                        break;
+                      }
+                    }
+                  });
+
+                  addItemWithOptions(activeOptionsItem.item, activeOptionsItem.variantId, finalOpts);
+                  setActiveOptionsItem(null);
+                }}
+                className="w-full rounded-2xl bg-slate-900 py-4 text-base font-bold text-white shadow-xl hover:bg-slate-800 active:scale-95 transition"
+              >
+                Add Selection
+              </button>
             </div>
           </div>
         </div>
@@ -1932,7 +1926,7 @@ function WaiterActionBoard({
                           {servingItemKey === batchServeKey
                             ? "Serving..."
                             : readyItems.length === openItemCount &&
-                                openItemCount > 1
+                              openItemCount > 1
                               ? `Serve All (${readyItems.length})`
                               : readyItems.length === 1
                                 ? "Serve Ready Item"
@@ -1978,10 +1972,10 @@ function WaiterActionBoard({
                       const itemNextStatus = nextServiceItemStatus(item.status);
                       const itemActionKey = item.lineId
                         ? orderItemActionKey(
-                            order.id,
-                            item.lineId,
-                            itemNextStatus,
-                          )
+                          order.id,
+                          item.lineId,
+                          itemNextStatus,
+                        )
                         : null;
                       const correctionKey = item.lineId
                         ? `${order.id}:${item.lineId}`
@@ -1999,7 +1993,7 @@ function WaiterActionBoard({
                         (candidate) =>
                           candidate.id !== order.id &&
                           (candidate.table?.id || candidate.tableId) ===
-                            (order.table?.id || order.tableId) &&
+                          (order.table?.id || order.tableId) &&
                           ["PLACED", "IN_PROGRESS", "READY", "SERVED"].includes(
                             normalizeStatus(candidate.status),
                           ),
@@ -2181,7 +2175,7 @@ function WaiterActionBoard({
                               <p className="mt-0.5 text-[11px] text-slate-400">
                                 {fmtCurrency(
                                   item.lineTotal ??
-                                    item.unitPrice * item.quantity,
+                                  item.unitPrice * item.quantity,
                                 )}
                               </p>
                             </div>
@@ -2374,7 +2368,6 @@ function WaiterView({
     status: ["PLACED", "IN_PROGRESS", "READY", "SERVED"],
     limit: 100,
   });
-  console.log("Waiter orders data:", ordersData);
   const { data: invoicesData, refetch: refetchInvoices } = useGetInvoicesQuery({
     limit: 100,
   });
@@ -2574,7 +2567,7 @@ function WaiterView({
       const response = await createInvoice({ orderId: order.id }).unwrap();
       showSuccess(
         response.message ||
-          `Invoice created for Table ${order.table?.number || ""}`,
+        `Invoice created for Table ${order.table?.number || ""}`,
       );
       refetchOrders();
       refetchInvoices();
@@ -2757,11 +2750,11 @@ function WaiterView({
       const nextCustomer = skipCustomer
         ? { customerName: "", customerPhone: "" }
         : {
-            customerName: customerDetails.customerName.trim(),
-            customerPhone: normalizePhoneInput(
-              customerDetails.customerPhone.trim(),
-            ),
-          };
+          customerName: customerDetails.customerName.trim(),
+          customerPhone: normalizePhoneInput(
+            customerDetails.customerPhone.trim(),
+          ),
+        };
 
       const validationError = validateOptionalCustomer(nextCustomer);
       if (validationError) {
@@ -3025,7 +3018,7 @@ function WaiterView({
             <h3 className="mt-1 text-lg font-semibold text-slate-900">
               Add customer details before placing order
             </h3>
-           
+
 
             <div className="mt-4 grid gap-3">
               <label className="text-sm text-slate-700">
@@ -3056,7 +3049,7 @@ function WaiterView({
                       customerPhone: normalizePhoneInput(event.target.value),
                     }))
                   }
-                   maxLength={10}
+                  maxLength={10}
                   placeholder="Optional WhatsApp / phone number"
                   className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm outline-none ring-amber-200 focus:ring-2"
                 />
@@ -3420,7 +3413,7 @@ function SmartOrderCard({
               (candidate) =>
                 candidate.id !== order.id &&
                 (candidate.table?.id || candidate.tableId) ===
-                  (order.table?.id || order.tableId) &&
+                (order.table?.id || order.tableId) &&
                 ["PLACED", "IN_PROGRESS", "READY", "SERVED"].includes(
                   normalizeStatus(candidate.status),
                 ),
@@ -3467,11 +3460,10 @@ function SmartOrderCard({
                           onItemStatusChange(order, item, itemNextStatus)
                         }
                         disabled={updatingItemKey === itemActionKey}
-                        className={`rounded-lg border px-2.5 py-1 text-[11px] font-semibold disabled:opacity-50 ${
-                          itemNextStatus === "SERVED"
+                        className={`rounded-lg border px-2.5 py-1 text-[11px] font-semibold disabled:opacity-50 ${itemNextStatus === "SERVED"
                             ? "border-emerald-300 bg-emerald-50 text-emerald-800"
                             : "border-slate-300 bg-slate-100 text-slate-700"
-                        }`}
+                          }`}
                       >
                         {updatingItemKey === itemActionKey
                           ? "Updating..."
@@ -3596,114 +3588,114 @@ function SmartOrderCard({
                     </button>
                   </div>
                 ) : // <div className="flex flex-wrap items-center gap-2">
-                //   {moveTargets.length > 0 ? (
-                //     <select
-                //       defaultValue=""
-                //       disabled={correctingLineKey === correctionKey}
-                //       onChange={(event) => {
-                //         const targetOrderId = event.target.value;
-                //         if (!targetOrderId) return;
-                //         onMovePlacedItem(
-                //           order,
-                //           item,
-                //           { targetOrderId },
-                //           correctionValue,
-                //         );
-                //         event.currentTarget.value = "";
-                //       }}
-                //       className="rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-semibold text-slate-700 disabled:opacity-50"
-                //     >
-                //       <option value="">Exchange</option>
-                //       {moveTargets.map((candidate) => (
-                //         <option key={candidate.id} value={candidate.id}>
-                //           {candidate.orderNumber
-                //             ? `#${candidate.orderNumber}`
-                //             : candidate.id.slice(-4)}
-                //         </option>
-                //       ))}
-                //     </select>
-                //   ) : null}
-                //   {tableTargets.length > 0 ? (
-                //     <select
-                //       defaultValue=""
-                //       disabled={correctingLineKey === correctionKey}
-                //       onChange={(event) => {
-                //         const targetTableId = event.target.value;
-                //         if (!targetTableId) return;
-                //         onMovePlacedItem(
-                //           order,
-                //           item,
-                //           { targetTableId },
-                //           correctionValue,
-                //         );
-                //         event.currentTarget.value = "";
-                //       }}
-                //       className="rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-semibold text-slate-700 disabled:opacity-50"
-                //     >
-                //       <option value="">Exchange Table</option>
-                //       {tableTargets.map((table) => (
-                //         <option key={table.id} value={table.id}>
-                //           T{table.number}
-                //         </option>
-                //       ))}
-                //     </select>
-                //   ) : null}
-                //   <button
-                //     type="button"
-                //     title={
-                //       item.quantity > 1
-                //         ? `Reduce qty (${correctionValue})`
-                //         : "Remove item"
-                //     }
-                //     onClick={() =>
-                //       onRemovePlacedItem(order, item, correctionValue)
-                //     }
-                //     disabled={correctingLineKey === correctionKey}
-                //     className="flex h-6 w-6 items-center justify-center rounded-md border border-rose-200 bg-rose-50 text-rose-600 hover:bg-rose-100 disabled:opacity-40"
-                //   >
-                //     {item.quantity > 1 ? (
-                //       <svg
-                //         viewBox="0 0 16 16"
-                //         className="h-3 w-3"
-                //         fill="none"
-                //         stroke="currentColor"
-                //         strokeWidth="2.5"
-                //       >
-                //         <path d="M3 8h10" />
-                //       </svg>
-                //     ) : (
-                //       <svg
-                //         viewBox="0 0 16 16"
-                //         className="h-3 w-3"
-                //         fill="none"
-                //         stroke="currentColor"
-                //         strokeWidth="1.8"
-                //       >
-                //         <path d="M3 4h10M6 4V3h4v1M5 4v8a1 1 0 001 1h4a1 1 0 001-1V4" />
-                //       </svg>
-                //     )}
-                //   </button>
+                  //   {moveTargets.length > 0 ? (
+                  //     <select
+                  //       defaultValue=""
+                  //       disabled={correctingLineKey === correctionKey}
+                  //       onChange={(event) => {
+                  //         const targetOrderId = event.target.value;
+                  //         if (!targetOrderId) return;
+                  //         onMovePlacedItem(
+                  //           order,
+                  //           item,
+                  //           { targetOrderId },
+                  //           correctionValue,
+                  //         );
+                  //         event.currentTarget.value = "";
+                  //       }}
+                  //       className="rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-semibold text-slate-700 disabled:opacity-50"
+                  //     >
+                  //       <option value="">Exchange</option>
+                  //       {moveTargets.map((candidate) => (
+                  //         <option key={candidate.id} value={candidate.id}>
+                  //           {candidate.orderNumber
+                  //             ? `#${candidate.orderNumber}`
+                  //             : candidate.id.slice(-4)}
+                  //         </option>
+                  //       ))}
+                  //     </select>
+                  //   ) : null}
+                  //   {tableTargets.length > 0 ? (
+                  //     <select
+                  //       defaultValue=""
+                  //       disabled={correctingLineKey === correctionKey}
+                  //       onChange={(event) => {
+                  //         const targetTableId = event.target.value;
+                  //         if (!targetTableId) return;
+                  //         onMovePlacedItem(
+                  //           order,
+                  //           item,
+                  //           { targetTableId },
+                  //           correctionValue,
+                  //         );
+                  //         event.currentTarget.value = "";
+                  //       }}
+                  //       className="rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-semibold text-slate-700 disabled:opacity-50"
+                  //     >
+                  //       <option value="">Exchange Table</option>
+                  //       {tableTargets.map((table) => (
+                  //         <option key={table.id} value={table.id}>
+                  //           T{table.number}
+                  //         </option>
+                  //       ))}
+                  //     </select>
+                  //   ) : null}
+                  //   <button
+                  //     type="button"
+                  //     title={
+                  //       item.quantity > 1
+                  //         ? `Reduce qty (${correctionValue})`
+                  //         : "Remove item"
+                  //     }
+                  //     onClick={() =>
+                  //       onRemovePlacedItem(order, item, correctionValue)
+                  //     }
+                  //     disabled={correctingLineKey === correctionKey}
+                  //     className="flex h-6 w-6 items-center justify-center rounded-md border border-rose-200 bg-rose-50 text-rose-600 hover:bg-rose-100 disabled:opacity-40"
+                  //   >
+                  //     {item.quantity > 1 ? (
+                  //       <svg
+                  //         viewBox="0 0 16 16"
+                  //         className="h-3 w-3"
+                  //         fill="none"
+                  //         stroke="currentColor"
+                  //         strokeWidth="2.5"
+                  //       >
+                  //         <path d="M3 8h10" />
+                  //       </svg>
+                  //     ) : (
+                  //       <svg
+                  //         viewBox="0 0 16 16"
+                  //         className="h-3 w-3"
+                  //         fill="none"
+                  //         stroke="currentColor"
+                  //         strokeWidth="1.8"
+                  //       >
+                  //         <path d="M3 4h10M6 4V3h4v1M5 4v8a1 1 0 001 1h4a1 1 0 001-1V4" />
+                  //       </svg>
+                  //     )}
+                  //   </button>
 
-                //   {/* Cancel */}
-                //   <button
-                //     type="button"
-                //     title="Cancel item"
-                //     onClick={() => onCancelPlacedItem(order, item)}
-                //     disabled={correctingLineKey === correctionKey}
-                //     className="flex h-6 w-6 items-center justify-center rounded-md border border-slate-200 bg-white text-slate-500 hover:bg-slate-100 disabled:opacity-40"
-                //   >
-                //     <svg
-                //       viewBox="0 0 16 16"
-                //       className="h-3 w-3"
-                //       fill="none"
-                //       stroke="currentColor"
-                //       strokeWidth="2.5"
-                //     >
-                //       <path d="M3 3l10 10M13 3L3 13" />
-                //     </svg>
-                //   </button>
-                // </div>
-                null}
+                  //   {/* Cancel */}
+                  //   <button
+                  //     type="button"
+                  //     title="Cancel item"
+                  //     onClick={() => onCancelPlacedItem(order, item)}
+                  //     disabled={correctingLineKey === correctionKey}
+                  //     className="flex h-6 w-6 items-center justify-center rounded-md border border-slate-200 bg-white text-slate-500 hover:bg-slate-100 disabled:opacity-40"
+                  //   >
+                  //     <svg
+                  //       viewBox="0 0 16 16"
+                  //       className="h-3 w-3"
+                  //       fill="none"
+                  //       stroke="currentColor"
+                  //       strokeWidth="2.5"
+                  //     >
+                  //       <path d="M3 3l10 10M13 3L3 13" />
+                  //     </svg>
+                  //   </button>
+                  // </div>
+                  null}
               </div>
             );
           })}
@@ -4134,28 +4126,28 @@ const KOT_COLUMNS: {
   bg: string;
   border: string;
 }[] = [
-  {
-    status: "PLACED",
-    label: "New Orders",
-    color: "text-amber-800",
-    bg: "bg-amber-50",
-    border: "border-amber-200",
-  },
-  {
-    status: "IN_PROGRESS",
-    label: "Cooking",
-    color: "text-red-800",
-    bg: "bg-red-50",
-    border: "border-red-200",
-  },
-  {
-    status: "READY",
-    label: "Ready to Serve",
-    color: "text-emerald-800",
-    bg: "bg-emerald-50",
-    border: "border-emerald-200",
-  },
-];
+    {
+      status: "PLACED",
+      label: "New Orders",
+      color: "text-amber-800",
+      bg: "bg-amber-50",
+      border: "border-amber-200",
+    },
+    {
+      status: "IN_PROGRESS",
+      label: "Cooking",
+      color: "text-red-800",
+      bg: "bg-red-50",
+      border: "border-red-200",
+    },
+    {
+      status: "READY",
+      label: "Ready to Serve",
+      color: "text-emerald-800",
+      bg: "bg-emerald-50",
+      border: "border-emerald-200",
+    },
+  ];
 
 function KitchenView() {
   const token = useAppSelector(selectAuthToken);
@@ -4166,15 +4158,15 @@ function KitchenView() {
     () =>
       isCafeMode
         ? {
-            status: ["SERVED"],
-            includeDone: true,
-            limit: 200,
-          }
+          status: ["SERVED"],
+          includeDone: true,
+          limit: 200,
+        }
         : {
-            status: ["PLACED", "IN_PROGRESS", "READY"],
-            includeDone: false,
-            limit: 200,
-          },
+          status: ["PLACED", "IN_PROGRESS", "READY"],
+          includeDone: false,
+          limit: 200,
+        },
     [isCafeMode],
   );
   const {
@@ -4360,15 +4352,88 @@ function KitchenView() {
     return timeAgo(item.addedAt);
   }
 
-  const cafeRows = useMemo(
-    () =>
-      [...filteredItems].sort((left, right) => {
-        const a = new Date(left.addedAt || 0).getTime();
-        const b = new Date(right.addedAt || 0).getTime();
-        return a - b;
-      }),
-    [filteredItems],
-  );
+  const cafeBatches = useMemo(() => {
+    const groups: Record<string, KitchenQueueItem[]> = {};
+    for (const item of filteredItems) {
+      const key = `${item.orderId}-${item.addedAt}`;
+      if (!groups[key]) groups[key] = [];
+      groups[key].push(item);
+    }
+    return Object.values(groups).sort((a, b) => {
+      const ta = new Date(a[0].addedAt || 0).getTime();
+      const tb = new Date(b[0].addedAt || 0).getTime();
+      return tb - ta;
+    });
+  }, [filteredItems]);
+
+  const handlePrintKOT = (items: KitchenQueueItem[]) => {
+    const first = items[0];
+    const tName = tableLabel(first);
+    const orderNum = first.orderNumber || first.orderId.slice(-6);
+    
+    const content = `
+      <div class="kot-print" style="font-family: 'Courier New', Courier, monospace; width: 100%; max-width: 54mm; margin: 0 auto;">
+        <div style="text-align:center; font-weight:bold; font-size:16px; margin-bottom: 2px;">KITCHEN TICKET</div>
+        <div style="text-align:center; font-size:10px; margin-bottom: 6px;">(Cafe Mode - Served)</div>
+        <div style="border-bottom: 1px dashed #000; margin: 2px 0;"></div>
+        
+        <table style="width:100%; font-size:12px; border-collapse: collapse;">
+          <tr><td style="font-weight:bold;">TABLE:</td><td style="text-align:right; font-weight:bold;">${tName || "Takeaway"}</td></tr>
+          <tr><td>ORDER:</td><td style="text-align:right;">#${orderNum}</td></tr>
+          <tr><td>TIME:</td><td style="text-align:right;">${new Date().toLocaleTimeString()}</td></tr>
+        </table>
+        
+        <div style="border-bottom: 1px dashed #000; margin: 4px 0;"></div>
+        
+        <table style="width:100%; font-size:13px; border-collapse: collapse;">
+          <thead>
+            <tr style="border-bottom: 1px solid #000;">
+              <th style="text-align:left; padding: 2px 0;">Item</th>
+              <th style="text-align:right; padding: 2px 0;">Qty</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${items.map(it => `
+              <tr style="border-bottom: 0.2mm solid #ccc;">
+                <td style="padding: 4px 0;">
+                  <div style="font-weight:bold;">${it.name.toUpperCase()} ${it.variantName ? `(${it.variantName})` : ""}</div>
+                  ${it.options?.length ? `<div style="font-size:10px;">+ ${it.options.map(o => o.name).join(", ")}</div>` : ""}
+                  ${it.note ? `<div style="font-size:10px; font-style:italic;">* ${it.note}</div>` : ""}
+                </td>
+                <td style="text-align:right; vertical-align:top; padding: 4px 0; font-weight:bold;">${it.quantity}</td>
+              </tr>
+            `).join("")}
+          </tbody>
+        </table>
+        
+        <div style="border-top: 1px dashed #000; margin: 6px 0;"></div>
+        <div style="text-align:center; font-size:9px;">${items.length} item(s) in this batch</div>
+        <div style="text-align:center; font-size:9px; margin-top: 2px;">--- RestroKhata ---</div>
+      </div>
+    `;
+
+    const printWindow = window.open("", "_blank");
+    if (printWindow) {
+      printWindow.document.write(`
+        <html>
+          <head>
+            <title>KOT Print</title>
+            <style>
+              @page { margin: 0; size: auto; }
+              body { margin: 0; padding: 2mm; width: 54mm; }
+              @media print {
+                body { width: 54mm; }
+              }
+            </style>
+          </head>
+          <body onload="window.print(); window.close();">
+            ${content}
+          </body>
+        </html>
+      `);
+      printWindow.document.close();
+    }
+  };
 
   return (
     <div>
@@ -4488,55 +4553,91 @@ function KitchenView() {
             </div>
           ) : isCafeMode ? (
             <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-              {cafeRows.map((item) => {
-                const customerLabel = kitchenCustomerLabel(item);
-                const displayNote = kitchenDisplayNote(item);
+              {cafeBatches.map((batch, bIdx) => {
+                const first = batch[0];
+                const customerLabel = kitchenCustomerLabel(first);
+                const orderNum = first.orderNumber || first.orderId.slice(-6);
 
                 return (
                   <article
-                    key={`${item.orderId}-${item.lineId}`}
-                    className="rounded-2xl border border-[#e6dfd1] bg-white p-3 shadow-sm"
+                    key={`${first.orderId}-${first.addedAt}-${bIdx}`}
+                    className="flex flex-col rounded-2xl border border-[#e6dfd1] bg-white shadow-sm overflow-hidden"
                   >
-                    <div className="flex items-start justify-between gap-2">
+                    {/* Batch Header */}
+                    <div className="flex items-center justify-between gap-3 bg-slate-50/80 px-4 py-2.5 border-b border-slate-100">
                       <div className="min-w-0">
-                        <p className="text-sm font-semibold text-slate-900">
-                          {item.quantity}x {item.name}
-                          {item.variantName ? ` (${item.variantName})` : ""}
+                        <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500">
+                          {tableLabel(first)}
                         </p>
-                        <p className="text-[11px] text-slate-500">
-                          {tableLabel(item)} • {item.orderNumber || item.orderId.slice(-6)}
+                        <p className="text-xs font-black text-slate-900">
+                          Order #{orderNum}
                         </p>
                       </div>
-                      <span className="rounded-full border border-sky-200 bg-sky-50 px-2 py-0.5 text-[10px] font-semibold text-sky-700">
-                        Unpaid
-                      </span>
+                      <button
+                        onClick={() => handlePrintKOT(batch)}
+                        className="flex items-center gap-1.5 rounded-lg bg-indigo-600 px-3 py-1.5 text-[10px] font-bold text-white shadow-md shadow-indigo-200 active:scale-95 transition-all"
+                      >
+                        <Printer size={12} />
+                        PRINT KOT
+                      </button>
                     </div>
 
-                    {item.options && item.options.length > 0 ? (
-                      <div className="mt-2 flex flex-wrap gap-1.5">
-                        {item.options.map((opt) => (
-                          <span
-                            key={opt.optionId}
-                            className="rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[10px] font-semibold text-amber-800"
-                          >
-                            {opt.name}
+                    {/* Batch Items List */}
+                    <div className="divide-y divide-slate-50 px-4 py-2 flex-1">
+                      {batch.map((item) => {
+                        const displayNote = kitchenDisplayNote(item);
+                        return (
+                          <div key={item.lineId} className="py-3 last:pb-1">
+                            <div className="flex items-start justify-between gap-2">
+                              <p className="text-sm font-bold text-slate-900">
+                                {item.quantity}x {item.name}
+                                {item.variantName ? <span className="ml-1 font-normal text-slate-400">({item.variantName})</span> : ""}
+                              </p>
+                              <span className="rounded-full border border-sky-200 bg-sky-50 px-2 py-0.5 text-[9px] font-bold text-sky-700">
+                                UNPAID
+                              </span>
+                            </div>
+
+                            {item.options && item.options.length > 0 && (
+                              <div className="mt-1.5 flex flex-wrap gap-1">
+                                {item.options.map((opt) => (
+                                  <span
+                                    key={opt.optionId}
+                                    className="rounded-md bg-amber-50 px-1.5 py-0.5 text-[9px] font-bold text-amber-700 border border-amber-100"
+                                  >
+                                    {opt.name}
+                                  </span>
+                                ))}
+                              </div>
+                            )}
+
+                            {displayNote && (
+                              <p className="mt-1.5 rounded-lg bg-rose-50 px-2 py-1.5 text-[10px] font-medium text-rose-700 italic border border-rose-100">
+                                Note: {displayNote}
+                              </p>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+
+                    {/* Batch Footer */}
+                    <div className="bg-slate-50/50 px-4 py-2 flex items-center justify-between text-[10px] font-semibold text-slate-500 border-t border-slate-100">
+                      <div className="flex items-center gap-2">
+                        <span className="flex items-center gap-1">
+                          <Clock size={10} />
+                          {ageLabel(first)}
+                        </span>
+                        {customerLabel && (
+                          <span className="flex items-center gap-1 border-l pl-2">
+                            <User size={10} />
+                            {customerLabel}
                           </span>
-                        ))}
+                        )}
                       </div>
-                    ) : null}
-
-                    {displayNote ? (
-                      <div className="mt-2 rounded-xl border border-amber-200 bg-amber-50/60 px-2.5 py-2 text-[11px] font-medium text-slate-700">
-                        {displayNote}
-                      </div>
-                    ) : null}
-
-                    <div className="mt-3 flex flex-wrap items-center gap-2 text-[11px] text-slate-600">
-                      <span className="rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5">
-                        Served
+                      <span className="rounded-full bg-emerald-100 text-emerald-700 px-2 py-0.5">
+                        SERVED
                       </span>
-                      <span>Age: {ageLabel(item)}</span>
-                      {customerLabel ? <span>Customer: {customerLabel}</span> : null}
                     </div>
                   </article>
                 );
@@ -4829,12 +4930,12 @@ export function OrdersWorkspace({ rawRole }: Props) {
   const routeSelectTablePage = pathname === "/dashboard/orders/new";
   const routeSelectItemsPage = pathname === "/dashboard/orders/items";
   const routeTakeawayPage = pathname === "/dashboard/orders/takeaway";
-  
+
   const hideBottomAction =
-  pathname.includes("/dashboard/order/new") ||
-  pathname.includes("/item") ||
-  pathname.includes("/takeaway") || pathname.includes("/kitchen");
-  
+    pathname.includes("/dashboard/order/new") ||
+    pathname.includes("/item") ||
+    pathname.includes("/takeaway") || pathname.includes("/kitchen");
+
 
   const [toast, setToast] = useState<{
     msg: string;
@@ -4917,11 +5018,10 @@ export function OrdersWorkspace({ rawRole }: Props) {
                 id="orders-tab-live"
                 type="button"
                 onClick={() => setActiveTab("live")}
-                className={`flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold transition ${
-                  activeTab === "live"
+                className={`flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold transition ${activeTab === "live"
                     ? "bg-white text-slate-900 shadow-sm"
                     : "text-slate-500 hover:text-slate-700"
-                }`}
+                  }`}
               >
                 <span
                   className={`h-2 w-2 rounded-full ${activeTab === "live" ? "bg-emerald-500 animate-pulse" : "bg-slate-300"}`}
@@ -4932,11 +5032,10 @@ export function OrdersWorkspace({ rawRole }: Props) {
                 id="orders-tab-history"
                 type="button"
                 onClick={() => setActiveTab("history")}
-                className={`flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold transition ${
-                  activeTab === "history"
+                className={`flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold transition ${activeTab === "history"
                     ? "bg-white text-slate-900 shadow-sm"
                     : "text-slate-500 hover:text-slate-700"
-                }`}
+                  }`}
               >
                 <svg
                   viewBox="0 0 16 16"
@@ -5003,50 +5102,50 @@ export function OrdersWorkspace({ rawRole }: Props) {
         </>
       )}
 
-{ !hideBottomAction &&
-      <div className="fixed bottom-[calc(env(safe-area-inset-bottom)+5.25rem)] right-3 z-40 flex flex-col items-end gap-2 sm:hidden sm:right-4 lg:bottom-[calc(env(safe-area-inset-bottom)+1.25rem)]">
-        <button
-          type="button"
-          onClick={() => router.push("/dashboard/orders/new")}
-          className="inline-flex h-12 w-fit items-center gap-2 rounded-full border border-[#1f6a57] bg-[#2f8a70] px-4 pr-5 text-sm font-semibold text-white shadow-xl shadow-emerald-900/20 ring-2 ring-emerald-200/80 transition-all hover:-translate-y-0.5 hover:bg-[#27745d] hover:shadow-2xl focus:outline-none focus:ring-4 focus:ring-emerald-300/60"
-          aria-label="Create dine in order"
-        >
-          <span className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-white/15">
-            <svg
-              viewBox="0 0 24 24"
-              className="h-4 w-4"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-            >
-              <path d="M4 8h16M5 8v8a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8" />
-              <path d="M8 4v4M16 4v4" />
-            </svg>
-          </span>
-          <span className="whitespace-nowrap">Dine In </span>
-        </button>
-        <button
-          type="button"
-          onClick={() => router.push("/dashboard/orders/takeaway")}
-          className="inline-flex h-12 w-fit items-center gap-2 rounded-full border border-[#b56f24] bg-[#c98533] px-4 pr-5 text-sm font-semibold text-white shadow-xl shadow-amber-900/20 ring-2 ring-amber-200/80 transition-all hover:-translate-y-0.5 hover:bg-[#b37227] hover:shadow-2xl focus:outline-none focus:ring-4 focus:ring-amber-300/60"
-          aria-label="Create take away order"
-        >
-          <span className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-white/15">
-            <svg
-              viewBox="0 0 24 24"
-              className="h-4 w-4"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-            >
-              <path d="M7 4h10l2 6H5l2-6z" />
-              <path d="M6 10h12l-1 10H7L6 10z" />
-            </svg>
-          </span>
-          <span className="whitespace-nowrap">Take Away</span>
-        </button>
-      </div>
-}
+      {!hideBottomAction &&
+        <div className="fixed bottom-[calc(env(safe-area-inset-bottom)+5.25rem)] right-3 z-40 flex flex-col items-end gap-2 sm:hidden sm:right-4 lg:bottom-[calc(env(safe-area-inset-bottom)+1.25rem)]">
+          <button
+            type="button"
+            onClick={() => router.push("/dashboard/orders/new")}
+            className="inline-flex h-12 w-fit items-center gap-2 rounded-full border border-[#1f6a57] bg-[#2f8a70] px-4 pr-5 text-sm font-semibold text-white shadow-xl shadow-emerald-900/20 ring-2 ring-emerald-200/80 transition-all hover:-translate-y-0.5 hover:bg-[#27745d] hover:shadow-2xl focus:outline-none focus:ring-4 focus:ring-emerald-300/60"
+            aria-label="Create dine in order"
+          >
+            <span className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-white/15">
+              <svg
+                viewBox="0 0 24 24"
+                className="h-4 w-4"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+              >
+                <path d="M4 8h16M5 8v8a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8" />
+                <path d="M8 4v4M16 4v4" />
+              </svg>
+            </span>
+            <span className="whitespace-nowrap">Dine In </span>
+          </button>
+          <button
+            type="button"
+            onClick={() => router.push("/dashboard/orders/takeaway")}
+            className="inline-flex h-12 w-fit items-center gap-2 rounded-full border border-[#b56f24] bg-[#c98533] px-4 pr-5 text-sm font-semibold text-white shadow-xl shadow-amber-900/20 ring-2 ring-amber-200/80 transition-all hover:-translate-y-0.5 hover:bg-[#b37227] hover:shadow-2xl focus:outline-none focus:ring-4 focus:ring-amber-300/60"
+            aria-label="Create take away order"
+          >
+            <span className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-white/15">
+              <svg
+                viewBox="0 0 24 24"
+                className="h-4 w-4"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+              >
+                <path d="M7 4h10l2 6H5l2-6z" />
+                <path d="M6 10h12l-1 10H7L6 10z" />
+              </svg>
+            </span>
+            <span className="whitespace-nowrap">Take Away</span>
+          </button>
+        </div>
+      }
     </div>
   );
 }

@@ -386,7 +386,6 @@ export function OrdersHistoryView() {
   const [page, setPage] = useState(1);
   const [feed, setFeed] = useState<OrderRecord[]>([]);
   const loadMoreRef = useRef<HTMLDivElement | null>(null);
-  console.log(feed)
 
   // Derive API params from quickFilter + custom filter
   const queryParams = useMemo(() => {
