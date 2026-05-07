@@ -7,7 +7,11 @@ import { FormEvent, useMemo, useState, type InputHTMLAttributes } from "react";
 import { writeStoredSession } from "@/lib/auth-session";
 import { getErrorMessage } from "@/lib/error";
 import { slugify } from "@/lib/slugify";
-import { useLoginMutation, useRegisterMutation, useLazyMeQuery } from "@/store/api/authApi";
+import {
+  useLoginMutation,
+  useRegisterMutation,
+  useLazyMeQuery,
+} from "@/store/api/authApi";
 import { useAppDispatch } from "@/store/hooks";
 import { setSession } from "@/store/slices/authSlice";
 
@@ -78,7 +82,8 @@ export function AuthCard({ mode }: AuthCardProps) {
 
   const isLogin = mode === "login";
   const [loginForm, setLoginForm] = useState<LoginForm>(initialLoginForm);
-  const [registerForm, setRegisterForm] = useState<RegisterForm>(initialRegisterForm);
+  const [registerForm, setRegisterForm] =
+    useState<RegisterForm>(initialRegisterForm);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState("");
   const [tenantOptions, setTenantOptions] = useState<TenantLoginOption[]>([]);
@@ -104,7 +109,8 @@ export function AuthCard({ mode }: AuthCardProps) {
           const identifier = loginPayload.identifier.trim();
           if (!identifier) return "WhatsApp number or email is required.";
           if (identifier.includes("@")) {
-            if (!/^\S+@\S+\.\S+$/.test(identifier)) return "Enter a valid email address.";
+            if (!/^\S+@\S+\.\S+$/.test(identifier))
+              return "Enter a valid email address.";
           } else if (identifier.replace(/\D/g, "").length < 10) {
             return "Enter a valid WhatsApp number.";
           }
@@ -113,16 +119,22 @@ export function AuthCard({ mode }: AuthCardProps) {
           const whatsappNumber = registerPayload.whatsappNumber.trim();
 
           if (!whatsappNumber) return "WhatsApp number is required.";
-          if (whatsappNumber.replace(/\D/g, "").length < 10) return "Enter a valid WhatsApp number.";
-          if (!registerPayload.ownerName.trim()) return "Owner name is required.";
-          if (!registerPayload.tenantName.trim()) return "Tenant name is required.";
+          if (whatsappNumber.replace(/\D/g, "").length < 10)
+            return "Enter a valid WhatsApp number.";
+          if (!registerPayload.ownerName.trim())
+            return "Owner name is required.";
+          if (!registerPayload.tenantName.trim())
+            return "Tenant name is required.";
           if (!registerPayload.email.trim()) return "Email is required.";
-          if (!/^\S+@\S+\.\S+$/.test(registerPayload.email.trim())) return "Enter a valid email address.";
-          if (!registerPayload.addressLine1.trim()) return "Address line 1 is required.";
+          if (!/^\S+@\S+\.\S+$/.test(registerPayload.email.trim()))
+            return "Enter a valid email address.";
+          if (!registerPayload.addressLine1.trim())
+            return "Address line 1 is required.";
           if (!registerPayload.city.trim()) return "City is required.";
           if (!registerPayload.state.trim()) return "State is required.";
           if (!registerPayload.country.trim()) return "Country is required.";
-          if (!registerPayload.postalCode.trim()) return "Postal code is required.";
+          if (!registerPayload.postalCode.trim())
+            return "Postal code is required.";
           if (registerPayload.password !== registerPayload.confirmPassword) {
             return "Password and confirm password must match.";
           }
@@ -232,7 +244,12 @@ export function AuthCard({ mode }: AuthCardProps) {
     }
   }
 
-  const features = ["QR menu ordering", "Live kitchen flow", "Invoice management", "Sales reports"];
+  const features = [
+    "QR menu ordering",
+    "Live kitchen flow",
+    "Invoice management",
+    "Sales reports",
+  ];
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-amber-50 via-white to-yellow-50/40">
@@ -249,7 +266,9 @@ export function AuthCard({ mode }: AuthCardProps) {
                   className="h-8 w-8 object-contain"
                 />
               </div>
-              <span className="text-xl font-semibold tracking-tight text-gray-800">RestroKhata</span>
+              <span className="text-xl font-semibold tracking-tight text-gray-800">
+                RestroKhata
+              </span>
             </div>
           </div>
 
@@ -272,18 +291,32 @@ export function AuthCard({ mode }: AuthCardProps) {
                     {features.map((feature) => (
                       <div key={feature} className="flex items-center gap-3">
                         <div className="flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full bg-amber-200">
-                          <svg className="h-3 w-3 text-amber-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M5 13l4 4L19 7" />
+                          <svg
+                            className="h-3 w-3 text-amber-600"
+                            fill="none"
+                            stroke="currentColor"
+                            viewBox="0 0 24 24"
+                          >
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              strokeWidth="2.5"
+                              d="M5 13l4 4L19 7"
+                            />
                           </svg>
                         </div>
-                        <span className="text-sm text-gray-700 md:text-base">{feature}</span>
+                        <span className="text-sm text-gray-700 md:text-base">
+                          {feature}
+                        </span>
                       </div>
                     ))}
                   </div>
 
                   {!isLogin ? (
                     <div className="mt-auto border-t border-amber-200/50 pt-6">
-                      <p className="text-xs text-gray-400">14-day trial. GST is optional. Staff can be added later.</p>
+                      <p className="text-xs text-gray-400">
+                        14-day trial. GST is optional. Staff can be added later.
+                      </p>
                     </div>
                   ) : null}
                 </div>
@@ -297,32 +330,63 @@ export function AuthCard({ mode }: AuthCardProps) {
                         <Input
                           label="Owner name"
                           value={registerForm.ownerName}
-                          onChange={(value) => setRegisterForm((prev) => ({ ...prev, ownerName: value }))}
+                          onChange={(value) =>
+                            setRegisterForm((prev) => ({
+                              ...prev,
+                              ownerName: value,
+                            }))
+                          }
                           placeholder="Owner name"
                         />
                         <Input
                           label="Tenant name"
                           value={registerForm.tenantName}
-                          onChange={(value) => setRegisterForm((prev) => ({ ...prev, tenantName: value }))}
+                          onChange={(value) =>
+                            setRegisterForm((prev) => ({
+                              ...prev,
+                              tenantName: value,
+                            }))
+                          }
                           placeholder="My Cafe"
                         />
                       </div>
                     </>
                   ) : null}
 
-                  <div className={`grid gap-4 ${isLogin ? "sm:grid-cols-1" : "sm:grid-cols-2"}`}>
+                  <div
+                    className={`grid gap-4 ${isLogin ? "sm:grid-cols-1" : "sm:grid-cols-2"}`}
+                  >
                     <Input
                       label={isLogin ? "WhatsApp or email" : "WhatsApp number"}
-                      value={isLogin ? loginForm.identifier : registerForm.whatsappNumber}
+                      value={
+                        isLogin
+                          ? loginForm.identifier
+                          : registerForm.whatsappNumber
+                      }
+                      // onChange={(value) =>
+                      //   isLogin
+                      //     ? setLoginForm((prev) => ({
+                      //         ...prev,
+                      //         identifier: value.includes("@") ? value.trim() : sanitizePhone(value),
+                      //       }))
+                      //     : setRegisterForm((prev) => ({ ...prev, whatsappNumber: sanitizePhone(value) }))
+                      // }
                       onChange={(value) =>
                         isLogin
                           ? setLoginForm((prev) => ({
                               ...prev,
-                              identifier: value.includes("@") ? value.trim() : sanitizePhone(value),
+                              identifier: value,
                             }))
-                          : setRegisterForm((prev) => ({ ...prev, whatsappNumber: sanitizePhone(value) }))
+                          : setRegisterForm((prev) => ({
+                              ...prev,
+                              whatsappNumber: sanitizePhone(value),
+                            }))
                       }
-                      placeholder={isLogin ? "9876543210 or owner@restaurant.com" : "9876543210"}
+                      placeholder={
+                        isLogin
+                          ? "9876543210 or owner@restaurant.com"
+                          : "9876543210"
+                      }
                       inputMode={isLogin ? "email" : "tel"}
                     />
                     {!isLogin ? (
@@ -330,21 +394,33 @@ export function AuthCard({ mode }: AuthCardProps) {
                         label="Email"
                         type="email"
                         value={registerForm.email}
-                        onChange={(value) => setRegisterForm((prev) => ({ ...prev, email: value }))}
+                        onChange={(value) =>
+                          setRegisterForm((prev) => ({ ...prev, email: value }))
+                        }
                         placeholder="owner@restaurant.com"
                       />
                     ) : null}
                   </div>
 
-                  <div className={`grid gap-4 ${isLogin ? "sm:grid-cols-1" : "sm:grid-cols-2"}`}>
+                  <div
+                    className={`grid gap-4 ${isLogin ? "sm:grid-cols-1" : "sm:grid-cols-2"}`}
+                  >
                     <Input
                       label="Password"
                       type="password"
-                      value={isLogin ? loginForm.password : registerForm.password}
+                      value={
+                        isLogin ? loginForm.password : registerForm.password
+                      }
                       onChange={(value) =>
                         isLogin
-                          ? setLoginForm((prev) => ({ ...prev, password: value }))
-                          : setRegisterForm((prev) => ({ ...prev, password: value }))
+                          ? setLoginForm((prev) => ({
+                              ...prev,
+                              password: value,
+                            }))
+                          : setRegisterForm((prev) => ({
+                              ...prev,
+                              password: value,
+                            }))
                       }
                       placeholder="Minimum 6 characters"
                     />
@@ -353,7 +429,12 @@ export function AuthCard({ mode }: AuthCardProps) {
                         label="Confirm password"
                         type="password"
                         value={registerForm.confirmPassword}
-                        onChange={(value) => setRegisterForm((prev) => ({ ...prev, confirmPassword: value }))}
+                        onChange={(value) =>
+                          setRegisterForm((prev) => ({
+                            ...prev,
+                            confirmPassword: value,
+                          }))
+                        }
                         placeholder="Re-enter password"
                       />
                     ) : null}
@@ -365,13 +446,23 @@ export function AuthCard({ mode }: AuthCardProps) {
                         <Input
                           label="GST number"
                           value={registerForm.gstNumber}
-                          onChange={(value) => setRegisterForm((prev) => ({ ...prev, gstNumber: value.toUpperCase() }))}
+                          onChange={(value) =>
+                            setRegisterForm((prev) => ({
+                              ...prev,
+                              gstNumber: value.toUpperCase(),
+                            }))
+                          }
                           placeholder="Optional"
                         />
                         <Input
                           label="Postal code"
                           value={registerForm.postalCode}
-                          onChange={(value) => setRegisterForm((prev) => ({ ...prev, postalCode: value }))}
+                          onChange={(value) =>
+                            setRegisterForm((prev) => ({
+                              ...prev,
+                              postalCode: value,
+                            }))
+                          }
                           placeholder="492001"
                           inputMode="numeric"
                         />
@@ -380,14 +471,24 @@ export function AuthCard({ mode }: AuthCardProps) {
                       <Input
                         label="Address line 1"
                         value={registerForm.addressLine1}
-                        onChange={(value) => setRegisterForm((prev) => ({ ...prev, addressLine1: value }))}
+                        onChange={(value) =>
+                          setRegisterForm((prev) => ({
+                            ...prev,
+                            addressLine1: value,
+                          }))
+                        }
                         placeholder="Street, area, landmark"
                       />
 
                       <Input
                         label="Address line 2"
                         value={registerForm.addressLine2}
-                        onChange={(value) => setRegisterForm((prev) => ({ ...prev, addressLine2: value }))}
+                        onChange={(value) =>
+                          setRegisterForm((prev) => ({
+                            ...prev,
+                            addressLine2: value,
+                          }))
+                        }
                         placeholder="Optional"
                       />
 
@@ -395,19 +496,34 @@ export function AuthCard({ mode }: AuthCardProps) {
                         <Input
                           label="City"
                           value={registerForm.city}
-                          onChange={(value) => setRegisterForm((prev) => ({ ...prev, city: value }))}
+                          onChange={(value) =>
+                            setRegisterForm((prev) => ({
+                              ...prev,
+                              city: value,
+                            }))
+                          }
                           placeholder="Raipur"
                         />
                         <Input
                           label="State"
                           value={registerForm.state}
-                          onChange={(value) => setRegisterForm((prev) => ({ ...prev, state: value }))}
+                          onChange={(value) =>
+                            setRegisterForm((prev) => ({
+                              ...prev,
+                              state: value,
+                            }))
+                          }
                           placeholder="Chhattisgarh"
                         />
                         <Input
                           label="Country"
                           value={registerForm.country}
-                          onChange={(value) => setRegisterForm((prev) => ({ ...prev, country: value }))}
+                          onChange={(value) =>
+                            setRegisterForm((prev) => ({
+                              ...prev,
+                              country: value,
+                            }))
+                          }
                           placeholder="India"
                         />
                       </div>
@@ -430,7 +546,10 @@ export function AuthCard({ mode }: AuthCardProps) {
                 </form>
 
                 <div className="mt-6 text-center">
-                  <Link href={switchLink.href} className="text-sm text-gray-500 transition-colors hover:text-amber-600">
+                  <Link
+                    href={switchLink.href}
+                    className="text-sm text-gray-500 transition-colors hover:text-amber-600"
+                  >
                     {switchLink.text}
                   </Link>
                 </div>
@@ -449,8 +568,13 @@ export function AuthCard({ mode }: AuthCardProps) {
             aria-label="Close tenant selection"
           />
           <section className="relative z-10 w-full max-w-md rounded-3xl border border-gray-100 bg-white p-5 shadow-2xl">
-            <h3 className="text-lg font-semibold text-slate-900">Select tenant</h3>
-            <p className="mt-1 text-sm text-slate-500">Is account ke multiple tenant access hain. Continue karne ke liye ek choose karo.</p>
+            <h3 className="text-lg font-semibold text-slate-900">
+              Select tenant
+            </h3>
+            <p className="mt-1 text-sm text-slate-500">
+              Is account ke multiple tenant access hain. Continue karne ke liye
+              ek choose karo.
+            </p>
             <div className="mt-4 space-y-2">
               {tenantOptions.map((option) => (
                 <button
@@ -460,7 +584,9 @@ export function AuthCard({ mode }: AuthCardProps) {
                     setError("");
                     setIsSubmitting(true);
                     try {
-                      const initialSession = await submitLogin(option.tenantSlug);
+                      const initialSession = await submitLogin(
+                        option.tenantSlug,
+                      );
                       dispatch(setSession(initialSession));
                       writeStoredSession(initialSession);
                       const session = await loadMe(undefined, true).unwrap();
@@ -476,7 +602,9 @@ export function AuthCard({ mode }: AuthCardProps) {
                   className="w-full rounded-2xl border border-amber-100 bg-amber-50 px-4 py-3 text-left transition hover:border-amber-200 hover:bg-amber-100"
                   disabled={isSubmitting}
                 >
-                  <p className="text-sm font-semibold text-slate-900">{option.tenantName || option.tenantSlug}</p>
+                  <p className="text-sm font-semibold text-slate-900">
+                    {option.tenantName || option.tenantSlug}
+                  </p>
                   <p className="mt-1 text-xs text-slate-500">
                     {option.tenantSlug}
                     {option.role ? ` | ${option.role}` : ""}
@@ -516,9 +644,12 @@ function extractTenantOptions(error: unknown): TenantLoginOption[] {
     if (!entry || typeof entry !== "object") return;
 
     const option = entry as Record<string, unknown>;
-    const tenantSlug = typeof option.tenantSlug === "string" ? option.tenantSlug.trim() : "";
-    const tenantName = typeof option.tenantName === "string" ? option.tenantName.trim() : "";
-    const role = typeof option.role === "string" ? option.role.trim() : undefined;
+    const tenantSlug =
+      typeof option.tenantSlug === "string" ? option.tenantSlug.trim() : "";
+    const tenantName =
+      typeof option.tenantName === "string" ? option.tenantName.trim() : "";
+    const role =
+      typeof option.role === "string" ? option.role.trim() : undefined;
     if (!tenantSlug) return;
 
     parsed.push({
@@ -540,10 +671,19 @@ type InputProps = {
   inputMode?: InputHTMLAttributes<HTMLInputElement>["inputMode"];
 };
 
-function Input({ label, value, onChange, placeholder, type = "text", inputMode }: InputProps) {
+function Input({
+  label,
+  value,
+  onChange,
+  placeholder,
+  type = "text",
+  inputMode,
+}: InputProps) {
   return (
     <div>
-      <label className="mb-1.5 block text-sm font-medium text-gray-700">{label}</label>
+      <label className="mb-1.5 block text-sm font-medium text-gray-700">
+        {label}
+      </label>
       <input
         type={type}
         value={value}

@@ -88,8 +88,8 @@ type ItemModalStep = 1 | 2 | 3;
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 const OBJECT_ID_REGEX = /^[a-f\d]{24}$/i;
-const RECENT_PARENT_CATEGORY_KEY = "restrokhata:recent-main-categories";
-const MAX_RECENT = 8;
+// const RECENT_PARENT_CATEGORY_KEY = "restrokhata:recent-main-categories";
+const RECENT_PARENT_CATEGORY_KEY = "restrokhata:recent-main-category";
 const PANEL_KEY = "restrokhata:menu-active-panel";
 const LAST_VARIANTS_KEY = "restrokhata:last-item-variants";
 const VARIANT_PRESETS = ["Regular", "Half", "Full", "Large"];
@@ -365,7 +365,13 @@ function createEmptyForm(): ItemForm {
 }
 
 function createEmptyOptionGroupForm(): OptionGroupForm {
-  return { name: "", minSelect: "0", maxSelect: "1", sortOrder: "0", options: [] };
+  return {
+    name: "",
+    minSelect: "0",
+    maxSelect: "1",
+    sortOrder: "0",
+    options: [],
+  };
 }
 
 function resolveSelectedCategoryId(form: ItemForm): string {
@@ -428,10 +434,15 @@ function validateForm(form: ItemForm): string | null {
   return null;
 }
 
-
 function Spinner() {
   return (
-    <svg className="h-4 w-4 animate-spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+    <svg
+      className="h-4 w-4 animate-spin"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+    >
       <path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83" />
     </svg>
   );
@@ -459,7 +470,12 @@ function toCreatePayload(form: ItemForm): CreateMenuItemPayload {
     fulfillmentType: form.fulfillmentType,
     foodType: form.foodType || undefined,
     prepTime: form.prepTime ? toNumber(form.prepTime, 0) : undefined,
-    tags: form.tags ? form.tags.split(",").map(t => t.trim()).filter(Boolean) : undefined,
+    tags: form.tags
+      ? form.tags
+          .split(",")
+          .map((t) => t.trim())
+          .filter(Boolean)
+      : undefined,
     stock: form.stock ? toNumber(form.stock, 0) : undefined,
     isFeatured: form.isFeatured,
   };
@@ -483,8 +499,12 @@ function toUpdatePayload(
   const image = form.image.trim() || undefined;
   if (image !== item.image) payload.image = image;
 
-  const taxPercentage = Math.min(100, Math.max(0, toNumber(form.taxPercentage, item.taxPercentage ?? 0)));
-  if (taxPercentage !== item.taxPercentage) payload.taxPercentage = taxPercentage;
+  const taxPercentage = Math.min(
+    100,
+    Math.max(0, toNumber(form.taxPercentage, item.taxPercentage ?? 0)),
+  );
+  if (taxPercentage !== item.taxPercentage)
+    payload.taxPercentage = taxPercentage;
 
   const sortedFormGroups = [...form.optionGroupIds].sort();
   const sortedItemGroups = [...(item.optionGroupIds || [])].sort();
@@ -494,13 +514,17 @@ function toUpdatePayload(
 
   const mappedVariants = toVariantsPayload(form.variants);
   const oldVariants = item.variants.map((v, i) => ({
-    name: v.name, price: v.price, isAvailable: v.isAvailable, sortOrder: i
+    name: v.name,
+    price: v.price,
+    isAvailable: v.isAvailable,
+    sortOrder: i,
   }));
   if (JSON.stringify(mappedVariants) !== JSON.stringify(oldVariants)) {
     payload.variants = mappedVariants;
   }
 
-  if (form.fulfillmentType !== item.fulfillmentType) payload.fulfillmentType = form.fulfillmentType;
+  if (form.fulfillmentType !== item.fulfillmentType)
+    payload.fulfillmentType = form.fulfillmentType;
 
   const foodType = form.foodType || undefined;
   if (foodType !== item.foodType) payload.foodType = foodType;
@@ -508,7 +532,12 @@ function toUpdatePayload(
   const prepTime = form.prepTime ? toNumber(form.prepTime, 0) : undefined;
   if (prepTime !== item.prepTime) payload.prepTime = prepTime;
 
-  const formTags = form.tags ? form.tags.split(",").map(t => t.trim()).filter(Boolean) : undefined;
+  const formTags = form.tags
+    ? form.tags
+        .split(",")
+        .map((t) => t.trim())
+        .filter(Boolean)
+    : undefined;
   const itemTags = item.tags?.length ? item.tags : undefined;
   if (JSON.stringify(formTags) !== JSON.stringify(itemTags)) {
     payload.tags = formTags;
@@ -533,12 +562,15 @@ function toOptionGroupPayload(form: OptionGroupForm) {
     minSelect,
     maxSelect,
     sortOrder: Math.max(0, Math.floor(toNumber(form.sortOrder, 0))),
-    options: form.options.length > 0 ? form.options.map((opt, i) => ({
-      name: opt.name.trim(),
-      price: toNumber(opt.price, 0),
-      isAvailable: opt.isAvailable,
-      sortOrder: toNumber(opt.sortOrder, i),
-    })) : undefined,
+    options:
+      form.options.length > 0
+        ? form.options.map((opt, i) => ({
+            name: opt.name.trim(),
+            price: toNumber(opt.price, 0),
+            isAvailable: opt.isAvailable,
+            sortOrder: toNumber(opt.sortOrder, i),
+          }))
+        : undefined,
   };
 }
 
@@ -583,8 +615,21 @@ function Chip({
   danger?: boolean;
   className?: string;
 }) {
+  const ref = useRef<HTMLButtonElement>(null);
+
+  useEffect(() => {
+    if (active && ref.current) {
+      ref.current.scrollIntoView({
+        behavior: "smooth",
+        block: "nearest",
+        inline: "center",
+      });
+    }
+  }, [active]);
+
   return (
     <button
+      ref={ref}
       type="button"
       onClick={onClick}
       className={[
@@ -601,6 +646,7 @@ function Chip({
     </button>
   );
 }
+
 
 /** Horizontal scrollable chip row */
 function ChipScroll({ children }: { children: React.ReactNode }) {
@@ -705,6 +751,7 @@ function TextInput({
   placeholder,
   id,
   className = "",
+  focus = false,
 }: {
   value: string;
   onChange: (v: string) => void;
@@ -724,6 +771,7 @@ function TextInput({
         "outline-none transition-all focus:border-[#d4a30a] focus:ring-2 focus:ring-[#f5c842]/20",
         className,
       ].join(" ")}
+      autoFocus={focus}
     />
   );
 }
@@ -947,10 +995,8 @@ export function MenuWorkspace({ tenantSlug }: Props) {
   const [itemsFeed, setItemsFeed] = useState<MenuItemRecord[]>([]);
 
   // ── Queries ──
-  const {
-    data: categoriesPayload,
-    refetch: refetchCategories,
-  } = useGetMenuCategoriesQuery({ flat: true });
+  const { data: categoriesPayload, refetch: refetchCategories } =
+    useGetMenuCategoriesQuery({ flat: true });
   const {
     data: optionGroupsPayload,
     error: optionGroupsError,
@@ -1076,29 +1122,26 @@ export function MenuWorkspace({ tenantSlug }: Props) {
       return [];
     }
   });
-  const [recentParentIds, setRecentParentIds] = useState<string[]>(() => {
-    try {
-      const raw = lsGet(RECENT_PARENT_CATEGORY_KEY);
-      if (!raw) return [];
-      const parsed = JSON.parse(raw);
-      if (!Array.isArray(parsed)) return [];
-      return parsed
-        .filter(
-          (id): id is string => typeof id === "string" && id.trim().length > 0,
-        )
-        .slice(0, MAX_RECENT);
-    } catch {
-      return [];
-    }
-  });
+
+  const [recentParentId, setRecentParentId] = useState(
+    () => lsGet(RECENT_PARENT_CATEGORY_KEY) || "",
+  );
+
+
 
   // ── Persist to localStorage ──
   useEffect(() => {
     lsSet(PANEL_KEY, activePanel);
   }, [activePanel]);
+  // useEffect(() => {
+  //   lsSet(RECENT_PARENT_CATEGORY_KEY, JSON.stringify(recentParentIds));
+  // }, [recentParentIds]);
   useEffect(() => {
-    lsSet(RECENT_PARENT_CATEGORY_KEY, JSON.stringify(recentParentIds));
-  }, [recentParentIds]);
+    if (recentParentId) {
+      lsSet(RECENT_PARENT_CATEGORY_KEY, recentParentId);
+    }
+  }, [recentParentId]);
+
   useEffect(() => {
     lsSet(LAST_VARIANTS_KEY, JSON.stringify(lastUsedVariants));
   }, [lastUsedVariants]);
@@ -1125,7 +1168,7 @@ export function MenuWorkspace({ tenantSlug }: Props) {
           setItemsPage((prev) => prev + 1);
         }
       },
-      { rootMargin: "300px" }
+      { rootMargin: "300px" },
     );
 
     observer.observe(node);
@@ -1164,18 +1207,46 @@ export function MenuWorkspace({ tenantSlug }: Props) {
   }, [categories, categoriesById]);
 
   // Recent → front, rest alphabetically
+  // const quickPickMainCats = useMemo(() => {
+  //   const byId = new Map(mainCategories.map((c) => [c.id, c]));
+  //   const ordered: MenuCategoryRecord[] = [];
+  //   recentParentIds.forEach((id) => {
+  //     const found = byId.get(id);
+  //     if (found) ordered.push(found);
+  //   });
+  //   mainCategories.forEach((c) => {
+  //     if (!recentParentIds.includes(c.id)) ordered.push(c);
+  //   });
+  //   return ordered;
+  // }, [mainCategories, recentParentIds]);
   const quickPickMainCats = useMemo(() => {
-    const byId = new Map(mainCategories.map((c) => [c.id, c]));
-    const ordered: MenuCategoryRecord[] = [];
-    recentParentIds.forEach((id) => {
-      const found = byId.get(id);
-      if (found) ordered.push(found);
+  if (!recentParentId) return mainCategories;
+
+  const selected = mainCategories.find(
+    (c) => c.id === recentParentId
+  );
+
+  if (!selected) return mainCategories;
+
+  return [
+    selected,
+    ...mainCategories.filter((c) => c.id !== recentParentId),
+  ];
+}, [mainCategories, recentParentId]);
+
+  useEffect(() => {
+    if (!recentParentId) return;
+
+    const savedMainCategoryExists = mainCategories.some(
+      (category) => category.id === recentParentId,
+    );
+    if (!savedMainCategoryExists) return;
+
+    setItemForm((prev) => {
+      if (prev.mainCategoryId || prev.subCategoryId) return prev;
+      return { ...prev, mainCategoryId: recentParentId };
     });
-    mainCategories.forEach((c) => {
-      if (!recentParentIds.includes(c.id)) ordered.push(c);
-    });
-    return ordered;
-  }, [mainCategories, recentParentIds]);
+  }, [mainCategories, recentParentId]);
 
   const optionGroups = useMemo(
     () =>
@@ -1186,9 +1257,7 @@ export function MenuWorkspace({ tenantSlug }: Props) {
   );
   const items = useMemo(
     () =>
-      (itemsFeed || [])
-        .slice()
-        .sort((a, b) => a.name.localeCompare(b.name)),
+      (itemsFeed || []).slice().sort((a, b) => a.name.localeCompare(b.name)),
     [itemsFeed],
   );
   const itemCountByCategoryId = useMemo(() => {
@@ -1348,6 +1417,10 @@ export function MenuWorkspace({ tenantSlug }: Props) {
         ? prev.subCategoryId
         : "",
     }));
+    // setRecentParentIds((prev) =>
+    //   [id, ...prev.filter((x) => x !== id)].slice(0, MAX_RECENT),
+    // );
+    setRecentParentId(id);
   }
 
   function toggleOptionGroup(id: string, checked: boolean) {
@@ -1394,46 +1467,50 @@ export function MenuWorkspace({ tenantSlug }: Props) {
     }
   }
 
-async function toggleAvailability(item: MenuItemRecord) {
-  if (!item.categoryId) {
-    showError("Category missing hai. Item ek baar edit karo.");
-    return;
+  async function toggleAvailability(item: MenuItemRecord) {
+    if (!item.categoryId) {
+      showError("Category missing hai. Item ek baar edit karo.");
+      return;
+    }
+
+    const variantsPayload = item.variants.length
+      ? item.variants.map((v, i) => ({
+          name: v.name,
+          price: v.price,
+          isAvailable: v.isAvailable,
+          sortOrder: v.sortOrder ?? i,
+        }))
+      : [
+          {
+            name: "Regular",
+            price: item.price,
+            isAvailable: item.isAvailable,
+            sortOrder: 0,
+          },
+        ];
+
+    const payload: UpdateMenuItemPayload = {
+      categoryId: item.categoryId,
+      name: item.name,
+      description: item.description,
+      image: item.image,
+      taxPercentage: item.taxPercentage ?? 0,
+      sortOrder: item.sortOrder ?? 0,
+      optionGroupIds: item.optionGroupIds || [],
+      fulfillmentType: item.fulfillmentType || "KITCHEN",
+      variants: variantsPayload,
+      isAvailable: !item.isAvailable,
+    };
+
+    try {
+      await updateMenuItem({ itemId: item.id, payload }).unwrap();
+      showSuccess(
+        `${item.name} ${item.isAvailable ? "hidden" : "live"} kar diya`,
+      );
+    } catch (err) {
+      showError(getErrorMessage(err));
+    }
   }
-
-  const variantsPayload = item.variants.length
-    ? item.variants.map((v, i) => ({
-        name: v.name,
-        price: v.price,
-        isAvailable: v.isAvailable,
-        sortOrder: v.sortOrder ?? i,
-      }))
-    : [{
-        name: "Regular",
-        price: item.price,
-        isAvailable: item.isAvailable,
-        sortOrder: 0,
-      }];
-
-  const payload: UpdateMenuItemPayload = {
-    categoryId: item.categoryId,
-    name: item.name,
-    description: item.description,
-    image: item.image,
-    taxPercentage: item.taxPercentage ?? 0,
-    sortOrder: item.sortOrder ?? 0,
-    optionGroupIds: item.optionGroupIds || [],
-    fulfillmentType: item.fulfillmentType || "KITCHEN",
-    variants: variantsPayload,
-    isAvailable: !item.isAvailable,
-  };
-
-  try {
-    await updateMenuItem({ itemId: item.id, payload }).unwrap();
-    showSuccess(`${item.name} ${item.isAvailable ? "hidden" : "live"} kar diya`);
-  } catch (err) {
-    showError(getErrorMessage(err));
-  }
-}
 
   async function removeItem(item: MenuItemRecord) {
     const ok = await confirm({
@@ -1456,7 +1533,7 @@ async function toggleAvailability(item: MenuItemRecord) {
   function openCreateCategory(type: "main" | "sub") {
     setCatType(type);
     setCatName("");
-    setCatParentId("");
+    setCatParentId(type === "sub" ? recentParentId : "");
     setEditingCategoryId(null);
     setEditingCategoryName("");
     setIsCatSheetOpen(true);
@@ -1474,9 +1551,10 @@ async function toggleAvailability(item: MenuItemRecord) {
 
   function chooseParentCategory(id: string) {
     setCatParentId(id);
-    setRecentParentIds((prev) =>
-      [id, ...prev.filter((x) => x !== id)].slice(0, MAX_RECENT),
-    );
+    // setRecentParentIds((prev) =>
+    //   [id, ...prev.filter((x) => x !== id)].slice(0, MAX_RECENT),
+    // );
+    setRecentParentId(id);
   }
 
   async function submitCategory(e: FormEvent) {
@@ -1655,7 +1733,12 @@ async function toggleAvailability(item: MenuItemRecord) {
       }
       setIsAddingOption(false);
       setEditingOptionId(null);
-      setOptionForm({ name: "", price: "0", isAvailable: true, sortOrder: "0" });
+      setOptionForm({
+        name: "",
+        price: "0",
+        isAvailable: true,
+        sortOrder: "0",
+      });
     } catch (err) {
       showError(getErrorMessage(err));
     }
@@ -1820,7 +1903,7 @@ async function toggleAvailability(item: MenuItemRecord) {
                   setAvailabilityFilter("all");
                 }}
               />
-              {mainCategories.map((cat) => (
+              {quickPickMainCats.map((cat) => (
                 <Chip
                   key={cat.id}
                   label={cat.name}
@@ -1946,31 +2029,43 @@ async function toggleAvailability(item: MenuItemRecord) {
                       </span>
                     ))}
                   </div>
-                  
+
                   {/* Detailed Option Groups & Options */}
                   {item.optionGroupIds && item.optionGroupIds.length > 0 && (
                     <div className="mb-3 space-y-1.5 border-t border-slate-100 pt-2 mt-2">
                       {item.optionGroupIds.slice(0, 2).map((ogId) => {
-                        const og = optionGroups.find(g => g.id === ogId);
+                        const og = optionGroups.find((g) => g.id === ogId);
                         if (!og) return null;
                         return (
                           <div key={ogId} className="space-y-0.5">
-                            <p className="text-[9px] font-bold text-slate-400 uppercase tracking-tighter">{og.name}</p>
+                            <p className="text-[9px] font-bold text-slate-400 uppercase tracking-tighter">
+                              {og.name}
+                            </p>
                             <div className="flex flex-wrap gap-1">
-                              {og.options.slice(0, 3).map(opt => (
-                                <span key={opt.id} className="text-[10px] text-slate-500 bg-white border border-slate-100 px-1 py-0.5 rounded-md">
-                                  {opt.name} {toNumber(String(opt.price)) > 0 ? `(+${formatMoney(toNumber(String(opt.price)))})` : ""}
+                              {og.options.slice(0, 3).map((opt) => (
+                                <span
+                                  key={opt.id}
+                                  className="text-[10px] text-slate-500 bg-white border border-slate-100 px-1 py-0.5 rounded-md"
+                                >
+                                  {opt.name}{" "}
+                                  {toNumber(String(opt.price)) > 0
+                                    ? `(+${formatMoney(toNumber(String(opt.price)))})`
+                                    : ""}
                                 </span>
                               ))}
                               {og.options.length > 3 && (
-                                <span className="text-[10px] text-slate-400 font-medium">+{og.options.length - 3}</span>
+                                <span className="text-[10px] text-slate-400 font-medium">
+                                  +{og.options.length - 3}
+                                </span>
                               )}
                             </div>
                           </div>
                         );
                       })}
                       {item.optionGroupIds.length > 2 && (
-                        <p className="text-[9px] font-bold text-[#d4a30a]">+ {item.optionGroupIds.length - 2} more groups</p>
+                        <p className="text-[9px] font-bold text-[#d4a30a]">
+                          + {item.optionGroupIds.length - 2} more groups
+                        </p>
                       )}
                     </div>
                   )}
@@ -2169,21 +2264,29 @@ async function toggleAvailability(item: MenuItemRecord) {
                           {group.name}
                         </p>
                         <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mt-1">
-                          Min {group.minSelect ?? 0} · Max {group.maxSelect ?? 0}
+                          Min {group.minSelect ?? 0} · Max{" "}
+                          {group.maxSelect ?? 0}
                         </p>
                       </div>
                       <div className="rounded-lg bg-slate-50 px-2 py-1 text-[10px] font-bold text-slate-500">
                         {group.options.length} options
                       </div>
                     </div>
-                    
+
                     {group.options.length > 0 && (
                       <div className="mt-4 space-y-1.5">
                         {group.options.slice(0, 3).map((opt) => (
-                          <div key={opt.id} className="flex items-center justify-between text-[11px]">
-                            <span className="text-slate-600 font-medium">{opt.name}</span>
+                          <div
+                            key={opt.id}
+                            className="flex items-center justify-between text-[11px]"
+                          >
+                            <span className="text-slate-600 font-medium">
+                              {opt.name}
+                            </span>
                             <span className="text-slate-400">
-                              {toNumber(String(opt.price)) > 0 ? `+${formatMoney(toNumber(String(opt.price)))}` : "Free"}
+                              {toNumber(String(opt.price)) > 0
+                                ? `+${formatMoney(toNumber(String(opt.price)))}`
+                                : "Free"}
                             </span>
                           </div>
                         ))}
@@ -2570,13 +2673,15 @@ async function toggleAvailability(item: MenuItemRecord) {
                           onChange={(v) =>
                             setItemForm((p) => ({ ...p, name: v }))
                           }
+                          focus={true}
                           placeholder="e.g. Paneer Tikka, Cold Coffee..."
                         />
                       </div>
                       <div>
                         <FieldLabel>Main Category *</FieldLabel>
                         <ChipScroll>
-                          {mainCategories.map((cat) => (
+                          {/* {mainCategories.map((cat) => ( */}
+                          {quickPickMainCats.map((cat) => (
                             <Chip
                               key={cat.id}
                               label={cat.name}
@@ -2768,7 +2873,13 @@ async function toggleAvailability(item: MenuItemRecord) {
                       <div className="grid grid-cols-2 gap-3">
                         <div>
                           <FieldLabel>Prep Time (mins) (optional)</FieldLabel>
-                          <NumberInput value={itemForm.prepTime} onChange={(v) => setItemForm(p => ({ ...p, prepTime: v }))} placeholder="e.g. 15" />
+                          <NumberInput
+                            value={itemForm.prepTime}
+                            onChange={(v) =>
+                              setItemForm((p) => ({ ...p, prepTime: v }))
+                            }
+                            placeholder="e.g. 15"
+                          />
                         </div>
                         <div>
                           <FieldLabel>Food Type</FieldLabel>
@@ -2783,7 +2894,12 @@ async function toggleAvailability(item: MenuItemRecord) {
                                 key={ft.id}
                                 label={ft.label}
                                 active={itemForm.foodType === ft.id}
-                                onClick={() => setItemForm((p) => ({ ...p, foodType: ft.id }))}
+                                onClick={() =>
+                                  setItemForm((p) => ({
+                                    ...p,
+                                    foodType: ft.id,
+                                  }))
+                                }
                               />
                             ))}
                           </ChipScroll>
@@ -2792,19 +2908,40 @@ async function toggleAvailability(item: MenuItemRecord) {
                       <div className="grid grid-cols-2 gap-3">
                         <div>
                           <FieldLabel>Stock (optional)</FieldLabel>
-                          <NumberInput value={itemForm.stock} onChange={(v) => setItemForm(p => ({ ...p, stock: v }))} placeholder="Empty = ∞" />
+                          <NumberInput
+                            value={itemForm.stock}
+                            onChange={(v) =>
+                              setItemForm((p) => ({ ...p, stock: v }))
+                            }
+                            placeholder="Empty = ∞"
+                          />
                         </div>
                         <div>
                           <FieldLabel>Tags (optional)</FieldLabel>
-                          <TextInput value={itemForm.tags} onChange={(v) => setItemForm(p => ({ ...p, tags: v }))} placeholder="e.g. spicy, best seller" />
+                          <TextInput
+                            value={itemForm.tags}
+                            onChange={(v) =>
+                              setItemForm((p) => ({ ...p, tags: v }))
+                            }
+                            placeholder="e.g. spicy, best seller"
+                          />
                         </div>
                       </div>
                       <div className="flex items-center justify-between rounded-xl border border-[#ddd4c1] bg-white px-4 py-3">
                         <div>
-                          <p className="text-sm font-semibold text-slate-800">Featured Item</p>
-                          <p className="text-[11px] text-slate-500">Highlight on public menu</p>
+                          <p className="text-sm font-semibold text-slate-800">
+                            Featured Item
+                          </p>
+                          <p className="text-[11px] text-slate-500">
+                            Highlight on public menu
+                          </p>
                         </div>
-                        <Toggle checked={itemForm.isFeatured} onChange={(v) => setItemForm(p => ({ ...p, isFeatured: v }))} />
+                        <Toggle
+                          checked={itemForm.isFeatured}
+                          onChange={(v) =>
+                            setItemForm((p) => ({ ...p, isFeatured: v }))
+                          }
+                        />
                       </div>
                       <div className="flex gap-2 pt-2">
                         <GhostBtn
@@ -2838,13 +2975,14 @@ async function toggleAvailability(item: MenuItemRecord) {
                       value={itemForm.name}
                       onChange={(v) => setItemForm((p) => ({ ...p, name: v }))}
                       placeholder="e.g. Paneer Tikka"
+                      focus={true}
                     />
                   </div>
 
                   <div>
                     <FieldLabel>Main Category *</FieldLabel>
                     <ChipScroll>
-                      {mainCategories.map((cat) => (
+                      {quickPickMainCats.map((cat) => (
                         <Chip
                           key={cat.id}
                           label={cat.name}
@@ -2905,8 +3043,6 @@ async function toggleAvailability(item: MenuItemRecord) {
                       onChange={(v) => setItemForm((p) => ({ ...p, image: v }))}
                     />
                   </div>
-
-
 
                   {/* Variants */}
                   <VariantFields
@@ -2985,7 +3121,13 @@ async function toggleAvailability(item: MenuItemRecord) {
                   <div className="grid grid-cols-2 gap-3 pt-2">
                     <div>
                       <FieldLabel>Prep Time (mins) (optional)</FieldLabel>
-                      <NumberInput value={itemForm.prepTime} onChange={(v) => setItemForm(p => ({ ...p, prepTime: v }))} placeholder="e.g. 15" />
+                      <NumberInput
+                        value={itemForm.prepTime}
+                        onChange={(v) =>
+                          setItemForm((p) => ({ ...p, prepTime: v }))
+                        }
+                        placeholder="e.g. 15"
+                      />
                     </div>
                     <div>
                       <FieldLabel>Food Type</FieldLabel>
@@ -3000,7 +3142,9 @@ async function toggleAvailability(item: MenuItemRecord) {
                             key={ft.id}
                             label={ft.label}
                             active={itemForm.foodType === ft.id}
-                            onClick={() => setItemForm((p) => ({ ...p, foodType: ft.id }))}
+                            onClick={() =>
+                              setItemForm((p) => ({ ...p, foodType: ft.id }))
+                            }
                           />
                         ))}
                       </ChipScroll>
@@ -3009,21 +3153,41 @@ async function toggleAvailability(item: MenuItemRecord) {
                   <div className="grid grid-cols-2 gap-3">
                     <div>
                       <FieldLabel>Stock (optional)</FieldLabel>
-                      <NumberInput value={itemForm.stock} onChange={(v) => setItemForm(p => ({ ...p, stock: v }))} placeholder="Empty = ∞" />
+                      <NumberInput
+                        value={itemForm.stock}
+                        onChange={(v) =>
+                          setItemForm((p) => ({ ...p, stock: v }))
+                        }
+                        placeholder="Empty = ∞"
+                      />
                     </div>
                     <div>
                       <FieldLabel>Tags (optional)</FieldLabel>
-                      <TextInput value={itemForm.tags} onChange={(v) => setItemForm(p => ({ ...p, tags: v }))} placeholder="e.g. spicy, best seller" />
+                      <TextInput
+                        value={itemForm.tags}
+                        onChange={(v) =>
+                          setItemForm((p) => ({ ...p, tags: v }))
+                        }
+                        placeholder="e.g. spicy, best seller"
+                      />
                     </div>
                   </div>
                   <div className="flex items-center justify-between rounded-xl border border-[#ddd4c1] bg-white px-4 py-3">
                     <div>
-                      <p className="text-sm font-semibold text-slate-800">Featured Item</p>
-                      <p className="text-[11px] text-slate-500">Highlight on public menu</p>
+                      <p className="text-sm font-semibold text-slate-800">
+                        Featured Item
+                      </p>
+                      <p className="text-[11px] text-slate-500">
+                        Highlight on public menu
+                      </p>
                     </div>
-                    <Toggle checked={itemForm.isFeatured} onChange={(v) => setItemForm(p => ({ ...p, isFeatured: v }))} />
+                    <Toggle
+                      checked={itemForm.isFeatured}
+                      onChange={(v) =>
+                        setItemForm((p) => ({ ...p, isFeatured: v }))
+                      }
+                    />
                   </div>
-
 
                   {/* Action Buttons for Edit Mode */}
                   <div className="flex gap-3 pt-4">
@@ -3119,6 +3283,7 @@ async function toggleAvailability(item: MenuItemRecord) {
                   onChange={
                     editingCategoryId ? setEditingCategoryName : setCatName
                   }
+                  focus={true}
                   placeholder={
                     catType === "main"
                       ? "e.g. Beverages, Starters..."
@@ -3194,7 +3359,10 @@ async function toggleAvailability(item: MenuItemRecord) {
             </div>
 
             <div className="flex flex-col h-full">
-              <form onSubmit={submitOG} className="p-4 space-y-6 flex-1 overflow-y-auto pb-24">
+              <form
+                onSubmit={submitOG}
+                className="p-4 space-y-6 flex-1 overflow-y-auto pb-24"
+              >
                 <div className="space-y-4">
                   <div>
                     <FieldLabel>Group Name *</FieldLabel>
@@ -3226,7 +3394,10 @@ async function toggleAvailability(item: MenuItemRecord) {
                           }
                           onChange={(v) =>
                             editingGroupId
-                              ? setEditingGroupForm((p) => ({ ...p, [field]: v }))
+                              ? setEditingGroupForm((p) => ({
+                                  ...p,
+                                  [field]: v,
+                                }))
                               : setGroupForm((p) => ({ ...p, [field]: v }))
                           }
                           placeholder="0"
@@ -3397,7 +3568,9 @@ async function toggleAvailability(item: MenuItemRecord) {
                           <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">
                             No Options Yet
                           </p>
-                          <p className="text-[10px] text-slate-400 mt-1">Upar + New Option se options add karein</p>
+                          <p className="text-[10px] text-slate-400 mt-1">
+                            Upar + New Option se options add karein
+                          </p>
                         </div>
                       )}
                     </div>
@@ -3420,10 +3593,9 @@ async function toggleAvailability(item: MenuItemRecord) {
                               price: "0",
                               isAvailable: true,
                               sortOrder: String(
-                                (
-                                  optionGroups.find((g) => g.id === editingGroupId)
-                                    ?.options.length || 0
-                                ) + 1,
+                                (optionGroups.find(
+                                  (g) => g.id === editingGroupId,
+                                )?.options.length || 0) + 1,
                               ),
                             });
                           }}
@@ -3439,7 +3611,9 @@ async function toggleAvailability(item: MenuItemRecord) {
                       <div className="rounded-2xl border border-[#d4a30a]/40 bg-white p-4 shadow-sm ring-4 ring-[#d4a30a]/5">
                         <p className="mb-4 text-xs font-bold text-[#8a5c00] flex items-center gap-2 uppercase tracking-widest">
                           <Plus className="w-3 h-3" />
-                          {editingOptionId ? "Edit Option" : "Nayi Option Add Karo"}
+                          {editingOptionId
+                            ? "Edit Option"
+                            : "Nayi Option Add Karo"}
                         </p>
                         <div className="space-y-4">
                           <div>
@@ -3536,7 +3710,9 @@ async function toggleAvailability(item: MenuItemRecord) {
                                     : "Free"}
                                 </span>
                                 {!opt.isAvailable && (
-                                  <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Hidden</span>
+                                  <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">
+                                    Hidden
+                                  </span>
                                 )}
                               </div>
                             </div>
@@ -3585,15 +3761,17 @@ async function toggleAvailability(item: MenuItemRecord) {
                             </div>
                           </div>
                         ))}
-                      {!optionGroups.find((g) => g.id === editingGroupId)?.options
-                        .length &&
+                      {!optionGroups.find((g) => g.id === editingGroupId)
+                        ?.options.length &&
                         !isAddingOption && (
                           <div className="rounded-2xl border border-dashed border-slate-200 py-10 text-center bg-slate-50/30">
                             <p className="text-2xl mb-1 opacity-40">📝</p>
                             <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">
                               Empty Group
                             </p>
-                            <p className="text-[10px] text-slate-400 mt-1">Upar + Add Option se options add karein</p>
+                            <p className="text-[10px] text-slate-400 mt-1">
+                              Upar + Add Option se options add karein
+                            </p>
                           </div>
                         )}
                     </div>
@@ -3607,7 +3785,9 @@ async function toggleAvailability(item: MenuItemRecord) {
                   <button
                     type="button"
                     onClick={() => {
-                      const group = optionGroups.find(g => g.id === editingGroupId);
+                      const group = optionGroups.find(
+                        (g) => g.id === editingGroupId,
+                      );
                       if (group) removeOG(group);
                     }}
                     disabled={isDeletingOptionGroup}
@@ -3636,4 +3816,3 @@ async function toggleAvailability(item: MenuItemRecord) {
     </>
   );
 }
-
