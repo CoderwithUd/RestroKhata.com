@@ -563,7 +563,7 @@ function OrderCard({
 
                   {/* Name + details */}
                   <div className="min-w-0 w-full">
-                    <p className="text-[13px] font-semibold text-slate-900 truncate">
+                    <p className="text-[13px] font-semibold text-slate-900 break-words">
                       {item.name}
                       {item.variantName && (
                         <span className="ml-1 font-normal text-slate-400">

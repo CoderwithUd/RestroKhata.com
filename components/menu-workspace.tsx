@@ -758,6 +758,7 @@ function TextInput({
   placeholder?: string;
   id?: string;
   className?: string;
+  focus?: boolean;
 }) {
   return (
     <input
@@ -1979,10 +1980,10 @@ export function MenuWorkspace({ tenantSlug }: Props) {
                 >
                   <div className="flex items-start justify-between gap-2 mb-2">
                     <div className="min-w-0">
-                      <p className="truncate font-bold text-slate-900">
+                      <p className="font-bold text-slate-900 break-words">
                         {item.name}
                       </p>
-                      <p className="truncate text-[11px] text-slate-400 mt-0.5">
+                      <p className="text-[11px] text-slate-400 mt-0.5 break-words">
                         {item.categoryId
                           ? selectedCategoryLabel(item.categoryId)
                           : "Uncategorized"}
@@ -2010,7 +2011,7 @@ export function MenuWorkspace({ tenantSlug }: Props) {
                     {formatMoney(getPrimaryPrice(item))}
                   </p>
                   {item.description && (
-                    <p className="text-xs text-slate-500 mb-2 line-clamp-2">
+                    <p className="text-xs text-slate-500 mb-2 break-words">
                       {item.description}
                     </p>
                   )}

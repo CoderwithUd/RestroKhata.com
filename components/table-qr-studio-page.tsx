@@ -638,10 +638,10 @@ export function TableQrStudioPage({ tableId }: Props) {
                             className="object-contain"
                           />
                         </div>
-                        <p className="truncate text-[11px] font-semibold text-slate-800">
+                        <p className="text-[11px] font-semibold text-slate-800 break-words">
                           {template.name}
                         </p>
-                        <p className="mt-0.5 line-clamp-2 text-[10px] leading-4 text-slate-500">
+                        <p className="mt-0.5 text-[10px] leading-4 text-slate-500 break-words">
                           {template.description}
                         </p>
                       </button>

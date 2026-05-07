@@ -339,7 +339,7 @@ export function InvoiceEditView({ invoiceId, orderIds, onBack }: Props) {
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2">
                         {isNew && <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[9px] font-black text-emerald-700 uppercase">Extra</span>}
-                        <p className="truncate text-sm font-bold text-slate-900 uppercase">
+                        <p className="text-sm font-bold text-slate-900 uppercase break-words">
                           {item.name}
                           {item.variantName && <span className="ml-2 text-[10px] text-indigo-500 font-black">({item.variantName})</span>}
                         </p>

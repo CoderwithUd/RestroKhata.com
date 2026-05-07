@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Printer, Clock, User, ChefHat } from "lucide-react";
@@ -1047,7 +1047,7 @@ function MenuBrowser({
                       className="flex items-center justify-between rounded-lg border border-amber-200 bg-white px-2 py-1.5"
                     >
                       <div className="min-w-0">
-                        <p className="truncate text-xs font-semibold text-slate-800">
+                        <p className="text-xs font-semibold text-slate-800 break-words">
                           {orderItem.name}
                           {orderItem.variantName
                             ? ` (${orderItem.variantName})`
@@ -1168,7 +1168,7 @@ function MenuBrowser({
                         )}
 
                         <div className="min-w-0 flex-1">
-                          <p className="line-clamp-2 text-[13px] font-semibold leading-snug text-slate-900">
+                          <p className="text-[13px] font-semibold leading-snug text-slate-900 break-words">
                             {item.name}
                           </p>
                           <p className="mt-1 text-[10px] text-slate-400">
@@ -1273,7 +1273,7 @@ function MenuBrowser({
                       className="flex items-start justify-between gap-2"
                     >
                       <div className="min-w-0 flex-1">
-                        <p className="line-clamp-1 text-xs font-medium text-slate-800">
+                        <p className="text-xs font-medium text-slate-800 break-words">
                           {entry.name}
                         </p>
                         {entry.variantName ? (
@@ -1312,7 +1312,7 @@ function MenuBrowser({
                       className="flex items-start justify-between gap-3"
                     >
                       <div className="min-w-0 flex-1">
-                        <p className="truncate text-sm font-medium text-slate-800">
+                        <p className="text-sm font-medium text-slate-800 break-words">
                           {entry.name}
                         </p>
                         {entry.variantName ? (
@@ -1354,7 +1354,7 @@ function MenuBrowser({
                     >
                       <div className="flex items-start gap-2">
                         <div className="min-w-0 flex-1">
-                          <p className="text-xs font-semibold text-slate-800 line-clamp-1">
+                          <p className="text-xs font-semibold text-slate-800 break-words">
                             {entry.name}
                           </p>
                           {entry.variantName && (
@@ -1454,9 +1454,9 @@ function MenuBrowser({
                   {summaryEntries.filter(e => e.existingQuantity > 0).map(entry => (
                     <div key={`mob-cur-${entry.key}`} className="flex justify-between items-start gap-2">
                       <div className="min-w-0 flex-1">
-                        <p className="text-sm font-semibold text-slate-700 truncate">{entry.name}</p>
+                        <p className="text-sm font-semibold text-slate-700 break-words">{entry.name}</p>
                         {entry.options && entry.options.length > 0 && (
-                          <p className="text-[10px] text-slate-400 truncate">
+                          <p className="text-[10px] text-slate-400 break-words">
                             {entry.options.map(o => o.name).join(", ")}
                           </p>
                         )}
@@ -1483,7 +1483,7 @@ function MenuBrowser({
                       >
                         <div className="flex items-start justify-between gap-3">
                           <div className="min-w-0 flex-1">
-                            <p className="text-base font-bold text-slate-900 leading-tight truncate">
+                            <p className="text-base font-bold text-slate-900 leading-tight break-words">
                               {entry.name}
                             </p>
                             {entry.variantName && (
@@ -2164,7 +2164,7 @@ function WaiterActionBoard({
                               ×{item.quantity}
                             </div>
                             <div className="min-w-0 flex-1">
-                              <p className="truncate text-[13px] font-semibold text-slate-800">
+                              <p className="text-[13px] font-semibold text-slate-800 break-words">
                                 {item.name}
                                 {item.variantName ? (
                                   <span className="ml-1 font-normal text-slate-400">

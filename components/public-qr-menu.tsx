@@ -442,7 +442,7 @@ function SummaryPanel({
                   </div>
                 )}
                 <div className="min-w-0 flex-1">
-                  <p className="truncate text-[13px] font-medium text-stone-800">{item.name}</p>
+                  <p className="text-[13px] font-medium text-stone-800 break-words">{item.name}</p>
                   <p className="text-[11px] text-stone-400">{item.variantName || "Regular"} · {formatMoney(item.unitPrice)}</p>
                 </div>
                 <div className="flex shrink-0 items-center gap-2">
@@ -727,7 +727,7 @@ function MenuItemCard({
             </div>
             <h3 className="text-[14px] font-semibold leading-snug text-stone-900">{item.name}</h3>
             {item.description && (
-              <p className="mt-0.5 line-clamp-2 text-[12px] leading-relaxed text-stone-400">{item.description}</p>
+              <p className="mt-0.5 text-[12px] leading-relaxed text-stone-400 break-words">{item.description}</p>
             )}
             {(item.tags?.length || item.prepTime) ? (
               <div className="mt-1.5 flex flex-wrap gap-1.5">
@@ -1145,7 +1145,7 @@ export function PublicQrMenu({ tenantSlug: tenantSlugFromPath }: PublicQrMenuPro
         <div className="mx-auto flex max-w-7xl items-center justify-between gap-4 px-4 py-3 sm:px-6">
           <div className="min-w-0">
             <p className="text-[10px] font-semibold uppercase tracking-[0.15em] text-stone-400">QR Menu</p>
-            <h1 className="text-[16px] font-bold tracking-tight text-stone-900 leading-tight truncate">{tenantName}</h1>
+            <h1 className="text-[16px] font-bold tracking-tight text-stone-900 leading-tight break-words">{tenantName}</h1>
           </div>
           <div className="flex items-center gap-2.5">
             <span className="hidden rounded-full border border-stone-200 bg-stone-100 px-3 py-1 text-[11px] font-medium text-stone-600 sm:block">
