@@ -30,10 +30,7 @@ export function SessionBootstrap() {
         segments[0]?.toLowerCase() || "",
       );
     const isPublicQrPath = pathname === "/qr" || isPublicTenantPath;
-    if (isPublicQrPath) return;
-
-    if (bootstrapStatus !== "idle") return;
-
+    
     if (!hydratedFromStorageRef.current) {
       const saved = readStoredSession();
       if (saved?.token) {
@@ -49,6 +46,13 @@ export function SessionBootstrap() {
       }
       hydratedFromStorageRef.current = true;
     }
+
+    if (isPublicQrPath) {
+      dispatch(bootstrapFinished());
+      return;
+    }
+
+    if (bootstrapStatus !== "idle") return;
 
     const withTimeout = async <T,>(promise: Promise<T>, timeoutMs: number): Promise<T> => {
       let timer: ReturnType<typeof setTimeout> | undefined;

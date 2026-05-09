@@ -10,12 +10,13 @@ import { slugify } from "@/lib/slugify";
 import {
   useLoginMutation,
   useRegisterMutation,
+  useRegisterDigitalMenuMutation,
   useLazyMeQuery,
 } from "@/store/api/authApi";
 import { useAppDispatch } from "@/store/hooks";
 import { setSession } from "@/store/slices/authSlice";
 
-type FormMode = "login" | "register";
+type FormMode = "login" | "register" | "register-digital-menu";
 
 type AuthCardProps = {
   mode: FormMode;
@@ -78,9 +79,12 @@ export function AuthCard({ mode }: AuthCardProps) {
   const dispatch = useAppDispatch();
   const [loginMutation] = useLoginMutation();
   const [registerMutation] = useRegisterMutation();
+  const [registerDigitalMenuMutation] = useRegisterDigitalMenuMutation();
   const [loadMe] = useLazyMeQuery();
 
   const isLogin = mode === "login";
+  const isDigitalRegister = mode === "register-digital-menu";
+
   const [loginForm, setLoginForm] = useState<LoginForm>(initialLoginForm);
   const [registerForm, setRegisterForm] =
     useState<RegisterForm>(initialRegisterForm);
@@ -162,7 +166,9 @@ export function AuthCard({ mode }: AuthCardProps) {
     try {
       const initialSession = isLogin
         ? await submitLogin()
-        : await registerMutation({
+        : await (
+            isDigitalRegister ? registerDigitalMenuMutation : registerMutation
+          )({
             ownerName: registerForm.ownerName.trim(),
             whatsappNumber: registerForm.whatsappNumber.trim(),
             email: registerForm.email.trim(),

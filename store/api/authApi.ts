@@ -34,6 +34,7 @@ import type {
   OrdersListPayload,
   OrdersQueryParams,
 } from "@/store/types/orders";
+import { register } from "module";
 
 type QueryResult = {
   data?: unknown;
@@ -569,6 +570,7 @@ export const authApi = createApi({
           password: payload.password,
           tenantName: payload.tenantName.trim(),
           tenantSlug: payload.tenantSlug?.trim() || slugify(payload.tenantName),
+          
           gstNumber: payload.gstNumber?.trim() || undefined,
           secondaryNumber: payload.secondaryNumber?.trim() || undefined,
           address: {
@@ -593,6 +595,44 @@ export const authApi = createApi({
 
         return { data: parseSession(result.data) };
       },
+    }),
+
+    registerDigitalMenu: builder.mutation<SessionPayload, RegisterPayload>({
+      async queryFn(payload, _api, _extraOptions, fetchWithBQ) {
+        const registerBody = {
+          ownerName: payload.ownerName?.trim() || undefined,
+          whatsappNumber: payload.whatsappNumber.trim(),
+          email: payload.email,
+          password: payload.password,
+          tenantName: payload.tenantName.trim(),
+          tenantSlug: payload.tenantSlug?.trim() || slugify(payload.tenantName),
+          
+          gstNumber: payload.gstNumber?.trim() || undefined,
+          secondaryNumber: payload.secondaryNumber?.trim() || undefined,
+          address: {
+            line1: payload.address.line1.trim(),
+            line2: payload.address.line2?.trim() || undefined,
+            city: payload.address.city.trim(),
+            state: payload.address.state.trim(),
+            country: payload.address.country.trim(),
+            postalCode: payload.address.postalCode.trim(),
+          },
+        };
+
+        const result = await postWithFallback(
+          fetchWithBQ,
+          ["/auth/register-digital"],
+          registerBody,
+        );
+
+        if (result.error) {
+          return { error: result.error };
+        }
+
+        return { data: parseSession(result.data) };
+      },
+
+
     }),
 
     me: builder.query<SessionPayload, void>({
@@ -1069,6 +1109,7 @@ reportsMonthly: builder.query<ReportsMonthlyPayload, void>({
 export const {
   useLoginMutation,
   useRegisterMutation,
+  useRegisterDigitalMenuMutation,
   useMeQuery,
   useLazyMeQuery,
   useTentantProfileQuery,
