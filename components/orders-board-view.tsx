@@ -23,6 +23,7 @@ import { useAppSelector } from "@/store/hooks";
 import { selectAuthToken } from "@/store/slices/authSlice";
 import type { OrderItem, OrderRecord, OrderStatus } from "@/store/types/orders";
 import type { TableRecord } from "@/store/types/tables";
+import { printKOT } from "@/lib/print-kot";
 
 // ── Shared helpers ────────────────────────────────────────────────────────────
 
@@ -424,10 +425,46 @@ function OrderCard({
       </div>
 
       {/* Items */}
-      {items.length > 0 && (
-        <div className="divide-y divide-slate-100">
-          {items.map((item, idx) => {
-            const next = nextStatus(item.status);
+      {items.length > 0 && (() => {
+        const groupedItems = (() => {
+          const groups: { time: string; timeLabel: string; items: OrderItem[] }[] = [];
+          items.forEach((item) => {
+            const timeStr = item.createdAt || (item as any).addedAt || order.createdAt || new Date().toISOString();
+            const tMatch = timeStr.substring(0, 16); // Match up to minute
+            const timeLabel = new Date(timeStr).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit", hour12: true });
+            
+            let group = groups.find(g => g.time === tMatch);
+            if (!group) {
+              group = { time: tMatch, timeLabel, items: [] };
+              groups.push(group);
+            }
+            group.items.push(item);
+          });
+          return groups.sort((a, b) => new Date(a.time).getTime() - new Date(b.time).getTime());
+        })();
+
+        return (
+          <div className="divide-y divide-slate-100">
+            {groupedItems.map((group, gIdx) => (
+              <div key={group.time + gIdx} className="border-b border-slate-100 last:border-b-0">
+                <div className="bg-slate-50/80 px-4 py-2 flex justify-between items-center border-b border-slate-100">
+                  <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Ordered at {group.timeLabel}</span>
+                  <button 
+                    onClick={() => printKOT({
+                      orderNumber: order.orderNumber || order.id.slice(-6).toUpperCase(),
+                      tableName: order.table?.name || (order.table?.number ? `Table ${order.table.number}` : "Dine-in"),
+                      serviceMode: order.serviceMode,
+                      note: order.note
+                    }, group.items, 80)}
+                    className="text-[10px] bg-white border border-slate-200 text-slate-700 px-2 py-1 rounded-md hover:bg-slate-100 transition shadow-sm font-semibold flex items-center gap-1.5 active:scale-95"
+                  >
+                    <svg viewBox="0 0 24 24" className="w-3 h-3 text-slate-500" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M6 9V2h12v7M6 18H4a2 2 0 01-2-2v-5a2 2 0 012-2h16a2 2 0 012 2v5a2 2 0 01-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
+                    Print KOT
+                  </button>
+                </div>
+                <div className="divide-y divide-slate-100">
+                  {group.items.map((item, idx) => {
+                    const next = nextStatus(item.status);
             const lineKey = item.lineId ? `${order.id}:${item.lineId}` : null;
             const corrKey = item.lineId ? `${order.id}:${item.lineId}` : null;
             const corrVal = corrKey ? (correctionQuantities[corrKey] ?? 1) : 1;
@@ -579,7 +616,12 @@ function OrderCard({
                             key={opt.optionId}
                             className="inline-flex items-center rounded-md bg-slate-100 px-1.5 py-0.5 text-[9px] font-bold text-slate-600 border border-slate-200"
                           >
-                            {opt.name} {opt.price > 0 ? `(+₹${opt.price})` : ""}
+                            {opt.name}{" "}
+                            {opt.price > 0 && (
+                              <span className="opacity-70 font-medium ml-0.5">
+                                (+{fmtCurrency(opt.price)})
+                              </span>
+                            )}
                           </span>
                         ))}
                       </div>
@@ -739,7 +781,11 @@ function OrderCard({
             );
           })}
         </div>
-      )}
+      </div>
+    ))}
+  </div>
+);
+})()}
     </div>
   );
 }
@@ -758,7 +804,7 @@ export function OrdersBoardView() {
   const { data: invoicesData, refetch: refetchInvoices } = useGetInvoicesQuery({
     limit: 100,
   });
-  const { data: tablesData } = useGetTablesQuery({ isActive: true });
+  const { data: tablesData, refetch: refetchTables } = useGetTablesQuery({ isActive: true });
   const [createInvoice] = useCreateInvoiceMutation();
   const [updateOrder] = useUpdateOrderMutation();
   const [deleteOrder] = useDeleteOrderMutation();
@@ -790,6 +836,7 @@ export function OrdersBoardView() {
     onEvent: () => {
       refetchOrders();
       refetchInvoices();
+      refetchTables();
     },
   });
 
@@ -801,12 +848,16 @@ export function OrdersBoardView() {
   const tables = useMemo(() => tablesData?.items || [], [tablesData]);
 
   const invoicedOrderIds = useMemo(
-    () =>
-      new Set(
-        invoices
-          .map((inv) => inv.orderId)
-          .filter((id): id is string => Boolean(id)),
-      ),
+    () => {
+      const ids = new Set<string>();
+      invoices.forEach((inv) => {
+        if (inv.orderId) ids.add(inv.orderId);
+        if (inv.orderIds) {
+          inv.orderIds.forEach((id) => ids.add(id));
+        }
+      });
+      return ids;
+    },
     [invoices],
   );
 
@@ -910,7 +961,7 @@ export function OrdersBoardView() {
     try {
       setCreatingInvoiceOrderId(order.id);
       const r = await createInvoice({ orderId: order.id }).unwrap();
-      showSuccess(r.message || "Invoice created");
+      // showSuccess(r.message || "Invoice created");
       refetchOrders();
       refetchInvoices();
       router.push(`/dashboard/invoices/${r.invoice.id}/edit`);
@@ -956,7 +1007,8 @@ export function OrdersBoardView() {
         showSuccess(
           `${bulkAction.label} ${targetItems.length}${willCompleteOrder ? " and completed" : ""}`,
         );
-      } else if (items.length === 0) {
+      } else {
+        // Fallback for manual completion if no bulk status change is available
         await updateOrder({
           orderId: order.id,
           payload: { status: "COMPLETED" },

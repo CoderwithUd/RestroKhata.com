@@ -24,6 +24,9 @@ import type {
   TableStatus,
 } from "@/store/types/tables";
 import type { CustomerRecord } from "@/store/types/customers";
+import { useOrderSocket } from "@/lib/use-order-socket";
+import { useAppSelector } from "@/store/hooks";
+import { selectAuthToken } from "@/store/slices/authSlice";
 
 type Props = { tenantName?: string; tenantSlug?: string };
 type Filter = "all" | "active" | "inactive";
@@ -252,10 +255,22 @@ export function TablesWorkspace({ tenantName, tenantSlug }: Props) {
   const [downloadingTemplate, setDownloadingTemplate] = useState(false);
 
   const queryArg = filter === "all" ? undefined : { isActive: filter === "active" };
-  const { data, isLoading, isFetching, refetch } = useGetTablesQuery(queryArg);
-  const { data: ordersData } = useGetOrdersQuery({ status: ["PLACED", "IN_PROGRESS", "READY", "SERVED"], limit: 100 });
-  const { data: invoicesData } = useGetInvoicesQuery({ status: "ISSUED", limit: 100 });
+  const { data, isLoading, isFetching, refetch: refetchTables } = useGetTablesQuery(queryArg);
+  const { data: ordersData, refetch: refetchOrders } = useGetOrdersQuery({ status: ["PLACED", "IN_PROGRESS", "READY", "SERVED"], limit: 100 });
+  const { data: invoicesData, refetch: refetchInvoices } = useGetInvoicesQuery({ status: "ISSUED", limit: 100 });
   const { data: customersData } = useGetCustomersQuery({ limit: 50 });
+
+  const token = useAppSelector(selectAuthToken);
+  useOrderSocket({
+    token,
+    enabled: true,
+    role: "manager",
+    onEvent: () => {
+      refetchTables();
+      refetchOrders();
+      refetchInvoices();
+    },
+  });
 
   const [createTable, { isLoading: isCreating }] = useCreateTableMutation();
   const [updateTable, { isLoading: isUpdating }] = useUpdateTableMutation();
@@ -419,7 +434,7 @@ export function TablesWorkspace({ tenantName, tenantSlug }: Props) {
                 <p className="text-xs text-gray-400 mt-0.5">{tables.length} tables · {totalSeats} seats</p>
               </div>
               <div className="flex items-center gap-2">
-                <button onClick={() => refetch()} disabled={isFetching} className="h-9 w-9 rounded-xl border border-gray-200 flex items-center justify-center text-gray-500 hover:bg-gray-50 disabled:opacity-50 transition-all">
+                <button onClick={() => refetchTables()} disabled={isFetching} className="h-9 w-9 rounded-xl border border-gray-200 flex items-center justify-center text-gray-500 hover:bg-gray-50 disabled:opacity-50 transition-all">
                   <RefreshIcon />
                 </button>
                 <button onClick={() => setCreateOpen(true)} className="flex items-center gap-1.5 h-9 px-4 rounded-xl bg-amber-500 hover:bg-amber-600 active:scale-95 text-white text-sm font-semibold shadow-sm shadow-amber-200 transition-all">

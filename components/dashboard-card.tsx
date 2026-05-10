@@ -20,22 +20,22 @@ import { TablesWorkspace } from "@/components/tables-workspace";
 import { ReportsWorkspace } from "./reports-workspace";
 import {
   useLogoutMutation,
-  useOrdersQuery,
   useReportsSummaryQuery,
   useTentantProfileQuery,
-  // useReportsMonthlyQuery,
 } from "@/store/api/authApi";
-import { useGetInvoicesQuery } from "@/store/api/invoicesApi";
+import { useGetOrdersQuery, useGetKitchenOrderItemsQuery } from "@/store/api/ordersApi";
+import { useGetInvoicesQuery, useCreateInvoiceMutation } from "@/store/api/invoicesApi";
 import { useGetMenuItemsQuery } from "@/store/api/menuApi";
 import { useAppDispatch, useAppSelector } from "@/store/hooks";
+import { printKOT } from "@/lib/print-kot";
+import { showSuccess, showError, showInfo } from "@/lib/feedback";
 import {
   clearSession,
   selectAuthTenant,
   selectAuthUser,
 } from "@/store/slices/authSlice";
 import { useGetTablesQuery } from "@/store/api/tablesApi";
-import { useGetKitchenOrderItemsQuery } from "@/store/api/ordersApi";
-import { LogOut, Settings ,UserCheck2} from "lucide-react";
+import { LogOut, Settings, UserCheck2, ChevronDown, ChevronUp, Printer, Receipt, Clock, MapPin, User } from "lucide-react";
 
 type DashboardCardProps = {
   section?: string;
@@ -446,6 +446,11 @@ function formatMoney(value: number): string {
   }).format(Number.isFinite(value) ? value : 0);
 }
 
+
+function normalizeStatus(status?: string): string {
+  return (status || "").toUpperCase();
+}
+
 function formatRelativeTime(value?: string): string {
   if (!value) return "Just now";
   const timestamp = new Date(value).getTime();
@@ -485,6 +490,22 @@ function orderTone(status?: string): "amber" | "green" | "blue" | "red" {
   )
     return "green";
   return "blue";
+}
+
+function groupOrderItemsByBatch(items: any[]) {
+  const groups: Record<string, any[]> = {};
+  for (const item of items) {
+    const time = (item.addedAt || item.createdAt || "").substring(0, 16);
+    if (!groups[time]) groups[time] = [];
+    groups[time].push(item);
+  }
+  return Object.entries(groups)
+    .sort((a, b) => a[0].localeCompare(b[0]))
+    .map(([time, items]) => ({
+      time,
+      timeLabel: time ? new Date(time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : "New",
+      items
+    }));
 }
 
 function tableStatusLabel(status?: string): string {
@@ -529,19 +550,17 @@ function NavItem({
         href={href}
         onClick={onClick}
         title={item.label}
-        className={`group relative flex flex-col items-center justify-center gap-1 rounded-2xl px-2 py-3 transition-all duration-200 ${
-          active
-            ? "bg-amber-100 text-amber-900 shadow-sm"
-            : "text-slate-600 hover:bg-slate-100 hover:text-slate-900"
-        }`}
+        className={`group relative flex flex-col items-center justify-center gap-1 rounded-2xl px-2 py-3 transition-all duration-200 ${active
+          ? "bg-amber-100 text-amber-900 shadow-sm"
+          : "text-slate-600 hover:bg-slate-100 hover:text-slate-900"
+          }`}
       >
         {/* Icon */}
         <div
-          className={`relative inline-flex h-10 w-10 items-center justify-center rounded-xl transition-all ${
-            active
-              ? "bg-amber-200 text-amber-900"
-              : "bg-slate-200 text-slate-600 group-hover:bg-slate-300"
-          }`}
+          className={`relative inline-flex h-10 w-10 items-center justify-center rounded-xl transition-all ${active
+            ? "bg-amber-200 text-amber-900"
+            : "bg-slate-200 text-slate-600 group-hover:bg-slate-300"
+            }`}
         >
           <SectionIcon id={item.id} />
 
@@ -554,9 +573,8 @@ function NavItem({
 
         {/* Label */}
         <span
-          className={`max-w-full text-center text-[10px] font-medium leading-tight ${
-            active ? "text-amber-900" : "text-slate-500"
-          }`}
+          className={`max-w-full text-center text-[10px] font-medium leading-tight ${active ? "text-amber-900" : "text-slate-500"
+            }`}
         >
           {item.label}
         </span>
@@ -573,18 +591,16 @@ function NavItem({
     <Link
       href={href}
       onClick={onClick}
-      className={`flex items-center gap-3 rounded-xl px-3 py-2 text-sm transition-all duration-200 ${
-        active
-          ? "bg-amber-100 text-amber-900"
-          : "text-slate-600 hover:bg-slate-100 hover:text-slate-900"
-      }`}
+      className={`flex items-center gap-3 rounded-xl px-3 py-2 text-sm transition-all duration-200 ${active
+        ? "bg-amber-100 text-amber-900"
+        : "text-slate-600 hover:bg-slate-100 hover:text-slate-900"
+        }`}
     >
       <span
-        className={`inline-flex h-8 w-8 items-center justify-center rounded-lg ${
-          active
-            ? "bg-amber-200 text-amber-900"
-            : "bg-slate-200 text-slate-600"
-        }`}
+        className={`inline-flex h-8 w-8 items-center justify-center rounded-lg ${active
+          ? "bg-amber-200 text-amber-900"
+          : "bg-slate-200 text-slate-600"
+          }`}
       >
         <SectionIcon id={item.id} />
       </span>
@@ -755,7 +771,7 @@ function DashboardSidebar({
               className="group relative mt-4 flex w-full items-center justify-center rounded-xl py-2 text-sm text-slate-600 transition hover:bg-rose-50 hover:text-rose-700 disabled:opacity-60"
             >
               <span className="inline-flex h-9 w-9 items-center justify-center rounded-lg bg-slate-200 text-slate-600">
-                <LogOut className="h-4 w-4"/>
+                <LogOut className="h-4 w-4" />
               </span>
               <span className="pointer-events-none absolute left-full ml-2 z-50 whitespace-nowrap rounded-lg border border-[#e6dfd1] bg-[#fffdf9] px-2.5 py-1 text-xs font-medium text-slate-700 opacity-0 shadow-lg transition-opacity group-hover:opacity-100">
                 {isLoggingOut ? "Signing out..." : "Logout"}
@@ -784,7 +800,7 @@ function DashboardSidebar({
                 title={memberName}
                 className="group relative inline-flex h-9 w-9 items-center justify-center rounded-xl border border-[#e4dac8] bg-[#fff7ea] text-slate-700 transition hover:border-amber-300 hover:text-amber-700"
               >
-                <UserCheck2 className="h-4 w-4"/>
+                <UserCheck2 className="h-4 w-4" />
                 <span className="pointer-events-none absolute left-full ml-2 z-50 whitespace-nowrap rounded-lg border border-[#e6dfd1] bg-[#fffdf9] px-2.5 py-1 text-xs font-medium text-slate-700 opacity-0 shadow-lg transition-opacity group-hover:opacity-100">
                   {memberName}
                 </span>
@@ -990,18 +1006,38 @@ export function DashboardCard({ section }: DashboardCardProps) {
   const tenant = useAppSelector(selectAuthTenant);
   const [logout, { isLoading: isLoggingOut }] = useLogoutMutation();
   const [drawerOpen, setDrawerOpen] = useState(false);
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
+    if (typeof window !== "undefined") {
+      return localStorage.getItem("sidebarCollapsed") === "true";
+    }
+    return false;
+  });
 
-  const [currentTablePage, setCurrentTablePage] = useState(1);
-  const tablesPerPage = 18;
+  useEffect(() => {
+    localStorage.setItem("sidebarCollapsed", sidebarCollapsed.toString());
+  }, [sidebarCollapsed]);
+const [currentTablePage, setCurrentTablePage] = useState(1);  
+const tablesPerPage = 18;
+  const [expandedOrders, setExpandedOrders] = useState<Record<string, boolean>>({});
+  const [createInvoice, { isLoading: isCreatingInvoice }] = useCreateInvoiceMutation();
+
+  const toggleOrderExpand = (orderId: string) => {
+    setExpandedOrders(prev => ({ ...prev, [orderId]: !prev[orderId] }));
+  };
+
+  const handleCreateInvoice = async (order: any) => {
+    router.push(`/dashboard/invoices?orderId=${order.id}`);
+  };
 
   const { data: tentantProfile, isLoading: isTenantProfileLoading } =
     useTentantProfileQuery();
 
-  const { data: ordersPayload, isFetching: isOrdersFetching } = useOrdersQuery({
-    status: ["PLACED", "IN_PROGRESS", "READY"],
-    page: 1,
-  });
+  const { data: ordersPayload, isFetching: isOrdersFetching } =
+    useGetOrdersQuery({
+      status: ["PLACED", "IN_PROGRESS", "READY", "SERVED"],
+      page: 1,
+      limit: 100,
+    });
 
   const subscriptionExpired = isSubscriptionExpired(
     tentantProfile?.subscription,
@@ -1067,14 +1103,10 @@ export function DashboardCard({ section }: DashboardCardProps) {
     pathname?.startsWith("/dashboard/inventory") ||
     pathname?.startsWith("/dashboard/staff");
 
-  // ── Orders derived ──────────────────────────────────────────────────────────
-  const liveOrders = (ordersPayload?.items || []).slice(0, 6).map((order) => ({
-    id: order.orderNumber || order.id,
-    title: order.sourceLabel || order.tableName || "Order",
-    items: order.itemsSummary || "Order items unavailable",
-    status: order.status || "UNKNOWN",
-    tone: orderTone(order.status),
-  }));
+  const isCafeMode = normalizeStatus(tentantProfile?.tenant?.settings?.orderMode) === "CAFE";
+  const liveOrders = (ordersPayload?.items || []).filter(o => 
+    ["PLACED", "IN_PROGRESS", "READY", "SERVED"].includes(normalizeStatus(o.status))
+  );
   const activeOrderCount = ordersPayload?.pagination.total || liveOrders.length;
   const kitchenActiveCount = (ordersPayload?.items || []).filter((order) => {
     const status = (order.status || "").toUpperCase();
@@ -1124,10 +1156,10 @@ export function DashboardCard({ section }: DashboardCardProps) {
   ).size;
   const menuAvgPrice = menuTotalCount
     ? Math.round(
-        (menuItems.reduce((sum, item) => sum + (item.price || 0), 0) /
-          menuTotalCount) *
-          100,
-      ) / 100
+      (menuItems.reduce((sum, item) => sum + (item.price || 0), 0) /
+        menuTotalCount) *
+      100,
+    ) / 100
     : 0;
 
   // ── Paid invoices today ─────────────────────────────────────────────────────
@@ -1262,112 +1294,112 @@ export function DashboardCard({ section }: DashboardCardProps) {
   const activeSectionKpis =
     activeSection.id === "overview"
       ? [
+        {
+          label: "Today Sales",
+          value: reportsEnabled
+            ? formatMoney(todayDay?.sales ?? 0)
+            : formatMoney(paidInvoicesTodayAmount),
+          tone: "amber" as const,
+        },
+        {
+          label: "Today Orders",
+          value: reportsEnabled
+            ? `${todayDay?.orders ?? 0}`
+            : `${activeOrderCount}`,
+          tone: "green" as const,
+        },
+        {
+          label: "Today Invoices",
+          value: reportsEnabled
+            ? `${todayDay?.invoices ?? 0}`
+            : `${paidInvoicesToday.length}`,
+          tone: "blue" as const,
+        },
+        {
+          label: "Today Profit",
+          value: reportsEnabled ? formatMoney(todayDay?.profit ?? 0) : "—",
+          tone: reportsEnabled
+            ? (todayDay?.profit ?? 0) >= 0
+              ? ("green" as const)
+              : ("red" as const)
+            : ("blue" as const),
+        },
+      ]
+      : activeSection.id === "tables"
+        ? [
           {
-            label: "Today Sales",
-            value: reportsEnabled
-              ? formatMoney(todayDay?.sales ?? 0)
-              : formatMoney(paidInvoicesTodayAmount),
+            label: "Total Tables",
+            value: `${totalTablesCount}`,
             tone: "amber" as const,
           },
           {
-            label: "Today Orders",
-            value: reportsEnabled
-              ? `${todayDay?.orders ?? 0}`
-              : `${activeOrderCount}`,
+            label: "Active",
+            value: `${activeTablesCount}`,
             tone: "green" as const,
           },
           {
-            label: "Today Invoices",
-            value: reportsEnabled
-              ? `${todayDay?.invoices ?? 0}`
-              : `${paidInvoicesToday.length}`,
+            label: "Reserved",
+            value: `${reservedTablesCount}`,
             tone: "blue" as const,
           },
           {
-            label: "Today Profit",
-            value: reportsEnabled ? formatMoney(todayDay?.profit ?? 0) : "—",
-            tone: reportsEnabled
-              ? (todayDay?.profit ?? 0) >= 0
-                ? ("green" as const)
-                : ("red" as const)
-              : ("blue" as const),
+            label: "Occupied",
+            value: `${occupiedTablesCount}`,
+            tone: "red" as const,
           },
         ]
-      : activeSection.id === "tables"
-        ? [
+        : activeSection.id === "menu"
+          ? [
             {
-              label: "Total Tables",
-              value: `${totalTablesCount}`,
-              tone: "amber" as const,
-            },
-            {
-              label: "Active",
-              value: `${activeTablesCount}`,
-              tone: "green" as const,
-            },
-            {
-              label: "Reserved",
-              value: `${reservedTablesCount}`,
+              label: "Total Items",
+              value: `${menuTotalCount}`,
               tone: "blue" as const,
             },
             {
-              label: "Occupied",
-              value: `${occupiedTablesCount}`,
+              label: "Available",
+              value: `${menuAvailableCount}`,
+              tone: "green" as const,
+            },
+            {
+              label: "Hidden",
+              value: `${menuUnavailableCount}`,
               tone: "red" as const,
             },
+            {
+              label: menuCategoriesCount ? "Avg Price" : "Categories",
+              value: menuCategoriesCount
+                ? `INR ${menuAvgPrice}`
+                : `${menuCategoriesCount}`,
+              tone: "amber" as const,
+            },
           ]
-        : activeSection.id === "menu"
-          ? [
-              {
-                label: "Total Items",
-                value: `${menuTotalCount}`,
-                tone: "blue" as const,
-              },
-              {
-                label: "Available",
-                value: `${menuAvailableCount}`,
-                tone: "green" as const,
-              },
-              {
-                label: "Hidden",
-                value: `${menuUnavailableCount}`,
-                tone: "red" as const,
-              },
-              {
-                label: menuCategoriesCount ? "Avg Price" : "Categories",
-                value: menuCategoriesCount
-                  ? `INR ${menuAvgPrice}`
-                  : `${menuCategoriesCount}`,
-                tone: "amber" as const,
-              },
-            ]
           : // : activeSection.id === "reports"
-            //   ? [
-            //       {
-            //         label: "Today Sales",
-            //         value: formatMoney(todayDay?.sales ?? 0),
-            //         tone: "amber" as const,
-            //       },
-            //       {
-            //         label: "7-Day Sales",
-            //         value: formatMoney(totals?.sales ?? 0),
-            //         tone: "green" as const,
-            //       },
-            //       {
-            //         label: "This Month",
-            //         value: formatMoney(thisMonth?.sales ?? 0),
-            //         tone: "blue" as const,
-            //       },
-            //       {
-            //         label: "Net Profit",
-            //         value: formatMoney(totals?.profit ?? 0),
-            //         tone:
-            //           (totals?.profit ?? 0) >= 0
-            //             ? ("green" as const)
-            //             : ("red" as const),
-            //       },
-            //     ]
-            activeSection.kpis;
+          //   ? [
+          //       {
+          //         label: "Today Sales",
+          //         value: formatMoney(todayDay?.sales ?? 0),
+          //         tone: "amber" as const,
+          //       },
+          //       {
+          //         label: "7-Day Sales",
+          //         value: formatMoney(totals?.sales ?? 0),
+          //         tone: "green" as const,
+          //       },
+          //       {
+          //         label: "This Month",
+          //         value: formatMoney(thisMonth?.sales ?? 0),
+          //         tone: "blue" as const,
+          //       },
+          //       {
+          //         label: "Net Profit",
+          //         value: formatMoney(totals?.profit ?? 0),
+          //         tone:
+          //           (totals?.profit ?? 0) >= 0
+          //             ? ("green" as const)
+          //             : ("red" as const),
+          //       },
+          //     ]
+          activeSection.kpis;
 
   //   switch (tone) {
   //     case "amber":
@@ -1629,8 +1661,8 @@ export function DashboardCard({ section }: DashboardCardProps) {
                   </article>
 
                   {/* Live Orders */}
-                  <article className="rounded-2xl border border-[#e6dfd1] bg-[#fffdf9] shadow-sm">
-                    <div className="flex items-center justify-between border-b border-[#eee7d8] px-4 py-3">
+                  <article className="rounded-2xl border border-[#e6dfd1] bg-[#fffdf9] shadow-sm flex flex-col h-[500px]">
+                    <div className="flex items-center justify-between border-b border-[#eee7d8] px-4 py-3 shrink-0">
                       <div>
                         <p className="text-sm font-semibold">Live Orders</p>
                         <p className="text-xs text-slate-500">
@@ -1640,41 +1672,104 @@ export function DashboardCard({ section }: DashboardCardProps) {
                         </p>
                       </div>
                       <button
-                        className="rounded-lg border border-[#e6dfd1] bg-white px-3 py-1.5 text-xs"
+                        className="rounded-lg border border-[#e6dfd1] bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 active:scale-95 transition"
                         onClick={() => router.push("/dashboard/orders")}
                       >
                         View all
                       </button>
                     </div>
-                    <div className="space-y-3 p-4">
+                    <div className="flex-1 overflow-y-auto p-3 space-y-3 custom-scrollbar">
                       {liveOrders.length ? (
-                        liveOrders.map((order, key) => (
-                          <div
-                            key={order.id}
-                            className="flex items-center gap-3 border-b border-slate-100 pb-3 last:border-b-0 last:pb-0"
-                          >
-                            <div className="inline-flex h-10 w-10 items-center justify-center rounded-lg bg-slate-100 text-xs font-semibold text-amber-700">
-                              {key + 1}
-                            </div>
-                            <div className="min-w-0 flex-1">
-                              <p className="truncate text-sm font-semibold text-slate-900">
-                                {order.title}
-                              </p>
-                              <p className="truncate text-xs text-slate-500">
-                                {order.items}
-                              </p>
-                            </div>
-                            <span
-                              className={`rounded-full border px-2 py-1 text-[10px] font-semibold ${toneClasses(order.tone)}`}
+                        liveOrders.map((order) => {
+                          const isExpanded = expandedOrders[order.id];
+                          const batches = groupOrderItemsByBatch(order.items || []);
+                          const status = normalizeStatus(order.status);
+                          
+                          return (
+                            <div
+                              key={order.id}
+                              className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm transition-shadow hover:shadow-md"
                             >
-                              {order.status}
-                            </span>
-                          </div>
-                        ))
+                              <div className="flex items-center justify-between p-3">
+                                <div className="min-w-0 flex-1 cursor-pointer" onClick={() => toggleOrderExpand(order.id)}>
+                                  <div className="flex items-center gap-2">
+                                    <p className="truncate text-sm font-bold text-slate-900">
+                                      {order.tableName || order.sourceLabel || "Order"}
+                                    </p>
+                                    <span className={`rounded-full border px-1.5 py-0.5 text-[9px] font-bold ${toneClasses(orderTone(order.status))}`}>
+                                      {order.status}
+                                    </span>
+                                  </div>
+                                  <p className="text-[10px] text-slate-500 mt-0.5">
+                                    #{order.orderNumber || order.id.slice(-6)} • {formatRelativeTime(order.updatedAt || order.createdAt)}
+                                  </p>
+                                </div>
+                                
+                                <div className="flex items-center gap-1.5 ml-2">
+                                  <button
+                                    onClick={() => toggleOrderExpand(order.id)}
+                                    className="p-1.5 rounded-lg text-slate-400 hover:bg-slate-50"
+                                  >
+                                    {isExpanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                                  </button>
+                                  {isCafeMode && (
+                                    <>
+                                      <button
+                                        onClick={() => handleCreateInvoice(order)}
+                                        className="p-1.5 rounded-lg text-emerald-600 hover:bg-emerald-50 border border-emerald-100"
+                                        title="Create Invoice"
+                                      >
+                                        <Receipt size={14} />
+                                      </button>
+                                    </>
+                                  )}
+                                </div>
+                              </div>
+
+                              {isExpanded && (
+                                <div className="border-t border-slate-50 bg-slate-50/30 p-3 pt-0">
+                                  <div className="space-y-3 mt-3">
+                                    {batches.map((batch, bIdx) => (
+                                      <div key={bIdx} className="rounded-lg border border-slate-200 bg-white overflow-hidden">
+                                        <div className="flex items-center justify-between bg-slate-50/80 px-2.5 py-1.5 border-b border-slate-100">
+                                          <span className="text-[9px] font-bold text-slate-500 uppercase tracking-widest flex items-center gap-1">
+                                            <Clock size={10} /> {batch.timeLabel}
+                                          </span>
+                                          <button
+                                            onClick={() => printKOT({
+                                              orderNumber: order.orderNumber || order.id.slice(-6).toUpperCase(),
+                                              tableName: order.tableName || order.table?.name || `Table ${order.table?.number}`,
+                                              serviceMode: order.serviceMode,
+                                              note: order.note
+                                            }, batch.items)}
+                                            className="text-[9px] bg-white border border-slate-200 text-slate-700 px-1.5 py-0.5 rounded flex items-center gap-1 hover:bg-slate-100"
+                                          >
+                                            <Printer size={10} /> KOT
+                                          </button>
+                                        </div>
+                                        <div className="p-2 space-y-1">
+                                          {batch.items.map((item, iIdx) => (
+                                            <div key={iIdx} className="flex justify-between items-start gap-2">
+                                              <p className="text-[11px] font-bold text-slate-700">
+                                                {item.quantity}x {item.name}
+                                                {item.variantName && <span className="font-normal text-slate-400"> ({item.variantName})</span>}
+                                              </p>
+                                              <span className="text-[9px] text-slate-400 shrink-0">{item.kitchenStatus}</span>
+                                            </div>
+                                          ))}
+                                        </div>
+                                      </div>
+                                    ))}
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })
                       ) : (
-                        <p className="text-sm text-slate-500">
-                          No active orders right now.
-                        </p>
+                        <div className="py-12 text-center">
+                          <p className="text-sm text-slate-400">No active orders right now.</p>
+                        </div>
                       )}
                     </div>
                   </article>
@@ -1701,15 +1796,14 @@ export function DashboardCard({ section }: DashboardCardProps) {
                         kitchenTickets.map((ticket) => (
                           <div
                             key={ticket.id}
-                            className={`rounded-xl border-l-4 border p-3 ${
-                              ticket.tone === "red"
-                                ? "border-rose-300 bg-rose-50"
-                                : ticket.tone === "green"
-                                  ? "border-emerald-300 bg-emerald-50"
-                                  : ticket.tone === "blue"
-                                    ? "border-blue-300 bg-blue-50"
-                                    : "border-amber-300 bg-amber-50"
-                            }`}
+                            className={`rounded-xl border-l-4 border p-3 ${ticket.tone === "red"
+                              ? "border-rose-300 bg-rose-50"
+                              : ticket.tone === "green"
+                                ? "border-emerald-300 bg-emerald-50"
+                                : ticket.tone === "blue"
+                                  ? "border-blue-300 bg-blue-50"
+                                  : "border-amber-300 bg-amber-50"
+                              }`}
                           >
                             <div className="mb-1.5 flex items-center justify-between gap-2">
                               <p className="truncate text-sm font-semibold">
@@ -1792,13 +1886,12 @@ export function DashboardCard({ section }: DashboardCardProps) {
                           >
                             <span className="text-slate-600">{row.label}</span>
                             <span
-                              className={`font-semibold ${
-                                row.profit !== null && row.profit !== undefined
-                                  ? row.profit >= 0
-                                    ? "text-emerald-700"
-                                    : "text-rose-700"
-                                  : "text-slate-900"
-                              }`}
+                              className={`font-semibold ${row.profit !== null && row.profit !== undefined
+                                ? row.profit >= 0
+                                  ? "text-emerald-700"
+                                  : "text-rose-700"
+                                : "text-slate-900"
+                                }`}
                             >
                               {row.val}
                             </span>
@@ -1908,11 +2001,10 @@ export function DashboardCard({ section }: DashboardCardProps) {
               <Link
                 key={item.id}
                 href={`/dashboard/${item.id}`}
-                className={`inline-flex min-w-0 flex-col items-center rounded-lg px-1.5 py-1.5 text-[10px] font-semibold ${
-                  active
-                    ? "bg-amber-100 text-amber-900"
-                    : "bg-slate-100 text-slate-600"
-                }`}
+                className={`inline-flex min-w-0 flex-col items-center rounded-lg px-1.5 py-1.5 text-[10px] font-semibold ${active
+                  ? "bg-amber-100 text-amber-900"
+                  : "bg-slate-100 text-slate-600"
+                  }`}
               >
                 <span className="relative inline-flex h-5 w-5 items-center justify-center">
                   <SectionIcon id={item.id} />

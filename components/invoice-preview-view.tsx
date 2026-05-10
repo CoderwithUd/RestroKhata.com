@@ -7,6 +7,7 @@ import { showError, showSuccess } from "@/lib/feedback";
 import { useGetInvoiceByIdQuery, usePayInvoiceMutation } from "@/store/api/invoicesApi";
 import { useGetOrdersQuery } from "@/store/api/ordersApi";
 import { useTentantProfileQuery } from "@/store/api/authApi";
+import { useUpdateTableMutation } from "@/store/api/tablesApi";
 import { downloadInvoicePdf } from "@/lib/invoice-pdf";
 import {
    Printer,
@@ -38,6 +39,7 @@ export function InvoicePreviewView({ invoiceId }: { invoiceId: string }) {
    const { data: ordersData } = useGetOrdersQuery({ status: ["PLACED", "IN_PROGRESS", "READY", "SERVED", "COMPLETED"] });
    const { data: profile } = useTentantProfileQuery();
    const [payInvoice, { isLoading: isPaying }] = usePayInvoiceMutation();
+   const [updateTable] = useUpdateTableMutation();
 
    const [printGst, setPrintGst] = useState(true);
    const [printWidth, setPrintWidth] = useState<"80" | "58">("80");
@@ -92,7 +94,18 @@ export function InvoicePreviewView({ invoiceId }: { invoiceId: string }) {
             payload: { method, paidAmount: due || invoice!.grandTotal || 0 }
          }).unwrap();
          showSuccess(`Paid via ${method}`);
-         refetchInvoice();
+         
+         // Free up table if associated
+         const tableId = invoice?.table?.id || order?.tableId || order?.table?.id;
+         if (tableId) {
+            try {
+               await updateTable({ tableId, status: "AVAILABLE" }).unwrap();
+            } catch (err) {
+               console.error("Failed to free up table", err);
+            }
+         }
+
+         router.push("/dashboard");
       } catch (e) {
          showError(getErrorMessage(e));
       }
@@ -157,23 +170,40 @@ export function InvoicePreviewView({ invoiceId }: { invoiceId: string }) {
          <style>{`
         @media print {
           @page { margin: 0; }
-          html, body { margin: 0 !important; padding: 0 !important; height: auto !important; overflow: visible !important; }
-          .no-print, header, footer, nav { display: none !important; }
+          html, body { 
+             margin: 0 !important; 
+             padding: 0 !important; 
+             background: white !important;
+          }
+          /* Override all parent containers that might restrict height */
+          html, body, div {
+             height: auto !important;
+             overflow: visible !important;
+          }
+          /* Hide everything by default */
+          body * {
+            visibility: hidden;
+          }
+          /* Show only print content */
+          .print-content, .print-content * {
+            visibility: visible;
+          }
           .print-content {
-            visibility: visible !important;
-            position: absolute;
-            left: 0;
-            top: 0;
-            width: ${printWidth}mm;
-            padding: 4mm;
-            margin: 0;
-            background: white;
-            font-family: 'Courier New', Courier, monospace;
-            color: black;
-            font-size: 11px;
-            line-height: 1.2;
+            position: absolute !important;
+            left: 0 !important;
+            top: 0 !important;
+            width: ${printWidth}mm !important;
+            padding: 4mm !important;
+            margin: 0 !important;
+            background: white !important;
+            font-family: 'Courier New', Courier, monospace !important;
+            color: black !important;
+            font-size: 11px !important;
+            line-height: 1.2 !important;
             box-shadow: none !important;
             border: none !important;
+            -webkit-print-color-adjust: exact !important;
+            print-color-adjust: exact !important;
           }
           .thermal-bold { font-weight: bold; font-size: 12px; }
           .thermal-center { text-align: center; }

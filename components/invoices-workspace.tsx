@@ -706,6 +706,26 @@ export function InvoicesWorkspace({ rawRole }: Props) {
     },
   });
 
+  useEffect(() => {
+    const orderId = searchParams.get("orderId");
+    if (orderId && ordersFeed.length > 0) {
+      // Check if an invoice already exists for this order in the current feed
+      const existingInvoice = invoicesFeed.find(
+        (inv) => inv.orderId === orderId || (inv.orderIds || []).includes(orderId)
+      );
+
+      if (existingInvoice) {
+        router.replace(`/dashboard/invoices/${existingInvoice.id}/preview`);
+        return;
+      }
+
+      const order = ordersFeed.find((o) => o.id === orderId);
+      if (order && !draftOrders) {
+        setDraftOrders([order]);
+      }
+    }
+  }, [searchParams, ordersFeed, invoicesFeed, draftOrders, router]);
+
   const tables = useMemo(() => {
     const items = tablesData?.items || [];
     return [...items].sort((left, right) => left.number - right.number);
@@ -1073,7 +1093,7 @@ export function InvoicesWorkspace({ rawRole }: Props) {
         router.push(`/dashboard/invoices/${response.invoice.id}/edit`);
       }
 
-      showSuccess(response.message || `Invoice created for ${order.table?.name || `Table ${order.table?.number}`}`);
+      // showSuccess(response.message || `Invoice created for ${order.table?.name || `Table ${order.table?.number}`}`);
       setDraftBilling(null);
       refetchTables();
       refetchOrders();
@@ -1103,10 +1123,10 @@ export function InvoicesWorkspace({ rawRole }: Props) {
         router.push(`/dashboard/invoices/${response.invoice.id}/edit`);
       }
 
-      showSuccess(
+      /* showSuccess(
         response.message ||
         `${ordersToBill.length > 1 ? "Group invoice" : "Invoice"} created for ${table.name || `Table ${table.number}`}`,
-      );
+      ); */
       setDraftBilling(null);
       refetchTables();
       refetchOrders();
@@ -1167,12 +1187,7 @@ export function InvoicesWorkspace({ rawRole }: Props) {
       }).unwrap();
 
       showSuccess(response.message || "Payment done");
-      if (response.invoice?.id) {
-        setInvoiceOverrides((prev) => ({ ...prev, [response.invoice.id]: response.invoice }));
-        router.push(`/dashboard/invoices/${response.invoice.id}/preview`);
-      } else {
-        router.push(`/dashboard/invoices/${invoice.id}/preview`);
-      }
+      router.push("/dashboard");
       refetchTables();
       refetchOrders();
       refetchInvoices();

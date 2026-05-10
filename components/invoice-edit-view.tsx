@@ -57,7 +57,7 @@ export function InvoiceEditView({ invoiceId, orderIds, onBack }: Props) {
   const { data: invoice, isFetching: isInvoiceFetching, refetch: refetchInvoice } = useGetInvoiceByIdQuery(invoiceId || "", { skip: !invoiceId });
   const { data: ordersData, refetch: refetchOrders } = useGetOrdersQuery({ status: ["PLACED", "IN_PROGRESS", "READY", "SERVED", "COMPLETED"] });
   const { data: tablesData } = useGetTablesQuery({ isActive: true });
-  
+
   // State for search
   const [searchQuery, setSearchQuery] = useState("");
   const { data: menuData, isFetching: isMenuFetching } = useGetMenuItemsQuery(
@@ -249,7 +249,7 @@ export function InvoiceEditView({ invoiceId, orderIds, onBack }: Props) {
     const initialDiscountType = (invoice?.discount?.type === "PERCENTAGE" || invoice?.discount?.type === "FLAT") ? invoice.discount.type : "FLAT";
     const initialDiscountValue = invoice?.discount?.value || 0;
 
-    const hasMetadataChanges = 
+    const hasMetadataChanges =
       customerName !== initialCustomerName ||
       customerPhone !== initialCustomerPhone ||
       discountType !== initialDiscountType ||
@@ -323,7 +323,7 @@ export function InvoiceEditView({ invoiceId, orderIds, onBack }: Props) {
 
       <div className="flex-1 overflow-y-auto">
         <div className="mx-auto max-w-5xl p-4 sm:p-6 grid grid-cols-1 gap-6 lg:grid-cols-12">
-          
+
           {/* LEFT: Items */}
           <div className="lg:col-span-7 space-y-4">
             {allItems.map((item) => {
@@ -359,21 +359,21 @@ export function InvoiceEditView({ invoiceId, orderIds, onBack }: Props) {
                     <div className="flex items-center gap-1.5">
                       {!isNew && orderId && (
                         <>
-                          <button 
+                          <button
                             onClick={() => handleReduce(orderId, lineId, item.name, currentQty, item.quantity)}
                             disabled={isBusy}
                             className="rounded-lg px-2 py-1.5 text-[10px] font-black text-amber-600 hover:bg-amber-50 uppercase tracking-widest"
                           >
                             {isBusy ? "..." : (currentQty < item.quantity ? "REDUCE QTY" : "REMOVE")}
                           </button>
-                          <button 
+                          <button
                             onClick={() => handleCancel(orderId, lineId, item.name)}
                             disabled={isBusy}
                             className="rounded-lg px-2 py-1.5 text-[10px] font-black text-rose-600 hover:bg-rose-50 uppercase tracking-widest"
                           >
                             CANCEL
                           </button>
-                          <button 
+                          <button
                             onClick={() => setMovingItem({ orderId, lineId, itemName: item.name, maxQty: item.quantity })}
                             className="rounded-lg px-2 py-1.5 text-[10px] font-black text-slate-500 hover:bg-slate-100 uppercase tracking-widest flex items-center gap-1"
                           >
