@@ -35,8 +35,7 @@ import {
 } from "@/store/slices/authSlice";
 import { useGetTablesQuery } from "@/store/api/tablesApi";
 import { useGetKitchenOrderItemsQuery } from "@/store/api/ordersApi";
-import { Settings } from "lucide-react";
-
+import { LogOut, Settings ,UserCheck2} from "lucide-react";
 
 type DashboardCardProps = {
   section?: string;
@@ -508,35 +507,92 @@ function tableStatusClass(status?: string): string {
 }
 
 // ─── Nav Item ─────────────────────────────────────────────────────────────────
+
 function NavItem({
   item,
   href,
   active,
   badge,
   onClick,
+  isCollapsed,
 }: {
   item: DashboardSection;
   href: string;
   active: boolean;
   badge?: string;
   onClick?: () => void;
+  isCollapsed?: boolean;
 }) {
+  if (isCollapsed) {
+    return (
+      <Link
+        href={href}
+        onClick={onClick}
+        title={item.label}
+        className={`group relative flex flex-col items-center justify-center gap-1 rounded-2xl px-2 py-3 transition-all duration-200 ${
+          active
+            ? "bg-amber-100 text-amber-900 shadow-sm"
+            : "text-slate-600 hover:bg-slate-100 hover:text-slate-900"
+        }`}
+      >
+        {/* Icon */}
+        <div
+          className={`relative inline-flex h-10 w-10 items-center justify-center rounded-xl transition-all ${
+            active
+              ? "bg-amber-200 text-amber-900"
+              : "bg-slate-200 text-slate-600 group-hover:bg-slate-300"
+          }`}
+        >
+          <SectionIcon id={item.id} />
+
+          {badge ? (
+            <span className="absolute -right-1 -top-1 flex min-h-[18px] min-w-[18px] items-center justify-center rounded-full bg-amber-500 px-1 text-[9px] font-bold leading-none text-white shadow">
+              {badge}
+            </span>
+          ) : null}
+        </div>
+
+        {/* Label */}
+        <span
+          className={`max-w-full text-center text-[10px] font-medium leading-tight ${
+            active ? "text-amber-900" : "text-slate-500"
+          }`}
+        >
+          {item.label}
+        </span>
+
+        {/* Tooltip */}
+        <div className="pointer-events-none absolute left-full top-1/2 z-50 ml-3 -translate-y-1/2 whitespace-nowrap rounded-xl border border-[#e6dfd1] bg-white px-3 py-1.5 text-xs font-medium text-slate-700 opacity-0 shadow-xl transition-all duration-200 group-hover:opacity-100">
+          {item.label}
+        </div>
+      </Link>
+    );
+  }
+
   return (
     <Link
       href={href}
       onClick={onClick}
-      className={`flex items-center gap-3 rounded-xl px-3 py-2 text-sm transition ${
+      className={`flex items-center gap-3 rounded-xl px-3 py-2 text-sm transition-all duration-200 ${
         active
           ? "bg-amber-100 text-amber-900"
           : "text-slate-600 hover:bg-slate-100 hover:text-slate-900"
       }`}
     >
       <span
-        className={`inline-flex h-8 w-8 items-center justify-center rounded-lg ${active ? "bg-amber-200 text-amber-900" : "bg-slate-200 text-slate-600"}`}
+        className={`inline-flex h-8 w-8 items-center justify-center rounded-lg ${
+          active
+            ? "bg-amber-200 text-amber-900"
+            : "bg-slate-200 text-slate-600"
+        }`}
       >
         <SectionIcon id={item.id} />
       </span>
-      <span className="flex-1 truncate font-medium">{item.label}</span>
+
+      <span className="flex-1 truncate font-medium">
+        {item.label}
+      </span>
+
       {badge ? (
         <span className="rounded-full bg-amber-500 px-2 py-0.5 text-[10px] font-bold text-white">
           {badge}
@@ -556,7 +612,7 @@ const getTenantInitials = (name: string) => {
   return initials || "BD";
 };
 
-// ─── Section Icon ─────────────────────────────────────────────────────────────
+
 function DashboardSidebar({
   variant,
   tenantName,
@@ -572,6 +628,8 @@ function DashboardSidebar({
   onOpenSettings,
   onClose,
   isLoggingOut,
+  isCollapsed,
+  onToggleCollapse,
 }: {
   variant: "desktop" | "drawer";
   tenantName: string;
@@ -587,72 +645,94 @@ function DashboardSidebar({
   onOpenSettings: () => void;
   onClose?: () => void;
   isLoggingOut: boolean;
+  isCollapsed?: boolean;
+  onToggleCollapse?: () => void;
 }) {
   const isDrawer = variant === "drawer";
+  const collapsed = !isDrawer && isCollapsed;
+
+  // Root class: drawer vs desktop (collapsed / expanded)
   const rootClassName = isDrawer
     ? "no-scrollbar absolute left-0 top-0 h-full w-[90%] max-w-[360px] overflow-hidden bg-[#fffdf9] p-1 shadow-2xl"
-    : // ? "no-scrollbar absolute left-0 top-0 h-full w-[90%] max-w-[360px] overflow-hidden border-r border-[#e6dfd1] bg-[#fffdf9] p-4 shadow-2xl"
-      "hidden h-[calc(100vh-1.5rem)] w-[25%] shrink-0 rounded-[20px] border border-[#e6dfd1] bg-[#fffdf9] p-2.5 shadow-sm lg:sticky lg:top-2 lg:flex lg:flex-col";
+    : collapsed
+      ? "hidden h-[calc(100vh-1.5rem)] w-[72px] shrink-0 rounded-[20px] border border-[#e6dfd1] bg-[#fffdf9] p-2 shadow-sm transition-all duration-300 ease-in-out lg:sticky lg:top-2 lg:flex lg:flex-col lg:items-center"
+      : "hidden h-[calc(100vh-1.5rem)] w-[25%] shrink-0 rounded-[20px] border border-[#e6dfd1] bg-[#fffdf9] p-2.5 shadow-sm transition-all duration-300 ease-in-out lg:sticky lg:top-2 lg:flex lg:flex-col";
+
   const shellClassName = isDrawer
-    ? "flex h-full flex-col  bg-[linear-gradient(145deg,#fff8eb_0%,#fffdf9_55%,#f5fbf8_100%)] p-1 shadow-sm"
-    : // ? "flex h-full flex-col rounded-[28px] border border-[#eadfca] bg-[linear-gradient(145deg,#fff8eb_0%,#fffdf9_55%,#f5fbf8_100%)] p-4 shadow-sm"
-      "flex h-full flex-col";
-  const tenantTitleClassName = "truncate text-lg font-semibold text-slate-900";
+    ? "flex h-full flex-col bg-[linear-gradient(145deg,#fff8eb_0%,#fffdf9_55%,#f5fbf8_100%)] p-1 shadow-sm"
+    : collapsed
+      ? "flex h-full flex-col items-center"
+      : "flex h-full flex-col";
+  const tenantTitleClassName =
+    "line-clamp-2 text-sm sm:text-base md:text-lg font-semibold text-slate-900 leading-tight";
   const desktopVersionClassName =
     "rounded-full border border-[#eadfc9] bg-[#fff6e7] px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-amber-800";
   const topBlockClassName = isDrawer
     ? "shrink-0 border-b border-[#eee7d8] pb-3"
-    : "shrink-0 border-b border-[#eee7d8] pb-3";
-  const navClassName =
-    "no-scrollbar min-h-0 flex-1 space-y-1 overflow-y-auto pr-1 pt-1";
-  const bottomClassName = "shrink-0 border-t border-[#eee7d8] pt-1";
+    : collapsed
+      ? "shrink-0 border-b border-[#eee7d8] pb-3 flex justify-center"
+      : "shrink-0 border-b border-[#eee7d8] pb-3";
+  const navClassName = collapsed
+    ? "no-scrollbar min-h-0 flex-1 space-y-2 overflow-y-auto pt-2 w-full"
+    : "no-scrollbar min-h-0 flex-1 space-y-1 overflow-y-auto pr-1 pt-1";
+  const bottomClassName = collapsed
+    ? "shrink-0 border-t border-[#eee7d8] pt-2 w-full"
+    : "shrink-0 border-t border-[#eee7d8] pt-1";
   const versionTextClassName = "mt-1 text-xs text-slate-500";
 
   return (
     <aside className={rootClassName}>
       <div className={shellClassName}>
+        {/* ── Top Block ── */}
         <div className={topBlockClassName}>
-          <div className="flex items-start justify-between gap-3">
-            <div className="flex items-start gap-3">
+          {collapsed ? (
+            // Collapsed: just centered avatar
+            <div className="flex justify-center" onClick={onToggleCollapse}>
               <div className="inline-flex h-10 w-10 items-center justify-center rounded-2xl bg-amber-500 text-sm font-bold text-white shadow-lg shadow-amber-500/20">
                 {getTenantInitials(tenantName)}
               </div>
-              <div className="min-w-0">
-                <h2 className={tenantTitleClassName}>{tenantName}</h2>
-           <p className={versionTextClassName}>{version}</p>
-                {/* <p className="mt-1 text-xs text-slate-500">
-                  {subscriptionPlan}
-                </p>
-                {isDrawer ? (
+            </div>
+          ) : (
+            // Expanded: full header
+            <div className="flex items-start justify-between gap-3">
+              <div className="flex items-start gap-3">
+                <div className="inline-flex h-10 w-10 items-center justify-center rounded-2xl bg-amber-500 text-sm font-bold text-white shadow-lg shadow-amber-500/20">
+                  {getTenantInitials(tenantName)}
+                </div>
+                <div className="min-w-0">
+                  <h2 className={tenantTitleClassName}>{tenantName}</h2>
                   <p className={versionTextClassName}>{version}</p>
-                ) : null} */}
+                </div>
+              </div>
+              <div className="flex justify-center flex-col items-center">
+                <span className={desktopVersionClassName}>
+                  {subscriptionPlan}
+                </span>
+                {!isDrawer && (
+                  <div
+                    className={
+                      collapsed
+                        ? "flex justify-center pt-2"
+                        : "flex justify-end px-1 pt-1"
+                    }
+                  >
+                    <button
+                      type="button"
+                      onClick={onToggleCollapse}
+                      className="inline-flex h-7 w-7 items-center justify-center rounded-lg text-slate-400 transition hover:bg-slate-100 hover:text-slate-600"
+                      title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+                    >
+                      {/* {collapsed ? <ChevronRightIcon /> : <ChevronLeftIcon />} */}
+                      {collapsed ? "<" : ">"}
+                    </button>
+                  </div>
+                )}
               </div>
             </div>
-
-            {/* {isDrawer ? (
-              <button
-                type="button"
-                onClick={onClose}
-                className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-[#e6dfd1] bg-white text-slate-700"
-                aria-label="Close menu"
-              >
-                <svg
-                  viewBox="0 0 24 24"
-                  className="h-4 w-4"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                >
-                  <path d="M6 6l12 12M18 6 6 18" />
-                </svg>
-              </button>
-            ) : (
-              <span className={desktopVersionClassName}>{version}</span>
-            )} */}
-             <span className={desktopVersionClassName}>{subscriptionPlan}</span>
-          </div>
+          )}
         </div>
 
+        {/* ── Navigation ── */}
         <nav className={navClassName}>
           {navSections.map((item) => (
             <NavItem
@@ -662,41 +742,90 @@ function DashboardSidebar({
               active={item.id === activeSectionId}
               onClick={onClose}
               badge={getNavBadge(item.id)}
+              isCollapsed={collapsed}
             />
           ))}
-          <button
-            type="button"
-            onClick={onLogout}
-            disabled={isLoggingOut}
-            className="mt-3 inline-flex w-full items-center justify-center rounded-2xl border border-[#dfd2bb] bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 disabled:opacity-60"
-          >
-            {isLoggingOut ? "Signing out..." : "Logout"}
-          </button>
+          {/* Logout Button */}
+          {collapsed ? (
+            <button
+              type="button"
+              onClick={onLogout}
+              disabled={isLoggingOut}
+              title="Logout"
+              className="group relative mt-4 flex w-full items-center justify-center rounded-xl py-2 text-sm text-slate-600 transition hover:bg-rose-50 hover:text-rose-700 disabled:opacity-60"
+            >
+              <span className="inline-flex h-9 w-9 items-center justify-center rounded-lg bg-slate-200 text-slate-600">
+                <LogOut className="h-4 w-4"/>
+              </span>
+              <span className="pointer-events-none absolute left-full ml-2 z-50 whitespace-nowrap rounded-lg border border-[#e6dfd1] bg-[#fffdf9] px-2.5 py-1 text-xs font-medium text-slate-700 opacity-0 shadow-lg transition-opacity group-hover:opacity-100">
+                {isLoggingOut ? "Signing out..." : "Logout"}
+              </span>
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={onLogout}
+              disabled={isLoggingOut}
+              className="mt-3 inline-flex w-full items-center justify-center rounded-2xl border border-[#dfd2bb] bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 disabled:opacity-60"
+            >
+              {isLoggingOut ? "Signing out..." : "Logout"}
+            </button>
+          )}
         </nav>
 
+        {/* ── Bottom Block ── */}
         <div className={bottomClassName}>
-          <div className="flex items-center justify-between gap-2 rounded-2xl border border-[#eadfca] bg-white/80 p-3">
-          <div className="min-w-0 flex-1">
-            <button
-              type="button"
-              onClick={onOpenProfile}
-              className="block max-w-full truncate text-left text-sm font-semibold text-slate-900 transition hover:text-amber-700"
-            >
-              {memberName}
-            </button>
-            <p className="mt-1 text-xs text-slate-500">{memberRole}</p>
-          </div>
-          <div className="flex justify-center">
-            <button
-              type="button"
-              onClick={onOpenSettings}
-              className="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-[#e4dac8] bg-[#fff7ea] text-slate-700 transition hover:border-amber-300 hover:text-amber-700"
-              aria-label="Open settings"
-            >
-              <Settings className="h-4 w-4" />
-            </button>
+          {collapsed ? (
+            // Collapsed: icon-only profile + settings buttons
+            <div className="flex flex-col items-center gap-2">
+              <button
+                type="button"
+                onClick={onOpenProfile}
+                title={memberName}
+                className="group relative inline-flex h-9 w-9 items-center justify-center rounded-xl border border-[#e4dac8] bg-[#fff7ea] text-slate-700 transition hover:border-amber-300 hover:text-amber-700"
+              >
+                <UserCheck2 className="h-4 w-4"/>
+                <span className="pointer-events-none absolute left-full ml-2 z-50 whitespace-nowrap rounded-lg border border-[#e6dfd1] bg-[#fffdf9] px-2.5 py-1 text-xs font-medium text-slate-700 opacity-0 shadow-lg transition-opacity group-hover:opacity-100">
+                  {memberName}
+                </span>
+              </button>
+              <button
+                type="button"
+                onClick={onOpenSettings}
+                title="Settings"
+                className="group relative inline-flex h-9 w-9 items-center justify-center rounded-xl border border-[#e4dac8] bg-[#fff7ea] text-slate-700 transition hover:border-amber-300 hover:text-amber-700"
+              >
+                <Settings className="h-4 w-4" />
+                <span className="pointer-events-none absolute left-full ml-2 z-50 whitespace-nowrap rounded-lg border border-[#e6dfd1] bg-[#fffdf9] px-2.5 py-1 text-xs font-medium text-slate-700 opacity-0 shadow-lg transition-opacity group-hover:opacity-100">
+                  Settings
+                </span>
+              </button>
             </div>
-          </div>
+          ) : (
+            // Expanded: full bottom block
+            <div className="flex items-center justify-between gap-2 rounded-2xl border border-[#eadfca] bg-white/80 p-3">
+              <div className="min-w-0 flex-1">
+                <button
+                  type="button"
+                  onClick={onOpenProfile}
+                  className="block max-w-full truncate text-left text-sm font-semibold text-slate-900 transition hover:text-amber-700"
+                >
+                  {memberName}
+                </button>
+                <p className="mt-1 text-xs text-slate-500">{memberRole}</p>
+              </div>
+              <div className="flex justify-center">
+                <button
+                  type="button"
+                  onClick={onOpenSettings}
+                  className="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-[#e4dac8] bg-[#fff7ea] text-slate-700 transition hover:border-amber-300 hover:text-amber-700"
+                  aria-label="Open settings"
+                >
+                  <Settings className="h-4 w-4" />
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </aside>
@@ -861,6 +990,10 @@ export function DashboardCard({ section }: DashboardCardProps) {
   const tenant = useAppSelector(selectAuthTenant);
   const [logout, { isLoading: isLoggingOut }] = useLogoutMutation();
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+
+  const [currentTablePage, setCurrentTablePage] = useState(1);
+  const tablesPerPage = 18;
 
   const { data: tentantProfile, isLoading: isTenantProfileLoading } =
     useTentantProfileQuery();
@@ -911,19 +1044,28 @@ export function DashboardCard({ section }: DashboardCardProps) {
   // New queries for badges
   const { data: pendingInvoicesPayload } = useGetInvoicesQuery(
     { status: "ISSUED", page: 1, limit: 1 },
-    { pollingInterval: 30000 }
+    { pollingInterval: 30000 },
   );
 
   const { data: kitchenItemsPayload } = useGetKitchenOrderItemsQuery(
     { includeDone: false, page: 1, limit: 1 },
-    { pollingInterval: 20000 }
+    { pollingInterval: 20000 },
   );
 
   const activeSection = activeId ? SECTION_LIBRARY[activeId] : null;
   const navSections = allowedIds.map((id) => SECTION_LIBRARY[id]);
   const bottomTabs = navSections.slice(0, 5);
   const hideQuickOrderActions =
-  pathname?.startsWith("/dashboard/orders") || pathname?.startsWith("/dashboard/invoices") || pathname?.startsWith("/dashboard/menu") || pathname?.startsWith("/dashboard/settings") || pathname?.startsWith("/dashboard/profile") || pathname?.startsWith("/dashboard/tables") || pathname?.startsWith("/dashboard/kitchen") || pathname?.startsWith("/dashboard/reports") || pathname?.startsWith("/dashboard/inventory") || pathname?.startsWith("/dashboard/staff");
+    pathname?.startsWith("/dashboard/orders") ||
+    pathname?.startsWith("/dashboard/invoices") ||
+    pathname?.startsWith("/dashboard/menu") ||
+    pathname?.startsWith("/dashboard/settings") ||
+    pathname?.startsWith("/dashboard/profile") ||
+    pathname?.startsWith("/dashboard/tables") ||
+    pathname?.startsWith("/dashboard/kitchen") ||
+    pathname?.startsWith("/dashboard/reports") ||
+    pathname?.startsWith("/dashboard/inventory") ||
+    pathname?.startsWith("/dashboard/staff");
 
   // ── Orders derived ──────────────────────────────────────────────────────────
   const liveOrders = (ordersPayload?.items || []).slice(0, 6).map((order) => ({
@@ -962,7 +1104,13 @@ export function DashboardCard({ section }: DashboardCardProps) {
   const occupiedTablesCount = tablesList.filter(
     (t) => (t.status || "").toUpperCase() === "OCCUPIED",
   ).length;
-  const previewTables = tablesList.slice(0, 18);
+  // const previewTables = tablesList.slice(0, 18);
+  // console.log("Tables List:", tablesList);
+  const startIndex = (currentTablePage - 1) * tablesPerPage;
+  const endIndex = startIndex + tablesPerPage;
+
+  const previewTables = tablesList.slice(startIndex, endIndex);
+  const totalTablePages = Math.ceil(tablesList.length / tablesPerPage);
 
   // ── Menu derived ────────────────────────────────────────────────────────────
   const menuItems = menuPayload?.items || [];
@@ -1038,36 +1186,35 @@ export function DashboardCard({ section }: DashboardCardProps) {
   //     router.replace("/login");
   //   }
   // };
-  
-  
-const onLogout = async () => {
-  try {
-    await logout().unwrap();
-  } catch (error) {
-    console.error(getErrorMessage(error));
-  } finally {
-    dispatch(clearSession());
 
-    clearStoredSession();
+  const onLogout = async () => {
+    try {
+      await logout().unwrap();
+    } catch (error) {
+      console.error(getErrorMessage(error));
+    } finally {
+      dispatch(clearSession());
 
-    localStorage.clear();
-    sessionStorage.clear();
+      clearStoredSession();
 
-    document.cookie.split(";").forEach((cookie) => {
-      document.cookie = cookie
-        .replace(/^ +/, "")
-        .replace(/=.*/, "=;expires=" + new Date(0).toUTCString() + ";path=/");
-    });
+      localStorage.clear();
+      sessionStorage.clear();
 
-    if ("caches" in window) {
-      caches.keys().then((names) => {
-        names.forEach((name) => caches.delete(name));
+      document.cookie.split(";").forEach((cookie) => {
+        document.cookie = cookie
+          .replace(/^ +/, "")
+          .replace(/=.*/, "=;expires=" + new Date(0).toUTCString() + ";path=/");
       });
-    }
 
-    router.replace("/login");
-  }
-};
+      if ("caches" in window) {
+        caches.keys().then((names) => {
+          names.forEach((name) => caches.delete(name));
+        });
+      }
+
+      router.replace("/login");
+    }
+  };
 
   const openSection = (target: SectionId) => {
     router.push(`/dashboard/${target}`);
@@ -1106,7 +1253,8 @@ const onLogout = async () => {
       const count = pendingInvoicesPayload?.pagination?.total ?? 0;
       return count > 0 ? `${count}` : undefined;
     }
-    if (id === "tables" && occupiedTablesCount > 0) return `${occupiedTablesCount}`;
+    if (id === "tables" && occupiedTablesCount > 0)
+      return `${occupiedTablesCount}`;
     return undefined;
   };
 
@@ -1256,6 +1404,8 @@ const onLogout = async () => {
           onOpenProfile={() => openSection("profile")}
           onOpenSettings={() => openSection("settings")}
           isLoggingOut={isLoggingOut}
+          isCollapsed={sidebarCollapsed}
+          onToggleCollapse={() => setSidebarCollapsed((prev) => !prev)}
         />
 
         {/* ── Main Content ── */}
@@ -1353,14 +1503,17 @@ const onLogout = async () => {
                   {/* Table Floor Plan */}
                   <article className="rounded-2xl border border-[#e6dfd1] bg-[#fffdf9] shadow-sm">
                     <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[#eee7d8] px-4 py-3">
-                      <div>
-                        <p className="text-sm font-semibold">
+                      <button
+                        onClick={() => router.push("/dashboard/tables")}
+                        className="flex flex-col justify-start"
+                      >
+                        <p className="text-sm font-semibold text-start">
                           Table Floor Plan
                         </p>
                         <p className="text-xs text-slate-500">
                           Tap occupied table to open its order
                         </p>
-                      </div>
+                      </button>
                       <div className="flex gap-1.5">
                         <span className="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-xs">
                           All {totalTablesCount}
@@ -1384,21 +1537,24 @@ const onLogout = async () => {
                             type="button"
                             onClick={() => {
                               const status = (table.status || "").toUpperCase();
-                              if (
-                                status === "OCCUPIED" ||
-                                status === "BILLING"
-                              ) {
-                                router.push(
-                                  `/dashboard/orders/items?tableId=${encodeURIComponent(table.id)}`,
-                                );
-                                return;
-                              }
-                              router.push("/dashboard/tables");
+                              // if (
+                              //   status === "OCCUPIED" ||
+                              //   status === "BILLING"
+                              // ) {
+                              //   router.push(
+                              //     `/dashboard/orders/items?tableId=${encodeURIComponent(table.id)}`,
+                              //   );
+                              //   return;
+                              // }
+                              // router.push("/dashboard/tables");
+                              router.push(
+                                `/dashboard/orders/items?tableId=${encodeURIComponent(table.id)}`,
+                              );
                             }}
                             className={`flex aspect-square flex-col items-center justify-center rounded-xl border text-xs font-medium transition hover:scale-[1.02] ${tableStatusClass(table.status)}`}
                           >
                             <span className="text-sm font-semibold">
-                              T{table.number} 
+                              T{table.number}
                             </span>
                             <span>{table.capacity} seats</span>
                             <span className="mt-1 rounded-full border border-slate-200 bg-white px-1.5 py-0.5 text-[9px] text-slate-500">
@@ -1412,6 +1568,7 @@ const onLogout = async () => {
                         </div>
                       )}
                     </div>
+
                     <div className="flex flex-wrap items-center justify-between gap-3 border-t border-[#eee7d8] px-4 py-3 text-xs text-slate-600">
                       <div className="flex flex-wrap gap-3">
                         <span className="inline-flex items-center gap-1.5">
@@ -1431,13 +1588,43 @@ const onLogout = async () => {
                           Billing
                         </span>
                       </div>
-                      <button
-                        type="button"
-                        onClick={() => router.push("/dashboard/tables")}
-                        className="rounded-lg border border-[#e0d8c9] bg-white px-3 py-1.5 text-xs font-semibold text-slate-700"
-                      >
-                        Manage Tables
-                      </button>
+                      {totalTablePages > 1 ? (
+                        <div className="flex items-center justify-center gap-3 border-t border-[#eee7d8] p-1">
+                          <button
+                            type="button"
+                            disabled={currentTablePage === 1}
+                            onClick={() =>
+                              setCurrentTablePage((prev) => prev - 1)
+                            }
+                            className="rounded-lg border border-[#e0d8c9] bg-white p-1 text-sm font-semibold disabled:opacity-50"
+                          >
+                            Prev
+                          </button>
+
+                          <span className="text-xs font-medium text-slate-600">
+                            Page {currentTablePage} of {totalTablePages}
+                          </span>
+
+                          <button
+                            type="button"
+                            disabled={currentTablePage === totalTablePages}
+                            onClick={() =>
+                              setCurrentTablePage((prev) => prev + 1)
+                            }
+                            className="rounded-lg border border-[#e0d8c9] bg-white p-1 text-sm font-semibold disabled:opacity-50"
+                          >
+                            Next
+                          </button>
+                        </div>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => router.push("/dashboard/tables")}
+                          className="rounded-lg border border-[#e0d8c9] bg-white px-3 py-1.5 text-xs font-semibold text-slate-700"
+                        >
+                          Manage Tables
+                        </button>
+                      )}
                     </div>
                   </article>
 
@@ -1653,7 +1840,11 @@ const onLogout = async () => {
               <StaffWorkspace tenantName={tenantName} />
             ) : activeSection.id === "profile" ||
               activeSection.id === "settings" ? (
-              activeSection.id === "settings" ? <SettingsWorkspace /> : <ProfileWorkspace />
+              activeSection.id === "settings" ? (
+                <SettingsWorkspace />
+              ) : (
+                <ProfileWorkspace />
+              )
             ) : (
               <section className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
                 {activeSection.modules.map((module) => (
@@ -1739,7 +1930,6 @@ const onLogout = async () => {
           })}
         </div>
       </nav>
-     
 
       {!hideQuickOrderActions ? (
         <div className="fixed bottom-[calc(env(safe-area-inset-bottom)+5.25rem)] right-3 z-40 flex flex-col items-end gap-2 sm:right-4 lg:bottom-[calc(env(safe-area-inset-bottom)+1.25rem)]">

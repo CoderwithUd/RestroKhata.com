@@ -1229,7 +1229,7 @@ function MenuBrowser({
                                   +
                                 </button>
                               </div>
-                              <div className="flex items-center gap-2">
+                              {/* <div className="flex items-center gap-2">
                                 <button
                                   type="button"
                                   onClick={() => clearCartItem(item.id, variantId)}
@@ -1240,7 +1240,7 @@ function MenuBrowser({
                                 <p className="text-[9px] text-slate-400 italic">
                                   Options inside cart
                                 </p>
-                              </div>
+                              </div> */}
                             </div>
                           )}
                         </div>

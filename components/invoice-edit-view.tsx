@@ -40,7 +40,7 @@ import type { MenuItemRecord, MenuVariantRecord } from "@/store/types/menu";
 
 function Spinner() {
   return (
-    <Loader2 className="h-5 w-5 animate-spin text-indigo-600" />
+    <Loader2 className="h-5 w-5 animate-spin text-amber-600" />
   );
 }
 
@@ -314,7 +314,7 @@ export function InvoiceEditView({ invoiceId, orderIds, onBack }: Props) {
               <Trash2 size={20} />
             </button>
           )}
-          <button onClick={() => setIsSearchOpen(true)} className="flex items-center gap-2 rounded-xl bg-indigo-600 px-4 py-2 text-xs font-bold text-white shadow-lg hover:bg-indigo-700 transition-all active:scale-95">
+          <button onClick={() => setIsSearchOpen(true)} className="flex items-center gap-2 rounded-xl bg-amber-600 px-4 py-2 text-xs font-bold text-white shadow-lg hover:bg-amber-700 transition-all active:scale-95">
             <Plus size={16} />
             ADD ITEM
           </button>
@@ -334,14 +334,14 @@ export function InvoiceEditView({ invoiceId, orderIds, onBack }: Props) {
               const orderId = (item as any).orderId;
 
               return (
-                <div key={lineId} className="group relative flex flex-col gap-4 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm hover:border-indigo-200 transition-all">
+                <div key={lineId} className="group relative flex flex-col gap-4 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm hover:border-amber-200 transition-all">
                   <div className="flex items-start justify-between">
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2">
                         {isNew && <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[9px] font-black text-emerald-700 uppercase">Extra</span>}
                         <p className="text-sm font-bold text-slate-900 uppercase break-words">
                           {item.name}
-                          {item.variantName && <span className="ml-2 text-[10px] text-indigo-500 font-black">({item.variantName})</span>}
+                          {item.variantName && <span className="ml-2 text-[10px] text-amber-500 font-black">({item.variantName})</span>}
                         </p>
                       </div>
                       <p className="mt-0.5 text-[10px] font-black text-slate-400 uppercase tracking-tight">{fmtCurrency(item.unitPrice)} / unit</p>
@@ -351,9 +351,9 @@ export function InvoiceEditView({ invoiceId, orderIds, onBack }: Props) {
 
                   <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-50 pt-3">
                     <div className="flex items-center gap-1 rounded-xl bg-slate-50 p-1">
-                      <button onClick={() => setQuantities(p => ({ ...p, [lineId]: Math.max(1, (p[lineId] || item.quantity) - 1) }))} className="p-1 text-slate-400 hover:text-indigo-600"><MinusCircle size={20} /></button>
+                      <button onClick={() => setQuantities(p => ({ ...p, [lineId]: Math.max(1, (p[lineId] || item.quantity) - 1) }))} className="p-1 text-slate-400 hover:text-amber-600"><MinusCircle size={20} /></button>
                       <span className="w-8 text-center text-sm font-black text-slate-900">{currentQty}</span>
-                      <button onClick={() => setQuantities(p => ({ ...p, [lineId]: (p[lineId] || item.quantity) + 1 }))} className="p-1 text-slate-400 hover:text-indigo-600"><PlusCircle size={20} /></button>
+                      <button onClick={() => setQuantities(p => ({ ...p, [lineId]: (p[lineId] || item.quantity) + 1 }))} className="p-1 text-slate-400 hover:text-amber-600"><PlusCircle size={20} /></button>
                     </div>
 
                     <div className="flex items-center gap-1.5">
@@ -362,7 +362,7 @@ export function InvoiceEditView({ invoiceId, orderIds, onBack }: Props) {
                           <button 
                             onClick={() => handleReduce(orderId, lineId, item.name, currentQty, item.quantity)}
                             disabled={isBusy}
-                            className="rounded-lg px-2 py-1.5 text-[10px] font-black text-indigo-600 hover:bg-indigo-50 uppercase tracking-widest"
+                            className="rounded-lg px-2 py-1.5 text-[10px] font-black text-amber-600 hover:bg-amber-50 uppercase tracking-widest"
                           >
                             {isBusy ? "..." : (currentQty < item.quantity ? "REDUCE QTY" : "REMOVE")}
                           </button>
@@ -397,8 +397,8 @@ export function InvoiceEditView({ invoiceId, orderIds, onBack }: Props) {
             <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
               <h3 className="mb-4 flex items-center gap-2 text-xs font-black uppercase tracking-widest text-slate-400"><User size={14} />Customer Info</h3>
               <div className="space-y-4">
-                <input type="text" placeholder="Guest Name" value={customerName} onChange={e => setCustomerName(e.target.value)} className="w-full rounded-xl border border-slate-100 bg-slate-50 py-3 px-4 text-sm font-bold text-slate-900 outline-none focus:bg-white focus:border-indigo-400" />
-                <input type="tel" placeholder="Phone Number" value={customerPhone} onChange={e => setCustomerPhone(e.target.value)} className="w-full rounded-xl border border-slate-100 bg-slate-50 py-3 px-4 text-sm font-bold text-slate-900 outline-none focus:bg-white focus:border-indigo-400" />
+                <input type="text" placeholder="Guest Name" value={customerName} onChange={e => setCustomerName(e.target.value)} className="w-full rounded-xl border border-slate-100 bg-slate-50 py-3 px-4 text-sm font-bold text-slate-900 outline-none focus:bg-white focus:border-amber-400" />
+                <input type="tel" placeholder="Phone Number" value={customerPhone} onChange={e => setCustomerPhone(e.target.value)} className="w-full rounded-xl border border-slate-100 bg-slate-50 py-3 px-4 text-sm font-bold text-slate-900 outline-none focus:bg-white focus:border-amber-400" />
               </div>
             </section>
 
@@ -407,19 +407,19 @@ export function InvoiceEditView({ invoiceId, orderIds, onBack }: Props) {
               <div className="space-y-4">
                 <div className="flex gap-1 rounded-xl bg-slate-100 p-1">
                   {["FLAT", "PERCENTAGE"].map(type => (
-                    <button key={type} onClick={() => setDiscountType(type as any)} className={`flex-1 rounded-lg py-2 text-[10px] font-black uppercase transition-all ${discountType === type ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-400'}`}>{type === "FLAT" ? "₹ Fixed" : "% Percent"}</button>
+                    <button key={type} onClick={() => setDiscountType(type as any)} className={`flex-1 rounded-lg py-2 text-[10px] font-black uppercase transition-all ${discountType === type ? 'bg-white text-amber-600 shadow-sm' : 'text-slate-400'}`}>{type === "FLAT" ? "₹ Fixed" : "% Percent"}</button>
                   ))}
                 </div>
-                <input type="number" placeholder="0" value={discountValue} onChange={e => setDiscountValue(e.target.value)} className="w-full rounded-xl border border-slate-100 bg-slate-50 py-3 px-4 text-sm font-black text-slate-900 outline-none focus:bg-white focus:border-indigo-400" />
+                <input type="number" placeholder="0" value={discountValue} onChange={e => setDiscountValue(e.target.value)} className="w-full rounded-xl border border-slate-100 bg-slate-50 py-3 px-4 text-sm font-black text-slate-900 outline-none focus:bg-white focus:border-amber-400" />
               </div>
             </section>
 
-            <section className="rounded-3xl border border-indigo-100 bg-indigo-50/40 p-6 shadow-sm">
+            <section className="rounded-3xl border border-amber-100 bg-amber-50/40 p-6 shadow-sm">
               <div className="space-y-3">
                 <div className="flex justify-between text-xs font-bold text-slate-500"><span>Subtotal</span><span>{fmtCurrency(totals.subTotal)}</span></div>
                 <div className="flex justify-between text-xs font-bold text-slate-500"><span>Tax</span><span>{fmtCurrency(totals.taxTotal)}</span></div>
                 {totals.discountAmount > 0 && <div className="flex justify-between text-xs font-black text-emerald-600 uppercase"><span>Discount</span><span>-{fmtCurrency(totals.discountAmount)}</span></div>}
-                <div className="flex justify-between border-t border-indigo-100 pt-4 text-xl font-black text-slate-900"><span>Grand Total</span><span className="text-indigo-600">{fmtCurrency(totals.grandTotal)}</span></div>
+                <div className="flex justify-between border-t border-amber-100 pt-4 text-xl font-black text-slate-900"><span>Grand Total</span><span className="text-amber-600">{fmtCurrency(totals.grandTotal)}</span></div>
               </div>
             </section>
           </div>
@@ -462,7 +462,7 @@ export function InvoiceEditView({ invoiceId, orderIds, onBack }: Props) {
                     </div>
                     <div className="flex items-center gap-3">
                       <span className="text-sm font-black text-slate-900">{fmtCurrency(item.price)}</span>
-                      <div className="rounded-full bg-indigo-50 p-2 text-indigo-600"><Plus size={18} /></div>
+                      <div className="rounded-full bg-amber-50 p-2 text-amber-600"><Plus size={18} /></div>
                     </div>
                   </button>
                 ))}
@@ -486,9 +486,9 @@ export function InvoiceEditView({ invoiceId, orderIds, onBack }: Props) {
             </div>
             <div className="space-y-2">
               {variantSelectionItem.variants.map(v => (
-                <button key={v.id} onClick={() => addMenuItem(variantSelectionItem, v)} className="flex w-full items-center justify-between rounded-2xl border border-slate-100 bg-slate-50 px-4 py-4 hover:border-indigo-400 hover:bg-indigo-50 transition-all">
+                <button key={v.id} onClick={() => addMenuItem(variantSelectionItem, v)} className="flex w-full items-center justify-between rounded-2xl border border-slate-100 bg-slate-50 px-4 py-4 hover:border-amber-400 hover:bg-amber-50 transition-all">
                   <span className="text-sm font-bold text-slate-900 uppercase">{v.name}</span>
-                  <span className="text-sm font-black text-indigo-600">{fmtCurrency(v.price)}</span>
+                  <span className="text-sm font-black text-amber-600">{fmtCurrency(v.price)}</span>
                 </button>
               ))}
             </div>
@@ -504,7 +504,7 @@ export function InvoiceEditView({ invoiceId, orderIds, onBack }: Props) {
             <p className="mt-1 text-xs font-semibold text-slate-500 uppercase tracking-widest">Select target table for {movingItem.itemName}</p>
             <div className="mt-6 grid grid-cols-3 gap-3 max-h-[40vh] overflow-y-auto p-1">
               {tablesData?.items.filter(t => t.id !== relevantOrders[0]?.table?.id).map(table => (
-                <button key={table.id} onClick={() => handleMove(table.id)} className="flex flex-col items-center justify-center gap-1 rounded-2xl border border-slate-100 bg-slate-50 py-4 hover:border-indigo-400 hover:bg-indigo-50 transition-all active:scale-95">
+                <button key={table.id} onClick={() => handleMove(table.id)} className="flex flex-col items-center justify-center gap-1 rounded-2xl border border-slate-100 bg-slate-50 py-4 hover:border-amber-400 hover:bg-amber-50 transition-all active:scale-95">
                   <span className="text-xs font-black text-slate-900 uppercase">{table.name}</span>
                   <span className="text-[10px] font-bold text-slate-400">T{table.number}</span>
                 </button>
