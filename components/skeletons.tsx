@@ -3,7 +3,7 @@ import React from "react";
 export function Skeleton({ className }: { className?: string }) {
   return (
     <div
-      className={`animate-pulse rounded-md bg-slate-200 ${className}`}
+      className={`saas-skeleton ${className}`}
     />
   );
 }
@@ -20,13 +20,13 @@ export function CategorySkeleton() {
 
 export function MenuItemSkeleton() {
   return (
-    <div className="flex flex-col rounded-2xl border border-slate-100 bg-white p-3 shadow-sm">
+    <div className="flex flex-col rounded-2xl border border-slate-100 bg-white/60 p-3 shadow-sm backdrop-blur-sm">
       <div className="space-y-2">
-        <Skeleton className="h-4 w-3/4" />
-        <Skeleton className="h-3 w-1/2" />
+        <Skeleton className="h-4 w-3/4 rounded-lg" />
+        <Skeleton className="h-3 w-1/2 rounded-lg" />
       </div>
       <div className="mt-4 flex items-center justify-between">
-        <Skeleton className="h-5 w-16" />
+        <Skeleton className="h-5 w-16 rounded-md" />
         <Skeleton className="h-8 w-16 rounded-xl" />
       </div>
     </div>
@@ -57,18 +57,18 @@ export function TableGridSkeleton() {
 
 export function OrderCardSkeleton() {
   return (
-    <div className="rounded-2xl border border-slate-100 bg-white p-4 shadow-sm">
-      <div className="mb-3 flex items-center justify-between">
-        <Skeleton className="h-6 w-16 rounded-full" />
-        <Skeleton className="h-4 w-24" />
+    <div className="rounded-3xl border border-slate-100 bg-white/80 p-5 shadow-sm backdrop-blur-md">
+      <div className="mb-4 flex items-center justify-between">
+        <Skeleton className="h-7 w-20 rounded-full" />
+        <Skeleton className="h-4 w-28 rounded-lg" />
       </div>
-      <div className="space-y-2">
-        <Skeleton className="h-4 w-full" />
-        <Skeleton className="h-4 w-5/6" />
+      <div className="space-y-3">
+        <Skeleton className="h-5 w-full rounded-xl" />
+        <Skeleton className="h-5 w-4/5 rounded-xl" />
       </div>
-      <div className="mt-4 flex gap-2">
-        <Skeleton className="h-10 flex-1 rounded-xl" />
-        <Skeleton className="h-10 w-24 rounded-xl" />
+      <div className="mt-6 flex gap-3">
+        <Skeleton className="h-11 flex-1 rounded-2xl" />
+        <Skeleton className="h-11 w-24 rounded-2xl" />
       </div>
     </div>
   );

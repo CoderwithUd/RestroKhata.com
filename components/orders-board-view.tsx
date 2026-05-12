@@ -158,9 +158,9 @@ function getBulkOrderAction(order: OrderRecord): {
   }
 
   return {
-    label: "Complete",
+    label: "Complete Order",
     count: 0,
-    targetStatus: null,
+    targetStatus: "COMPLETED" as OrderStatus,
     sourceStatus: null,
   };
 }
@@ -987,7 +987,13 @@ export function OrdersBoardView() {
 
     try {
       setProcessingOrderKey(key);
-      if (targetItems.length > 0 && bulkAction.targetStatus) {
+      if (bulkAction.targetStatus === "COMPLETED" || (targetItems.length === 0 && !bulkAction.targetStatus)) {
+        await updateOrder({
+          orderId: order.id,
+          payload: { status: "COMPLETED" as OrderStatus },
+        }).unwrap();
+        showSuccess("Order completed");
+      } else if (targetItems.length > 0 && bulkAction.targetStatus) {
         await updateOrder({
           orderId: order.id,
           payload: {
@@ -1007,13 +1013,6 @@ export function OrdersBoardView() {
         showSuccess(
           `${bulkAction.label} ${targetItems.length}${willCompleteOrder ? " and completed" : ""}`,
         );
-      } else {
-        // Fallback for manual completion if no bulk status change is available
-        await updateOrder({
-          orderId: order.id,
-          payload: { status: "COMPLETED" },
-        }).unwrap();
-        showSuccess("Order completed");
       }
       refetchOrders();
       refetchInvoices();
