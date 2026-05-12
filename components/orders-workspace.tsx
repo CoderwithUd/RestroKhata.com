@@ -3136,7 +3136,6 @@ const NEXT_STATUS: Record<string, OrderStatus> = {
   PLACED: "IN_PROGRESS",
   IN_PROGRESS: "READY",
   READY: "SERVED",
-  SERVED: "COMPLETED",
 };
 
 /* eslint-disable @typescript-eslint/no-unused-vars */
@@ -3263,6 +3262,7 @@ function OrderCard({
 
       {/* Actions */}
       {(canEdit || canDelete) &&
+        order.status !== "SERVED" &&
         order.status !== "COMPLETED" &&
         order.status !== "CANCELLED" && (
           <div className="mt-3 flex gap-2">
@@ -3270,20 +3270,16 @@ function OrderCard({
               <button
                 type="button"
                 onClick={() => onStatusChange(order.id, nextStatus)}
-                className={`flex-1 rounded-xl py-2 text-xs font-bold text-white shadow-sm transition active:scale-95 ${
-                  nextStatus === "COMPLETED"
-                    ? "bg-emerald-600 shadow-emerald-200 hover:bg-emerald-700"
-                    : "bg-amber-500 shadow-amber-200 hover:bg-amber-600"
-                }`}
+                className="flex-1 rounded-xl bg-amber-500 py-2 text-xs font-bold text-white shadow-sm shadow-amber-200 transition active:scale-95"
               >
-                {nextStatus === "COMPLETED" ? "Complete Order" : `Mark ${STATUS_LABELS[nextStatus] || nextStatus}`}
+                Mark {STATUS_LABELS[nextStatus] || nextStatus}
               </button>
             )}
             {canDelete && (
               <button
                 type="button"
                 onClick={() => onDelete(order.id)}
-                className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-bold text-rose-700 active:scale-95 transition hover:bg-rose-100"
+                className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-bold text-rose-700 active:scale-95 transition"
               >
                 Delete
               </button>
@@ -3754,6 +3750,7 @@ function SmartOrderCard({
       )}
 
       {(canEdit || canDelete) &&
+        order.status !== "SERVED" &&
         order.status !== "COMPLETED" &&
         order.status !== "CANCELLED" && (
           <div className="mt-3 flex gap-2">

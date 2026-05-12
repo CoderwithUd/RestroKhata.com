@@ -158,9 +158,9 @@ function getBulkOrderAction(order: OrderRecord): {
   }
 
   return {
-    label: "Complete Order",
+    label: "Complete",
     count: 0,
-    targetStatus: "COMPLETED" as OrderStatus,
+    targetStatus: null,
     sourceStatus: null,
   };
 }
@@ -302,8 +302,7 @@ function OrderCard({
   const bulkAction = getBulkOrderAction(order);
   const completeKey = orderHeaderActionKey(order.id, "COMPLETE");
   const deleteKey = orderHeaderActionKey(order.id, "DELETE");
-  const canComplete =
-    ns(order.status) !== "COMPLETED" && ns(order.status) !== "CANCELLED";
+  const canComplete = false;
   const canDelete = ns(order.status) !== "CANCELLED";
 
   return (
@@ -987,13 +986,7 @@ export function OrdersBoardView() {
 
     try {
       setProcessingOrderKey(key);
-      if (bulkAction.targetStatus === "COMPLETED" || (targetItems.length === 0 && !bulkAction.targetStatus)) {
-        await updateOrder({
-          orderId: order.id,
-          payload: { status: "COMPLETED" as OrderStatus },
-        }).unwrap();
-        showSuccess("Order completed");
-      } else if (targetItems.length > 0 && bulkAction.targetStatus) {
+      if (targetItems.length > 0 && bulkAction.targetStatus) {
         await updateOrder({
           orderId: order.id,
           payload: {
