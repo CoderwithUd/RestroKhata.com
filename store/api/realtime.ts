@@ -17,6 +17,7 @@ type RealtimeState = {
 
 const REALTIME_REFRESH_EVENTS = [
   "api.refresh",
+  "api_refresh",
   "kitchen.queue.changed",
   "order.created",
   "order.updated",
