@@ -199,6 +199,8 @@ export function useOrderSocket({
 
       const { getSharedSocket } = await import("@/store/api/realtime");
       const session = readStoredSession();
+      const tenantId = session?.tenant?.id?.trim() || undefined;
+      const userId = session?.user?.id?.trim() || undefined;
       if (destroyed) return;
       
       socket = getSharedSocket({ auth: session });

@@ -781,7 +781,7 @@ export const menuApi = createApi({
             .then((cached) => {
               if (cached) {
                 dispatch(
-                  menuApi.util.updateQueryResult("getMenuAggregate", arg, () => {
+                  (menuApi.util as any).updateQueryResult("getMenuAggregate", arg, (draft: any) => {
                     return cached;
                   })
                 );
