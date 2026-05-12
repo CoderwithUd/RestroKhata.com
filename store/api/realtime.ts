@@ -165,9 +165,11 @@ export function createRealtimeInvalidationSocket(args: {
       if (sharedSocket.connected) {
         console.info("[Realtime] Re-joining rooms on existing connection");
         joinRooms(sharedSocket);
-      } else {
-        console.info("[Realtime] Socket not connected, attempting connection...");
+      } else if (token && token.length > 10) {
+        console.info("[Realtime] Socket not connected, attempting connection with token...");
         sharedSocket.connect();
+      } else {
+        console.info("[Realtime] Socket deferred: No valid token available yet.");
       }
     }
     // If we have a socket (existing or newly created), notify the caller's connection listener
@@ -180,10 +182,12 @@ export function createRealtimeInvalidationSocket(args: {
   lastAuthToken = token;
   lastTenantSlug = tenantSlug;
 
+  const hasValidToken = Boolean(token && token.length > 10);
+  
   sharedSocket = io(socketBaseUrl(), {
     withCredentials: true,
     transports: ["websocket", "polling"],
-    autoConnect: true,
+    autoConnect: hasValidToken,
     reconnection: true,
     reconnectionAttempts: Infinity,
     reconnectionDelay: 1000,
@@ -219,7 +223,12 @@ export function createRealtimeInvalidationSocket(args: {
   });
 
   sharedSocket.on("connect_error", (error) => {
-    console.error("[Realtime] ❌ Connection error:", error.message);
+    // Suppress "access token missing" error logs as it's expected during bootstrap/logout
+    if (error.message.includes("access token missing")) {
+      console.info("[Realtime] ℹ️ Socket waiting for authentication...");
+    } else {
+      console.error("[Realtime] ❌ Connection error:", error.message);
+    }
     statusListeners.forEach((fn) => fn(false));
   });
 
