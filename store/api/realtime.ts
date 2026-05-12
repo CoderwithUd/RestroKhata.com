@@ -84,7 +84,7 @@ function triggerSharedInvalidation() {
         }
       });
     }
-  }, 400); // 400ms debounce window
+  }, 100); // 100ms for near-instant "WhatsApp-like" updates
 }
 
 /**
@@ -121,7 +121,7 @@ export function createRealtimeInvalidationSocket(args: {
   }
 
   // Add this specific invalidator to the shared set
-  activeInvalidators.add(args.invalidate);
+  if (args.invalidate) activeInvalidators.add(args.invalidate);
   if (args.onConnectionChange) {
     statusListeners.add(args.onConnectionChange);
   }
@@ -182,7 +182,7 @@ export function createRealtimeInvalidationSocket(args: {
 
   sharedSocket = io(socketBaseUrl(), {
     withCredentials: true,
-    transports: ["polling", "websocket"],
+    transports: ["websocket", "polling"],
     autoConnect: true,
     reconnection: true,
     reconnectionAttempts: Infinity,
@@ -199,8 +199,10 @@ export function createRealtimeInvalidationSocket(args: {
     args.onConnectionChange(sharedSocket.connected);
   }
 
+  // Listeners (Registered only once for the singleton)
   REALTIME_REFRESH_EVENTS.forEach((eventName) => {
     sharedSocket?.on(eventName, (data: any) => {
+      console.info(`[Realtime] 📥 Event received: ${eventName}`, data);
       // 1. Debounced Menu Cache Clear (Heavy DB op)
       if (!data?.scope || data.scope === "menu" || data.scope === "all" || eventName.startsWith("menu") || eventName.startsWith("item") || eventName.startsWith("category")) {
         debouncedMenuClear();

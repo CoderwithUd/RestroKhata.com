@@ -2,6 +2,7 @@
 
 import { useEffect, useRef } from "react";
 import { readStoredSession } from "@/lib/auth-session";
+import { createRealtimeInvalidationSocket, destroyRealtimeInvalidationSocket } from "@/store/api/realtime";
 import type { Socket } from "socket.io-client";
 
 export type SocketOrderEvent = {
@@ -161,120 +162,97 @@ export function useOrderSocket({
     onEvent,
   });
 
+  // Update refs on every render
   useEffect(() => {
     liveRef.current = { role, notifications, voice, onConnectionChange, onEvent };
-  }, [role, notifications, voice, onConnectionChange, onEvent]);
+  });
 
   useEffect(() => {
     if (!enabled || typeof window === "undefined") return;
 
-    let socket: Socket | null = null;
-    let destroyed = false;
+    const session = readStoredSession();
+    
+    const onStatus = (connected: boolean) => {
+      liveRef.current.onConnectionChange?.(connected);
+    };
 
-    async function connect() {
-      const { createRealtimeInvalidationSocket, destroyRealtimeInvalidationSocket } = await import("@/store/api/realtime");
-      const session = readStoredSession();
-      
-      if (destroyed) return;
+    const socket = createRealtimeInvalidationSocket({
+      getState: () => ({ auth: session }),
+      invalidate: () => {}, // Handled by global registry
+      onConnectionChange: onStatus
+    });
 
-      const onStatus = (connected: boolean) => {
-        if (!destroyed) liveRef.current.onConnectionChange?.(connected);
-      };
+    const createdHandler = (data: any) => {
+      const order = data?.order;
+      const label = tableLabel(order);
+      const currentRole = liveRef.current.role || "all";
 
-      // We use createRealtimeInvalidationSocket as it handles singleton logic
-      socket = createRealtimeInvalidationSocket({
-        getState: () => ({ auth: session }),
-        invalidate: () => {}, // Handled by global registry now
-        onConnectionChange: onStatus
-      });
+      playBeep("new");
+      if (liveRef.current.notifications) {
+        showNotification("New Order", label, `order-new-${order?.id}`);
+      }
+      if (liveRef.current.voice) {
+        const text = buildVoiceText(currentRole, { type: "created", order });
+        if (text) announceVoice(text);
+      }
+      liveRef.current.onEvent?.({ type: "created", order });
+    };
 
-      const createdHandler = (data: { order?: SocketOrderEvent["order"] }) => {
-        const order = data?.order;
-        const label = tableLabel(order);
-        const currentRole = liveRef.current.role || "all";
+    const updatedHandler = (data: any) => {
+      const order = data?.order;
+      const status = normalizeStatus(order?.status);
+      const label = tableLabel(order);
+      const currentRole = liveRef.current.role || "all";
 
-        playBeep("new");
+      if (status === "READY") {
+        playBeep("ready");
         if (liveRef.current.notifications) {
-          showNotification("New Order", label, `order-new-${order?.id}`);
+          showNotification("Order Ready", `${label} ready to serve`, `order-ready-${order?.id}`);
         }
-        if (liveRef.current.voice) {
-          const text = buildVoiceText(currentRole, { type: "created", order });
-          if (text) announceVoice(text);
+      } else {
+        playBeep("update");
+        if (liveRef.current.notifications) {
+          showNotification("Order Updated", `${label} status: ${status || "updated"}`, `order-updated-${order?.id}`);
         }
-        liveRef.current.onEvent?.({ type: "created", order });
-      };
+      }
 
-      const updatedHandler = (data: { order?: SocketOrderEvent["order"] }) => {
-        const order = data?.order;
-        const status = normalizeStatus(order?.status);
-        const label = tableLabel(order);
-        const currentRole = liveRef.current.role || "all";
+      if (liveRef.current.voice) {
+        const text = buildVoiceText(currentRole, { type: "updated", order });
+        if (text) announceVoice(text);
+      }
+      liveRef.current.onEvent?.({ type: "updated", order });
+    };
 
-        if (status === "READY") {
-          playBeep("ready");
-          if (liveRef.current.notifications) {
-            showNotification("Order Ready", `${label} ready to serve`, `order-ready-${order?.id}`);
-          }
-        } else {
-          playBeep("update");
-          if (liveRef.current.notifications) {
-            showNotification("Order Updated", `${label} status: ${status || "updated"}`, `order-updated-${order?.id}`);
-          }
-        }
+    const deletedHandler = (data: any) => {
+      liveRef.current.onEvent?.({ type: "deleted", orderId: data?.orderId });
+    };
 
-        if (liveRef.current.voice) {
-          const text = buildVoiceText(currentRole, { type: "updated", order });
-          if (text) announceVoice(text);
-        }
-        liveRef.current.onEvent?.({ type: "updated", order });
-      };
+    const refreshHandler = (data: any) => {
+      liveRef.current.onEvent?.({ type: "refresh", ...data });
+    };
 
-      const deletedHandler = (data: { orderId?: string }) => {
-        liveRef.current.onEvent?.({ type: "deleted", orderId: data?.orderId });
-      };
+    const events = {
+      created: ["order.created", "order:created"],
+      updated: ["order.updated", "order:updated", "order.status_updated", "order:status_updated"],
+      deleted: ["order.deleted", "order:deleted"],
+      refresh: [
+        "invoice.created", "invoice.updated", "invoice.deleted", "invoice.paid",
+        "invoice:created", "invoice:updated", "invoice:deleted", "invoice:paid",
+        "kitchen.queue.changed", "table.updated", "table:updated", "api.refresh"
+      ]
+    };
 
-      const refreshHandler = (data: any) => {
-        liveRef.current.onEvent?.({
-          type: "refresh",
-          ...data
-        });
-      };
-
-      // Listeners
-      const events = {
-        created: ["order.created", "order:created"],
-        updated: ["order.updated", "order:updated", "order.status_updated", "order:status_updated"],
-        deleted: ["order.deleted", "order:deleted"],
-        refresh: [
-          "invoice.created", "invoice.updated", "invoice.deleted", "invoice.paid",
-          "invoice:created", "invoice:updated", "invoice:deleted", "invoice:paid",
-          "kitchen.queue.changed", "table.updated", "table:updated", "api.refresh"
-        ]
-      };
-
-      events.created.forEach(e => socket?.on(e, createdHandler));
-      events.updated.forEach(e => socket?.on(e, updatedHandler));
-      events.deleted.forEach(e => socket?.on(e, deletedHandler));
-      events.refresh.forEach(e => socket?.on(e, refreshHandler));
-
-      // Cleanup function within effect
-      return () => {
-        destroyed = true;
-        events.created.forEach(e => socket?.off(e, createdHandler));
-        events.updated.forEach(e => socket?.off(e, updatedHandler));
-        events.deleted.forEach(e => socket?.off(e, deletedHandler));
-        events.refresh.forEach(e => socket?.off(e, refreshHandler));
-        
-        if (socket) {
-          destroyRealtimeInvalidationSocket(socket, () => {}, onStatus);
-        }
-      };
-    }
-
-    const cleanupPromise = connect();
+    events.created.forEach(e => socket.on(e, createdHandler));
+    events.updated.forEach(e => socket.on(e, updatedHandler));
+    events.deleted.forEach(e => socket.on(e, deletedHandler));
+    events.refresh.forEach(e => socket.on(e, refreshHandler));
 
     return () => {
-      cleanupPromise.then(cleanup => cleanup?.());
+      events.created.forEach(e => socket.off(e, createdHandler));
+      events.updated.forEach(e => socket.off(e, updatedHandler));
+      events.deleted.forEach(e => socket.off(e, deletedHandler));
+      events.refresh.forEach(e => socket.off(e, refreshHandler));
+      destroyRealtimeInvalidationSocket(socket, () => {}, onStatus);
     };
   }, [token, tenantSlug, enabled]);
 }
