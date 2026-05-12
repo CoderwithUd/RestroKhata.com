@@ -156,9 +156,9 @@ export const tablesApi = createApi({
         await cacheDataLoaded;
 
         const invalidate = () => {
-          dispatch(tablesApi.util.invalidateTags([{ type: "Tables", id: "LIST" }]));
+          dispatch(tablesApi.util.invalidateTags([{ type: "Tables" }]));
         };
-        registerGlobalRefresh(() => tablesApi.util.invalidateTags([{ type: "Tables", id: "LIST" }]));
+        registerGlobalRefresh(() => tablesApi.util.invalidateTags([{ type: "Tables" }]));
         
         const socket = createRealtimeInvalidationSocket({ getState, invalidate, dispatch });
 

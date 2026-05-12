@@ -140,17 +140,14 @@ export function createRealtimeInvalidationSocket(args: {
   if (sharedSocket) {
     // If auth changed, update socket auth and re-join rooms
     if (token !== lastAuthToken || tenantSlug !== lastTenantSlug) {
-      console.info("[Realtime] Auth changed, updating socket session");
+      console.info("[Realtime] Auth changed, reconnecting socket...");
       sharedSocket.auth = {
         token: token ? `Bearer ${token}` : undefined,
         tenantSlug,
       };
       
-      if (sharedSocket.connected) {
-        joinRooms(sharedSocket);
-      } else {
-        sharedSocket.connect();
-      }
+      // Force a clean reconnect with new auth
+      sharedSocket.disconnect().connect();
       
       lastAuthToken = token;
       lastTenantSlug = tenantSlug;

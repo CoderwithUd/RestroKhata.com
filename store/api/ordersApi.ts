@@ -453,10 +453,10 @@ export const ordersApi = createApi({
         await cacheDataLoaded;
 
         const invalidate = () => {
-          dispatch(ordersApi.util.invalidateTags([{ type: "Orders", id: "LIST" }]));
+          dispatch(ordersApi.util.invalidateTags([{ type: "Orders" }]));
         };
         // Register for global refreshes even if this component unmounts
-        registerGlobalRefresh(() => ordersApi.util.invalidateTags([{ type: "Orders", id: "LIST" }]));
+        registerGlobalRefresh(() => ordersApi.util.invalidateTags([{ type: "Orders" }]));
         
         const socket = createRealtimeInvalidationSocket({ getState, invalidate, dispatch });
 

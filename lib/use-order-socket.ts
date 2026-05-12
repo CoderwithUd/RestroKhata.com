@@ -302,7 +302,7 @@ export function useOrderSocket({
       });
 
       ["order.created", "order:created"].forEach((eventName) => socket?.on(eventName, createdHandler));
-      ["order.updated", "order:updated"].forEach((eventName) => socket?.on(eventName, updatedHandler));
+      ["order.updated", "order:updated", "order.status_updated", "order:status_updated"].forEach((eventName) => socket?.on(eventName, updatedHandler));
       ["order.deleted", "order:deleted"].forEach((eventName) => socket?.on(eventName, deletedHandler));
       [
         "invoice.created",
@@ -314,6 +314,8 @@ export function useOrderSocket({
         "invoice:deleted",
         "invoice:paid",
         "kitchen.queue.changed",
+        "table.updated",
+        "table:updated",
         "api.refresh",
       ].forEach((eventName) =>
         socket?.on(eventName, refreshHandler),

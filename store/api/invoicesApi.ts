@@ -237,9 +237,9 @@ export const invoicesApi = createApi({
         await cacheDataLoaded;
 
         const invalidate = () => {
-          dispatch(invoicesApi.util.invalidateTags([{ type: "Invoices", id: "LIST" }]));
+          dispatch(invoicesApi.util.invalidateTags([{ type: "Invoices" }]));
         };
-        registerGlobalRefresh(() => invoicesApi.util.invalidateTags([{ type: "Invoices", id: "LIST" }]));
+        registerGlobalRefresh(() => invoicesApi.util.invalidateTags([{ type: "Invoices" }]));
         
         const socket = createRealtimeInvalidationSocket({ getState, invalidate, dispatch });
 
