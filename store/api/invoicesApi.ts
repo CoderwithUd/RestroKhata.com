@@ -208,8 +208,6 @@ export const invoicesApi = createApi({
             ? [asString(statusParam) as string]
             : [];
 
-        // Some backend builds reject CSV status lists with 400.
-        // For multi-status use-case, fetch all and filter client-side.
         const statusForApi =
           normalizedStatus.length === 1 ? normalizedStatus[0] : undefined;
 
@@ -239,8 +237,6 @@ export const invoicesApi = createApi({
         const invalidate = () => {
           dispatch(invoicesApi.util.invalidateTags([{ type: "Invoices" }]));
         };
-        registerGlobalRefresh(() => invoicesApi.util.invalidateTags([{ type: "Invoices" }]));
-        
         const socket = createRealtimeInvalidationSocket({ getState, invalidate, dispatch });
 
         await cacheEntryRemoved;
@@ -328,6 +324,8 @@ export const invoicesApi = createApi({
     }),
   }),
 });
+
+registerGlobalRefresh(() => invoicesApi.util.invalidateTags([{ type: "Invoices" }]));
 
 export const {
   useGetInvoicesQuery,

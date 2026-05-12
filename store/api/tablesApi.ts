@@ -158,8 +158,6 @@ export const tablesApi = createApi({
         const invalidate = () => {
           dispatch(tablesApi.util.invalidateTags([{ type: "Tables" }]));
         };
-        registerGlobalRefresh(() => tablesApi.util.invalidateTags([{ type: "Tables" }]));
-        
         const socket = createRealtimeInvalidationSocket({ getState, invalidate, dispatch });
 
         await cacheEntryRemoved;
@@ -221,6 +219,10 @@ export const tablesApi = createApi({
         method: "DELETE",
         credentials: "include",
       }),
+      transformResponse: (response: unknown) => {
+        const root = asRecord(response);
+        return { message: asString(root?.message) || "Table deleted" };
+      },
       invalidatesTags: (_result, _error, { tableId }) => [
         { type: "Tables", id: "LIST" },
         { type: "Tables", id: tableId },
@@ -229,6 +231,8 @@ export const tablesApi = createApi({
     }),
   }),
 });
+
+registerGlobalRefresh(() => tablesApi.util.invalidateTags([{ type: "Tables" }]));
 
 export const {
   useGetTablesQuery,

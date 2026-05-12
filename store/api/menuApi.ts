@@ -506,8 +506,6 @@ export const menuApi = createApi({
         const invalidate = () => {
           dispatch(menuApi.util.invalidateTags([{ type: "MenuCategories", id: "LIST" }, { type: "MenuAggregate", id: "TREE" }]));
         };
-        registerGlobalRefresh(() => menuApi.util.invalidateTags([{ type: "MenuCategories", id: "LIST" }, { type: "MenuAggregate", id: "TREE" }]));
-        
         const socket = createRealtimeInvalidationSocket({ getState, invalidate, dispatch });
         await cacheEntryRemoved;
         destroyRealtimeInvalidationSocket(socket, invalidate);
@@ -583,8 +581,6 @@ export const menuApi = createApi({
         const invalidate = () => {
           dispatch(menuApi.util.invalidateTags([{ type: "MenuOptionGroups", id: "LIST" }, { type: "MenuAggregate", id: "TREE" }]));
         };
-        registerGlobalRefresh(() => menuApi.util.invalidateTags([{ type: "MenuOptionGroups", id: "LIST" }, { type: "MenuAggregate", id: "TREE" }]));
-        
         const socket = createRealtimeInvalidationSocket({ getState, invalidate, dispatch });
         await cacheEntryRemoved;
         destroyRealtimeInvalidationSocket(socket, invalidate);
@@ -716,8 +712,6 @@ export const menuApi = createApi({
         const invalidate = () => {
           dispatch(menuApi.util.invalidateTags([{ type: "MenuItems", id: "LIST" }, { type: "MenuAggregate", id: "TREE" }]));
         };
-        registerGlobalRefresh(() => menuApi.util.invalidateTags([{ type: "MenuItems", id: "LIST" }, { type: "MenuAggregate", id: "TREE" }]));
-        
         const socket = createRealtimeInvalidationSocket({ getState, invalidate, dispatch });
         await cacheEntryRemoved;
         destroyRealtimeInvalidationSocket(socket, invalidate);
@@ -803,25 +797,13 @@ export const menuApi = createApi({
             const cacheKey = `menu_aggregate_${arg?.isAvailable ?? "all"}`;
             setCachedMenuResponse(cacheKey, data).catch(() => {});
           }
-        } catch (err) {
-          // Network failed, we already showed cached data if available
-        }
-      },
-      async onCacheEntryAdded(_arg, { cacheDataLoaded, cacheEntryRemoved, dispatch, getState }) {
-        if (typeof window === "undefined") return;
-        await cacheDataLoaded;
-        const invalidate = () => {
-          dispatch(menuApi.util.invalidateTags([{ type: "MenuAggregate", id: "TREE" }, { type: "MenuCategories", id: "LIST" }, { type: "MenuItems", id: "LIST" }]));
-        };
-        registerGlobalRefresh(() => menuApi.util.invalidateTags([{ type: "MenuAggregate", id: "TREE" }, { type: "MenuCategories", id: "LIST" }, { type: "MenuItems", id: "LIST" }]));
-        
-        const socket = createRealtimeInvalidationSocket({ getState, invalidate, dispatch });
-        await cacheEntryRemoved;
-        destroyRealtimeInvalidationSocket(socket, invalidate);
+        } catch {}
       },
     }),
   }),
 });
+
+registerGlobalRefresh(() => menuApi.util.invalidateTags([{ type: "MenuCategories" }, { type: "MenuItems" }, { type: "MenuAggregate" }, { type: "MenuOptionGroups" }]));
 
 export const {
   useGetMenuCategoriesQuery,
@@ -840,4 +822,5 @@ export const {
   useUpdateMenuItemMutation,
   useDeleteMenuItemMutation,
   useGetMenuAggregateQuery,
+  useLazyGetMenuAggregateQuery,
 } = menuApi;

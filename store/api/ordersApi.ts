@@ -264,7 +264,6 @@ function parseKitchenQueueItem(value: unknown): KitchenQueueItem | null {
     asString(nestedItem?.productId) ||
     lineId;
 
-  // Kitchen queue actions need orderId + lineId. itemId can be derived/fallback.
   if (!lineId || !orderId) return null;
   const itemId = itemIdCandidate || lineId;
 
@@ -455,37 +454,12 @@ export const ordersApi = createApi({
         const invalidate = () => {
           dispatch(ordersApi.util.invalidateTags([{ type: "Orders" }]));
         };
-        // Register for global refreshes even if this component unmounts
-        registerGlobalRefresh(() => ordersApi.util.invalidateTags([{ type: "Orders" }]));
-        
         const socket = createRealtimeInvalidationSocket({ getState, invalidate, dispatch });
 
         await cacheEntryRemoved;
         destroyRealtimeInvalidationSocket(socket, invalidate);
       },
     }),
-
-    // getKitchenOrderItems: builder.query<KitchenItemsResponse, KitchenItemsQueryParams | void>({
-    //   query: (params) => ({
-    //     url: "/orders/kitchen/items",
-    //     method: "GET",
-    //     credentials: "include",
-    //     params: {
-    //       status: Array.isArray(params?.status)
-    //         ? params.status.join(",")
-    //         : (params?.status ?? undefined),
-    //       includeDone: params?.includeDone ?? false,
-    //       tableId: params?.tableId || undefined,
-    //       page: params?.page ?? 1,
-    //       limit: params?.limit ?? 200,
-    //     },
-    //   }),
-    //   transformResponse: (response: unknown) => parseKitchenItemsList(response),
-    //   providesTags: (result) => [
-    //     { type: "Orders", id: "KITCHEN_ITEMS" },
-    //     ...(result?.items.map((item) => ({ type: "Orders" as const, id: item.orderId })) ?? []),
-    //   ],
-    // }),
 
     getKitchenOrderItems: builder.query<KitchenItemsResponse, KitchenItemsQueryParams | void>({
       query: (params) => ({
@@ -516,14 +490,15 @@ export const ordersApi = createApi({
         await cacheDataLoaded;
 
         const invalidate = () => {
-          dispatch(ordersApi.util.invalidateTags([{ type: "Orders", id: "KITCHEN_ITEMS" }]));
+          dispatch(ordersApi.util.invalidateTags([{ type: "Orders" }]));
         };
-        const socket = createRealtimeInvalidationSocket({ getState, invalidate });
+        const socket = createRealtimeInvalidationSocket({ getState, invalidate, dispatch });
 
         await cacheEntryRemoved;
         destroyRealtimeInvalidationSocket(socket, invalidate);
       },
     }),
+
     getOrderById: builder.query<OrderRecord | null, string>({
       query: (orderId) => ({
         url: `/orders/${orderId}`,
@@ -621,6 +596,8 @@ export const ordersApi = createApi({
     }),
   }),
 });
+
+registerGlobalRefresh(() => ordersApi.util.invalidateTags([{ type: "Orders" }]));
 
 export const {
   useGetOrdersQuery,
