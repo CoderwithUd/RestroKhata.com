@@ -197,28 +197,11 @@ export function useOrderSocket({
         await requestNotificationPermission();
       }
 
-      const { io } = await import("socket.io-client");
-      if (destroyed) return;
+      const { getSharedSocket } = await import("@/store/api/realtime");
       const session = readStoredSession();
-      const tenantId = session?.tenant?.id?.trim() || undefined;
-      const tenantSlug = session?.tenant?.slug?.trim() || undefined;
-      const userId = session?.user?.id?.trim() || undefined;
-
-      socket = io(socketBaseUrl(), {
-        auth: {
-          accessToken: token,
-          token: token ? `Bearer ${token}` : undefined,
-          tenantId,
-          tenantSlug,
-          userId,
-        },
-        query: tenantId || tenantSlug ? { tenantId, tenantSlug } : undefined,
-        transports: ["websocket", "polling"],
-        reconnection: true,
-        reconnectionAttempts: Infinity,
-        reconnectionDelay: 1000,
-        reconnectionDelayMax: 5000,
-      });
+      if (destroyed) return;
+      
+      socket = getSharedSocket({ auth: session });
 
       const createdHandler = (data: { order?: SocketOrderEvent["order"] }) => {
         const order = data?.order;

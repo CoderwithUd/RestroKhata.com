@@ -4,6 +4,7 @@ import {
   createRealtimeInvalidationSocket,
   destroyRealtimeInvalidationSocket,
 } from "@/store/api/realtime";
+import { getCachedMenuResponse, setCachedMenuResponse } from "@/lib/menu-cache";
 import type {
   CreateMenuOptionGroupPayload,
   CreateMenuCategoryPayload,
@@ -773,6 +774,32 @@ export const menuApi = createApi({
       }),
       transformResponse: (response: unknown) => parseAggregate(response),
       providesTags: [{ type: "MenuAggregate", id: "TREE" }],
+      async onQueryStarted(arg, { dispatch, queryFulfilled }) {
+        if (typeof window !== "undefined") {
+          const cacheKey = `menu_aggregate_${arg?.isAvailable ?? "all"}`;
+          getCachedMenuResponse(cacheKey)
+            .then((cached) => {
+              if (cached) {
+                dispatch(
+                  menuApi.util.updateQueryResult("getMenuAggregate", arg, () => {
+                    return cached;
+                  })
+                );
+              }
+            })
+            .catch(() => {});
+        }
+
+        try {
+          const { data } = await queryFulfilled;
+          if (typeof window !== "undefined") {
+            const cacheKey = `menu_aggregate_${arg?.isAvailable ?? "all"}`;
+            setCachedMenuResponse(cacheKey, data).catch(() => {});
+          }
+        } catch (err) {
+          // Network failed, we already showed cached data if available
+        }
+      },
       async onCacheEntryAdded(_arg, { cacheDataLoaded, cacheEntryRemoved, dispatch, getState }) {
         if (typeof window === "undefined") return;
         await cacheDataLoaded;

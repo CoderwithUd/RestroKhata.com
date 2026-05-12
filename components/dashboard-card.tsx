@@ -8,6 +8,7 @@ import { clearStoredSession } from "@/lib/auth-session";
 import { getErrorMessage } from "@/lib/error";
 import { isSubscriptionExpired } from "@/lib/subscription";
 import { FullPageLoader } from "@/components/full-page-loader";
+import { DashboardSkeleton } from "@/components/skeletons";
 import { InvoicesWorkspace } from "@/components/invoices-workspace";
 import { MenuWorkspace } from "@/components/menu-workspace";
 import { OrdersWorkspace } from "@/components/orders-workspace";
@@ -32,9 +33,11 @@ import { showSuccess, showError, showInfo } from "@/lib/feedback";
 import {
   clearSession,
   selectAuthTenant,
+  selectAuthToken,
   selectAuthUser,
 } from "@/store/slices/authSlice";
 import { useGetTablesQuery } from "@/store/api/tablesApi";
+import { useOrderSocket } from "@/lib/use-order-socket";
 import { LogOut, Settings, UserCheck2, ChevronDown, ChevronUp, Printer, Receipt, Clock, MapPin, User } from "lucide-react";
 
 type DashboardCardProps = {
@@ -1004,6 +1007,7 @@ export function DashboardCard({ section }: DashboardCardProps) {
   const dispatch = useAppDispatch();
   const user = useAppSelector(selectAuthUser);
   const tenant = useAppSelector(selectAuthTenant);
+  const token = useAppSelector(selectAuthToken);
   const [logout, { isLoading: isLoggingOut }] = useLogoutMutation();
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
@@ -1032,8 +1036,11 @@ const tablesPerPage = 18;
   const { data: tentantProfile, isLoading: isTenantProfileLoading } =
     useTentantProfileQuery();
 
-  const { data: ordersPayload, isFetching: isOrdersFetching } =
-    useGetOrdersQuery({
+  const { 
+    data: ordersPayload, 
+    isFetching: isOrdersFetching,
+    refetch: refetchOrders 
+  } = useGetOrdersQuery({
       status: ["PLACED", "IN_PROGRESS", "READY", "SERVED"],
       page: 1,
       limit: 100,
@@ -1043,7 +1050,7 @@ const tablesPerPage = 18;
     tentantProfile?.subscription,
   );
 
-  const { data: tablesPayload } = useGetTablesQuery();
+  const { data: tablesPayload, refetch: refetchTables } = useGetTablesQuery();
 
   const role = useMemo(
     () => normalizeRole(tentantProfile?.role || user?.role),
@@ -1052,11 +1059,17 @@ const tablesPerPage = 18;
 
   const reportsEnabled = role === "owner" || role === "manager";
 
-  const { data: reportsSummary, isFetching: isReportsFetching } =
-    useReportsSummaryQuery();
+  const { 
+    data: reportsSummary, 
+    isFetching: isReportsFetching,
+    refetch: refetchReports 
+  } = useReportsSummaryQuery();
 
-  const { data: paidInvoicesPayload, isFetching: isPaidInvoicesFetching } =
-    useGetInvoicesQuery(
+  const { 
+    data: paidInvoicesPayload, 
+    isFetching: isPaidInvoicesFetching,
+    refetch: refetchPaidInvoices 
+  } = useGetInvoicesQuery(
       { status: "PAID", page: 1, limit: 100 },
       // {
       //   pollingInterval: 30000,
@@ -1078,15 +1091,25 @@ const tablesPerPage = 18;
   );
 
   // New queries for badges
-  const { data: pendingInvoicesPayload } = useGetInvoicesQuery(
+  const { data: pendingInvoicesPayload, refetch: refetchPendingInvoices } = useGetInvoicesQuery(
     { status: "ISSUED", page: 1, limit: 1 },
     { pollingInterval: 30000 },
   );
 
-  const { data: kitchenItemsPayload } = useGetKitchenOrderItemsQuery(
+  const { data: kitchenItemsPayload, refetch: refetchKitchenItems } = useGetKitchenOrderItemsQuery(
     { includeDone: false, page: 1, limit: 1 },
     { pollingInterval: 20000 },
   );
+
+  useOrderSocket({
+    token,
+    enabled: true,
+    role,
+    onEvent: (event) => {
+      // Automatic cache invalidation handled via realtime.ts shared socket
+      // No manual refetch needed here anymore.
+    },
+  });
 
   const activeSection = activeId ? SECTION_LIBRARY[activeId] : null;
   const navSections = allowedIds.map((id) => SECTION_LIBRARY[id]);
@@ -1255,11 +1278,11 @@ const tablesPerPage = 18;
 
   // ── Guards ──────────────────────────────────────────────────────────────────
   if (isTenantProfileLoading && !tentantProfile)
-    return <FullPageLoader label="Loading your workspace" />;
+    return <DashboardSkeleton />;
   if (subscriptionExpired)
     return <FullPageLoader label="Redirecting to plan details" />;
   if (!section || !activeSection)
-    return <FullPageLoader label="Opening dashboard" />;
+    return <DashboardSkeleton />;
 
   // ── Derived UI helpers ──────────────────────────────────────────────────────
   const todayCompact = new Date().toLocaleDateString("en-IN", {

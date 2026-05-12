@@ -40,6 +40,7 @@ import type { TableRecord } from "@/store/types/tables";
 import type { MenuItemRecord, MenuVariantRecord } from "@/store/types/menu";
 import { normalizePhoneInput } from "@/lib/phone";
 import { printKOT } from "@/lib/print-kot";
+import { CategorySkeleton, MenuGridSkeleton, TableGridSkeleton, OrderGridSkeleton } from "@/components/skeletons";
 
 // ─── Role ────────────────────────────────────────────────────────────────────
 type RoleKey = "owner" | "manager" | "waiter" | "kitchen";
@@ -452,12 +453,8 @@ function TableGrid({
   appendSignals,
   onSelectTable,
 }: {
-  tables: TableRecord[];
-  orders: OrderRecord[];
-  invoicedOrderIds: Set<string>;
-  issuedInvoiceTableIds: Set<string>;
-  appendSignals: Record<string, OrderAppendSignal>;
   onSelectTable: (table: TableRecord) => void;
+  isLoading?: boolean;
 }) {
   const activeOrdersByTable = useMemo(() => {
     const map: Record<string, OrderRecord[]> = {};
@@ -480,8 +477,11 @@ function TableGrid({
       <p className="mb-3 text-xs text-slate-500">
         Tap a table to create a new order or continue any running order
       </p>
-      <div className="grid grid-cols-3 gap-2.5 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-7">
-        {tables.map((table) => {
+      {isLoading ? (
+        <TableGridSkeleton />
+      ) : (
+        <div className="grid grid-cols-3 gap-2.5 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-7">
+          {tables.map((table) => {
           const tableOrders = activeOrdersByTable[table.id] || [];
           const latestOrder = tableOrders[0];
           const hasOrder = tableOrders.length > 0;
@@ -559,6 +559,7 @@ function TableGrid({
           </div>
         )}
       </div>
+      )}
     </div>
   );
 }
@@ -1117,32 +1118,34 @@ function MenuBrowser({
 
           {/* Category pills */}
           {!search.trim() && (
-            <div className="no-scrollbar mb-3 flex gap-1.5 overflow-x-auto">
-              <button
-                type="button"
-                onClick={() => setActiveCat(null)}
-                className={`shrink-0 rounded-full border px-3 py-1 text-xs font-semibold transition ${!activeCat ? "border-amber-400 bg-amber-100 text-amber-800" : "border-slate-200 bg-white text-slate-600"}`}
-              >
-                All
-              </button>
-              {categories.map((cat) => (
+            menuLoading ? (
+              <CategorySkeleton />
+            ) : (
+              <div className="no-scrollbar mb-3 flex gap-1.5 overflow-x-auto">
                 <button
-                  key={cat.id}
                   type="button"
-                  onClick={() => setActiveCat(cat.id)}
-                  className={`shrink-0 rounded-full border px-3 py-1 text-xs font-semibold transition ${activeCat === cat.id ? "border-amber-400 bg-amber-100 text-amber-800" : "border-slate-200 bg-white text-slate-600"}`}
+                  onClick={() => setActiveCat(null)}
+                  className={`shrink-0 rounded-full border px-3 py-1 text-xs font-semibold transition ${!activeCat ? "border-amber-400 bg-amber-100 text-amber-800" : "border-slate-200 bg-white text-slate-600"}`}
                 >
-                  {cat.name}
+                  All
                 </button>
-              ))}
-            </div>
+                {categories.map((cat) => (
+                  <button
+                    key={cat.id}
+                    type="button"
+                    onClick={() => setActiveCat(cat.id)}
+                    className={`shrink-0 rounded-full border px-3 py-1 text-xs font-semibold transition ${activeCat === cat.id ? "border-amber-400 bg-amber-100 text-amber-800" : "border-slate-200 bg-white text-slate-600"}`}
+                  >
+                    {cat.name}
+                  </button>
+                ))}
+              </div>
+            )
           )}
 
           {/* Items grid */}
           {menuLoading ? (
-            <div className="flex flex-1 items-center justify-center gap-2 text-sm text-slate-500">
-              <Spinner /> Loading menu...
-            </div>
+            <MenuGridSkeleton />
           ) : (
             <div className="no-scrollbar -mx-1 flex-1 overflow-y-auto pb-2">
               {displayedItems.length === 0 ? (
@@ -2398,10 +2401,10 @@ function WaiterView({
   const token = useAppSelector(selectAuthToken);
   const { data: tenantProfile } = useTentantProfileQuery();
   const isCafeMode = normalizeStatus(tenantProfile?.tenant?.settings?.orderMode) === "CAFE";
-  const { data: tablesData, refetch: refetchTables } = useGetTablesQuery({
+  const { data: tablesData, isLoading: tablesLoading, refetch: refetchTables } = useGetTablesQuery({
     isActive: true,
   });
-  const { data: ordersData, refetch: refetchOrders } = useGetOrdersQuery({
+  const { data: ordersData, isLoading: ordersLoading, refetch: refetchOrders } = useGetOrdersQuery({
     status: ["PLACED", "IN_PROGRESS", "READY", "SERVED"],
     limit: 100,
   });
@@ -2458,9 +2461,6 @@ function WaiterView({
         const label =
           table?.name || (table?.number ? `Table ${table.number}` : "a table");
         showInfo(`New order - ${label}`);
-        refetchOrders();
-        refetchInvoices();
-        refetchTables();
       } else if (event.type === "updated") {
         const status = (event.order?.status || "").toUpperCase();
         const table = event.order?.table;
@@ -2470,20 +2470,11 @@ function WaiterView({
         else if (status === "SERVED") showSuccess(`${label} served by waiter`);
         else if (status === "IN_PROGRESS") showInfo(`${label} cooking started`);
         else showInfo(`${label} order updated`);
-        refetchOrders();
-        refetchInvoices();
-        refetchTables();
-      } else {
-        if (event.type === "refresh") {
-          clearMenuCache();
-        }
-        if (event.type === "deleted") {
-          showInfo("An order was deleted");
-        }
-        refetchOrders();
-        refetchInvoices();
-        refetchTables();
+      } else if (event.type === "deleted") {
+        showInfo("An order was deleted");
       }
+      // Note: Manual refetchOrders(), refetchInvoices(), refetchTables() removed 
+      // as they are now handled by shared debounced socket invalidation in realtime.ts
     },
   });
 
@@ -2933,6 +2924,7 @@ function WaiterView({
               issuedInvoiceTableIds={issuedInvoiceTableIds}
               appendSignals={appendSignals}
               onSelectTable={handleSelectTable}
+              isLoading={tablesLoading}
             />
           ) : null}
           {mode === "board" || waiterLiveOnly ? (

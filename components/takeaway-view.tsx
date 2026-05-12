@@ -21,6 +21,7 @@ import {
 import { useAppSelector } from "@/store/hooks";
 import { selectAuthToken } from "@/store/slices/authSlice";
 import type { MenuItemRecord } from "@/store/types/menu";
+import { CategorySkeleton, MenuGridSkeleton } from "@/components/skeletons";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -115,9 +116,8 @@ export function TakeawayView() {
     enabled: true,
     role: "waiter",
     onConnectionChange: setSocketConnected,
-    onEvent: () => {
-      refetchOrders();
-      refetchInvoices();
+    onEvent: (event) => {
+      // Manual refetches removed as they are handled by RTK Query's background socket logic
     },
   });
 
@@ -436,25 +436,27 @@ export function TakeawayView() {
 
           {/* Category pills */}
           {!search.trim() && (
-            <div className="no-scrollbar flex gap-1.5 overflow-x-auto pb-0.5">
-              <button type="button" onClick={() => setActiveCat(null)}
-                className={`shrink-0 rounded-full border px-3 py-1.5 text-xs font-semibold transition ${!activeCat ? "border-violet-400 bg-violet-100 text-violet-800 shadow-sm" : "border-slate-200 bg-white text-slate-600"}`}>
-                All
-              </button>
-              {categories.map((cat) => (
-                <button key={cat.id} type="button" onClick={() => setActiveCat(cat.id)}
-                  className={`shrink-0 rounded-full border px-3 py-1.5 text-xs font-semibold transition ${activeCat === cat.id ? "border-violet-400 bg-violet-100 text-violet-800 shadow-sm" : "border-slate-200 bg-white text-slate-600"}`}>
-                  {cat.name}
+            menuLoading ? (
+              <CategorySkeleton />
+            ) : (
+              <div className="no-scrollbar flex gap-1.5 overflow-x-auto pb-0.5">
+                <button type="button" onClick={() => setActiveCat(null)}
+                  className={`shrink-0 rounded-full border px-3 py-1.5 text-xs font-semibold transition ${!activeCat ? "border-violet-400 bg-violet-100 text-violet-800 shadow-sm" : "border-slate-200 bg-white text-slate-600"}`}>
+                  All
                 </button>
-              ))}
-            </div>
+                {categories.map((cat) => (
+                  <button key={cat.id} type="button" onClick={() => setActiveCat(cat.id)}
+                    className={`shrink-0 rounded-full border px-3 py-1.5 text-xs font-semibold transition ${activeCat === cat.id ? "border-violet-400 bg-violet-100 text-violet-800 shadow-sm" : "border-slate-200 bg-white text-slate-600"}`}>
+                    {cat.name}
+                  </button>
+                ))}
+              </div>
+            )
           )}
 
           {/* Items grid */}
           {menuLoading ? (
-            <div className="flex flex-1 items-center justify-center gap-2 text-sm text-slate-400">
-              <Spinner /> Loading menu…
-            </div>
+            <MenuGridSkeleton />
           ) : displayedItems.length === 0 ? (
             <div className="flex flex-1 items-center justify-center text-sm text-slate-400">No items found</div>
           ) : (
