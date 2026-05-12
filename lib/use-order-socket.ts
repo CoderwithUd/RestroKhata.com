@@ -144,6 +144,10 @@ function announceVoice(text: string) {
   }
 }
 
+import { toast } from "react-hot-toast";
+
+// ... previous code ...
+
 export function useOrderSocket({
   token,
   tenantSlug,
@@ -170,6 +174,11 @@ export function useOrderSocket({
   useEffect(() => {
     if (!enabled || typeof window === "undefined") return;
 
+    // Request notification permission on mount if needed
+    if ("Notification" in window && Notification.permission === "default") {
+      Notification.requestPermission();
+    }
+
     const session = readStoredSession();
     
     const onStatus = (connected: boolean) => {
@@ -189,6 +198,7 @@ export function useOrderSocket({
 
       playBeep("new");
       if (liveRef.current.notifications) {
+        toast.success(`New Order: ${label}`, { id: `order-new-${order?.id}` });
         showNotification("New Order", label, `order-new-${order?.id}`);
       }
       if (liveRef.current.voice) {
@@ -207,11 +217,13 @@ export function useOrderSocket({
       if (status === "READY") {
         playBeep("ready");
         if (liveRef.current.notifications) {
+          toast.success(`Order Ready: ${label}`, { id: `order-ready-${order?.id}` });
           showNotification("Order Ready", `${label} ready to serve`, `order-ready-${order?.id}`);
         }
       } else {
         playBeep("update");
         if (liveRef.current.notifications) {
+          toast(`Order Updated: ${label} (${status || "updated"})`, { id: `order-updated-${order?.id}` });
           showNotification("Order Updated", `${label} status: ${status || "updated"}`, `order-updated-${order?.id}`);
         }
       }
@@ -228,6 +240,15 @@ export function useOrderSocket({
     };
 
     const refreshHandler = (data: any) => {
+      // Special handling for kitchen queue new items
+      if ((data?.eventName === "kitchen.queue.changed" || data?.event === "kitchen.queue.changed") && data?.action === "create") {
+        const label = data?.tableName || (data?.table?.number ? `Table ${data.table.number}` : "New Order");
+        playBeep("new");
+        if (liveRef.current.notifications) {
+          toast.success(`New Kitchen Item: ${label}`, { id: `kitchen-new-${data?.lineId}` });
+          showNotification("New Kitchen Item", label, `kitchen-new-${data?.lineId}`);
+        }
+      }
       liveRef.current.onEvent?.({ type: "refresh", ...data });
     };
 

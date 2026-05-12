@@ -446,17 +446,75 @@ export const ordersApi = createApi({
         { type: "Orders", id: "LIST" },
         ...(result?.items.map((o) => ({ type: "Orders" as const, id: o.id })) ?? []),
       ],
-      async onCacheEntryAdded(_arg, { cacheDataLoaded, cacheEntryRemoved, dispatch, getState }) {
+      async onCacheEntryAdded(_arg, { cacheDataLoaded, cacheEntryRemoved, dispatch, getState, updateCachedData }) {
         if (typeof window === "undefined") return;
-
         await cacheDataLoaded;
 
         const invalidate = () => {
-          dispatch(ordersApi.util.invalidateTags([{ type: "Orders" }]));
+          dispatch(ordersApi.util.invalidateTags([{ type: "Orders", id: "LIST" }]));
         };
         const socket = createRealtimeInvalidationSocket({ getState, invalidate, dispatch });
 
+        // Granular updates
+        const handleCreated = (data: any) => {
+          const order = parseOrder(data?.order);
+          if (order) {
+            updateCachedData((draft) => {
+              if (!draft.items.find(o => o.id === order.id)) {
+                draft.items.unshift(order);
+                draft.pagination.total += 1;
+              }
+            });
+          }
+        };
+
+        const handleUpdated = (data: any) => {
+          const order = parseOrder(data?.order);
+          if (order) {
+            updateCachedData((draft) => {
+              const index = draft.items.findIndex((o) => o.id === order.id);
+              if (index !== -1) {
+                draft.items[index] = { ...draft.items[index], ...order };
+              }
+            });
+            // Also update the single order cache if it exists
+            dispatch(
+              ordersApi.util.updateQueryData("getOrderById", order.id, (draft) => {
+                if (draft) Object.assign(draft, order);
+              })
+            );
+          }
+        };
+
+        const handleDelete = (data: any) => {
+          const orderId = data?.orderId || data?.id;
+          if (orderId) {
+            updateCachedData((draft) => {
+              const index = draft.items.findIndex((o) => o.id === orderId);
+              if (index !== -1) {
+                draft.items.splice(index, 1);
+                draft.pagination.total -= 1;
+              }
+            });
+          }
+        };
+
+        socket.on("order.created", handleCreated);
+        socket.on("order:created", handleCreated);
+        socket.on("order.updated", handleUpdated);
+        socket.on("order:updated", handleUpdated);
+        socket.on("order.status_updated", handleUpdated);
+        socket.on("order.deleted", handleDelete);
+        socket.on("order:deleted", handleDelete);
+
         await cacheEntryRemoved;
+        socket.off("order.created", handleCreated);
+        socket.off("order:created", handleCreated);
+        socket.off("order.updated", handleUpdated);
+        socket.off("order:updated", handleUpdated);
+        socket.off("order.status_updated", handleUpdated);
+        socket.off("order.deleted", handleDelete);
+        socket.off("order:deleted", handleDelete);
         destroyRealtimeInvalidationSocket(socket, invalidate);
       },
     }),
@@ -484,17 +542,43 @@ export const ordersApi = createApi({
           id: item.orderId,
         })) ?? []),
       ],
-      async onCacheEntryAdded(_arg, { cacheDataLoaded, cacheEntryRemoved, dispatch, getState }) {
+      async onCacheEntryAdded(_arg, { cacheDataLoaded, cacheEntryRemoved, dispatch, getState, updateCachedData }) {
         if (typeof window === "undefined") return;
-
         await cacheDataLoaded;
 
         const invalidate = () => {
-          dispatch(ordersApi.util.invalidateTags([{ type: "Orders" }]));
+          dispatch(ordersApi.util.invalidateTags([{ type: "Orders", id: "KITCHEN_ITEMS" }]));
         };
         const socket = createRealtimeInvalidationSocket({ getState, invalidate, dispatch });
 
+        const handleKitchenChange = (data: any) => {
+          // For kitchen queue, patching is complex due to various formats.
+          // We'll mostly rely on invalidate for now but try to patch status if possible.
+          const order = parseOrder(data?.order);
+          if (order && order.items) {
+            updateCachedData((draft) => {
+              order.items.forEach(newItem => {
+                const index = draft.items.findIndex(i => i.lineId === newItem.lineId);
+                if (index !== -1) {
+                  draft.items[index] = { ...draft.items[index], kitchenStatus: newItem.kitchenStatus as any };
+                }
+              });
+            });
+          }
+          // If it's a structural change, invalidate
+          if (data?.action === "create" || data?.action === "delete") {
+            invalidate();
+          }
+        };
+
+        socket.on("kitchen.queue.changed", handleKitchenChange);
+        socket.on("order.created", invalidate); // New orders always affect kitchen
+        socket.on("order.status_updated", handleKitchenChange);
+
         await cacheEntryRemoved;
+        socket.off("kitchen.queue.changed", handleKitchenChange);
+        socket.off("order.created", invalidate);
+        socket.off("order.status_updated", handleKitchenChange);
         destroyRealtimeInvalidationSocket(socket, invalidate);
       },
     }),
@@ -535,6 +619,31 @@ export const ordersApi = createApi({
         { type: "Orders", id: "LIST" },
         { type: "Orders", id: orderId },
       ],
+      async onQueryStarted({ orderId, payload }, { dispatch, queryFulfilled }) {
+        const patchSingle = dispatch(
+          ordersApi.util.updateQueryData("getOrderById", orderId, (draft) => {
+            if (draft) {
+              if (payload.status) draft.status = payload.status as any;
+              if (payload.note) draft.note = payload.note;
+            }
+          })
+        );
+        const patchList = dispatch(
+          ordersApi.util.updateQueryData("getOrders", undefined, (draft) => {
+            const index = draft.items.findIndex((o) => o.id === orderId);
+            if (index !== -1) {
+              if (payload.status) draft.items[index].status = payload.status as any;
+              if (payload.note) draft.items[index].note = payload.note;
+            }
+          })
+        );
+        try {
+          await queryFulfilled;
+        } catch {
+          patchSingle.undo();
+          patchList.undo();
+        }
+      },
     }),
 
     deleteOrder: builder.mutation<DeleteOrderResponse, string>({
@@ -551,6 +660,22 @@ export const ordersApi = createApi({
         { type: "Orders", id: "LIST" },
         { type: "Orders", id: orderId },
       ],
+      async onQueryStarted(orderId, { dispatch, queryFulfilled }) {
+        const patchResult = dispatch(
+          ordersApi.util.updateQueryData("getOrders", undefined, (draft) => {
+            const index = draft.items.findIndex((o) => o.id === orderId);
+            if (index !== -1) {
+              draft.items.splice(index, 1);
+              draft.pagination.total -= 1;
+            }
+          })
+        );
+        try {
+          await queryFulfilled;
+        } catch {
+          patchResult.undo();
+        }
+      },
     }),
 
     removeOrderItem: builder.mutation<OrderResponse, RemoveOrderItemArgs>({
@@ -597,7 +722,7 @@ export const ordersApi = createApi({
   }),
 });
 
-registerGlobalRefresh(() => ordersApi.util.invalidateTags([{ type: "Orders" }]));
+
 
 export const {
   useGetOrdersQuery,

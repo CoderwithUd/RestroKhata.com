@@ -229,17 +229,59 @@ export const invoicesApi = createApi({
         { type: "Invoices", id: "LIST" },
         ...(result?.items.map((invoice) => ({ type: "Invoices" as const, id: invoice.id })) ?? []),
       ],
-      async onCacheEntryAdded(_arg, { cacheDataLoaded, cacheEntryRemoved, dispatch, getState }) {
+      async onCacheEntryAdded(_arg, { cacheDataLoaded, cacheEntryRemoved, dispatch, getState, updateCachedData }) {
         if (typeof window === "undefined") return;
-
         await cacheDataLoaded;
 
         const invalidate = () => {
-          dispatch(invoicesApi.util.invalidateTags([{ type: "Invoices" }]));
+          dispatch(invoicesApi.util.invalidateTags([{ type: "Invoices", id: "LIST" }]));
         };
         const socket = createRealtimeInvalidationSocket({ getState, invalidate, dispatch });
 
+        const handleInvoiceEvent = (data: any) => {
+          const invoice = parseInvoice(data?.invoice);
+          if (invoice) {
+            updateCachedData((draft) => {
+              const index = draft.items.findIndex((i) => i.id === invoice.id);
+              if (index !== -1) {
+                draft.items[index] = { ...draft.items[index], ...invoice };
+              } else if (data?.action === "create" || data?.event === "invoice.created") {
+                draft.items.unshift(invoice);
+                draft.pagination.total += 1;
+              }
+            });
+            // Also update single invoice cache
+            dispatch(
+              invoicesApi.util.updateQueryData("getInvoiceById", invoice.id, (draft) => {
+                if (draft) Object.assign(draft, invoice);
+              })
+            );
+          }
+        };
+
+        const handleDelete = (data: any) => {
+          const id = data?.invoiceId || data?.id;
+          if (id) {
+            updateCachedData((draft) => {
+              const index = draft.items.findIndex((i) => i.id === id);
+              if (index !== -1) {
+                draft.items.splice(index, 1);
+                draft.pagination.total -= 1;
+              }
+            });
+          }
+        };
+
+        socket.on("invoice.created", handleInvoiceEvent);
+        socket.on("invoice.updated", handleInvoiceEvent);
+        socket.on("invoice.paid", handleInvoiceEvent);
+        socket.on("invoice.deleted", handleDelete);
+
         await cacheEntryRemoved;
+        socket.off("invoice.created", handleInvoiceEvent);
+        socket.off("invoice.updated", handleInvoiceEvent);
+        socket.off("invoice.paid", handleInvoiceEvent);
+        socket.off("invoice.deleted", handleDelete);
         destroyRealtimeInvalidationSocket(socket, invalidate);
       },
     }),
@@ -305,6 +347,25 @@ export const invoicesApi = createApi({
         { type: "Invoices", id: "LIST" },
         { type: "Invoices", id: invoiceId },
       ],
+      async onQueryStarted({ invoiceId, payload }, { dispatch, queryFulfilled }) {
+        const patchResult = dispatch(
+          invoicesApi.util.updateQueryData("getInvoiceById", invoiceId, (draft) => {
+            if (draft) {
+              draft.status = "PAID";
+              if (draft.payment) {
+                draft.payment.paidAmount = payload.paidAmount;
+                draft.payment.method = payload.method;
+              }
+              draft.balanceDue = 0;
+            }
+          })
+        );
+        try {
+          await queryFulfilled;
+        } catch {
+          patchResult.undo();
+        }
+      },
     }),
 
     deleteInvoice: builder.mutation<DeleteInvoiceResponse, string>({
@@ -325,7 +386,7 @@ export const invoicesApi = createApi({
   }),
 });
 
-registerGlobalRefresh(() => invoicesApi.util.invalidateTags([{ type: "Invoices" }]));
+
 
 export const {
   useGetInvoicesQuery,

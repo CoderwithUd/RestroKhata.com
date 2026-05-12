@@ -134,11 +134,12 @@ export function createRealtimeInvalidationSocket(args: {
   const userId = auth?.user?.id?.trim() || undefined;
 
   const joinRooms = (socket: Socket) => {
-    if (tenantSlug) {
+    // Backend automatically joins tenant:${tenantId} on connection if authenticated.
+    // We can still explicitly join if needed, but ensure we use the right format.
+    if (tenantId) {
+      socket.emit("tenant:join", { tenantId });
+    } else if (tenantSlug) {
       socket.emit("tenant:join", { tenantSlug });
-    }
-    if (tenantId || tenantSlug || userId) {
-      socket.emit("tenant:join", { tenantId, tenantSlug, userId });
     }
   };
 
@@ -146,30 +147,23 @@ export function createRealtimeInvalidationSocket(args: {
     // If auth changed, update socket auth and re-join rooms
     const isAuthChanged = token !== lastAuthToken || tenantSlug !== lastTenantSlug;
     if (isAuthChanged) {
-      console.info("[Realtime] Auth change detected:", {
-        tokenChanged: token !== lastAuthToken,
-        tenantChanged: tenantSlug !== lastTenantSlug,
-      });
+      console.info("[Realtime] Auth change detected, updating socket...");
       
       sharedSocket.auth = {
-        token: token ? `Bearer ${token}` : undefined,
+        accessToken: token || undefined,
         tenantSlug,
       };
       
-      // Also update query for backwards compatibility
+      // Update query for backwards compatibility
       (sharedSocket as any).query = tenantSlug ? { tenantSlug } : {};
       
       lastAuthToken = token;
       lastTenantSlug = tenantSlug;
 
       if (sharedSocket.connected) {
-        console.info("[Realtime] Re-joining rooms on existing connection");
         joinRooms(sharedSocket);
       } else if (token && token.length > 10) {
-        console.info("[Realtime] Socket not connected, attempting connection with token...");
         sharedSocket.connect();
-      } else {
-        console.info("[Realtime] Socket deferred: No valid token available yet.");
       }
     }
     // If we have a socket (existing or newly created), notify the caller's connection listener
@@ -192,7 +186,7 @@ export function createRealtimeInvalidationSocket(args: {
     reconnectionAttempts: Infinity,
     reconnectionDelay: 1000,
     auth: {
-      token: token ? `Bearer ${token}` : undefined,
+      accessToken: token || undefined,
       tenantSlug,
     },
     query: tenantSlug ? { tenantSlug } : undefined,
@@ -207,12 +201,23 @@ export function createRealtimeInvalidationSocket(args: {
   REALTIME_REFRESH_EVENTS.forEach((eventName) => {
     sharedSocket?.on(eventName, (data: any) => {
       console.info(`[Realtime] 📥 Event received: ${eventName}`, data);
+      
       // 1. Debounced Menu Cache Clear (Heavy DB op)
-      if (!data?.scope || data.scope === "menu" || data.scope === "all" || eventName.startsWith("menu") || eventName.startsWith("item") || eventName.startsWith("category")) {
+      const isMenuEvent = !data?.scope || data.scope === "menu" || data.scope === "all" || 
+                          eventName.startsWith("menu") || eventName.startsWith("item") || 
+                          eventName.startsWith("category");
+      
+      if (isMenuEvent) {
         debouncedMenuClear();
       }
-      // 2. Debounced RTK Query Invalidation
-      triggerSharedInvalidation();
+
+      // 2. Selective RTK Query Invalidation
+      // Only invalidate for api_refresh or events that are too complex to patch
+      const isRefreshEvent = eventName === "api.refresh" || eventName === "api_refresh";
+      
+      if (isRefreshEvent) {
+        triggerSharedInvalidation();
+      }
     });
   });
 
