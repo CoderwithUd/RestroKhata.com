@@ -1,6 +1,10 @@
 import { createApi } from "@reduxjs/toolkit/query/react";
 import type { FetchArgs, FetchBaseQueryError } from "@reduxjs/toolkit/query";
 import { io } from "socket.io-client";
+import {
+  createRealtimeInvalidationSocket,
+  destroyRealtimeInvalidationSocket,
+} from "@/store/api/realtime";
 import { parseAuthPayload } from "@/lib/auth-payload";
 import { readStoredSession } from "@/lib/auth-session";
 import { RAW_API_BASE_URL } from "@/lib/constants";
@@ -1001,47 +1005,18 @@ export const authApi = createApi({
           "",
         );
 
-        const socket = io(socketBaseUrl, {
-          withCredentials: true,
-          transports: ["websocket", "polling"],
-          auth: {
-            token: token ? `Bearer ${token}` : undefined,
-            tenantId,
-            tenantSlug,
-            userId,
+        const socket = createRealtimeInvalidationSocket({
+          getState,
+          invalidate: () => {
+            dispatch(authApi.util.invalidateTags([{ type: "Orders", id: "LIST" }]));
           },
-          query: tenantId || tenantSlug ? { tenantId, tenantSlug } : undefined,
-        });
-
-        const refreshOrders = () => {
-          dispatch(
-            authApi.util.invalidateTags([{ type: "Orders", id: "LIST" }]),
-          );
-        };
-
-        const events = [
-          "api.refresh",
-          "kitchen.queue.changed",
-        ] as const;
-
-        events.forEach((eventName) => {
-          socket.on(eventName, refreshOrders);
-        });
-
-        socket.on("connect", () => {
-          if (tenantSlug) {
-            socket.emit("tenant:join", { tenantSlug });
-          }
-          if (tenantId || tenantSlug || userId) {
-            socket.emit("tenant:join", { tenantId, tenantSlug, userId });
-          }
+          dispatch,
         });
 
         await cacheEntryRemoved;
-        events.forEach((eventName) => {
-          socket.off(eventName, refreshOrders);
+        destroyRealtimeInvalidationSocket(socket, () => {
+          dispatch(authApi.util.invalidateTags([{ type: "Orders", id: "LIST" }]));
         });
-        socket.disconnect();
       },
     }),
 

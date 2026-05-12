@@ -1122,6 +1122,7 @@ export function DashboardCard({ section }: DashboardCardProps) {
 
   useOrderSocket({
     token,
+    tenantSlug: tentantProfile?.tenant?.slug,
     enabled: true,
     role,
     onEvent: (event) => {

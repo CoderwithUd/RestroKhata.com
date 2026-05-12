@@ -58,6 +58,7 @@ let lastTenantSlug: string | undefined = undefined;
 let activeInvalidators = new Set<() => void>();
 let globalRefreshThunks = new Set<() => any>(); // Registry for API-wide refreshes
 let sharedDispatch: any = null;
+let statusListeners = new Set<(connected: boolean) => void>();
 let debounceTimer: any = null;
 let menuClearTimer: any = null;
 
@@ -109,6 +110,7 @@ export function createRealtimeInvalidationSocket(args: {
   getState: () => unknown;
   invalidate: () => void;
   dispatch?: any;
+  onConnectionChange?: (connected: boolean) => void;
 }): Socket {
   // Store dispatch for global refreshes
   if (!sharedDispatch && args.dispatch) {
@@ -120,6 +122,9 @@ export function createRealtimeInvalidationSocket(args: {
 
   // Add this specific invalidator to the shared set
   activeInvalidators.add(args.invalidate);
+  if (args.onConnectionChange) {
+    statusListeners.add(args.onConnectionChange);
+  }
 
   // Create or Update the shared socket
   const auth = (args.getState() as RealtimeState | undefined)?.auth;
@@ -139,18 +144,35 @@ export function createRealtimeInvalidationSocket(args: {
 
   if (sharedSocket) {
     // If auth changed, update socket auth and re-join rooms
-    if (token !== lastAuthToken || tenantSlug !== lastTenantSlug) {
-      console.info("[Realtime] Auth changed, reconnecting socket...");
+    const isAuthChanged = token !== lastAuthToken || tenantSlug !== lastTenantSlug;
+    if (isAuthChanged) {
+      console.info("[Realtime] Auth change detected:", {
+        tokenChanged: token !== lastAuthToken,
+        tenantChanged: tenantSlug !== lastTenantSlug,
+      });
+      
       sharedSocket.auth = {
         token: token ? `Bearer ${token}` : undefined,
         tenantSlug,
       };
       
-      // Force a clean reconnect with new auth
-      sharedSocket.disconnect().connect();
+      // Also update query for backwards compatibility
+      (sharedSocket as any).query = tenantSlug ? { tenantSlug } : {};
       
       lastAuthToken = token;
       lastTenantSlug = tenantSlug;
+
+      if (sharedSocket.connected) {
+        console.info("[Realtime] Re-joining rooms on existing connection");
+        joinRooms(sharedSocket);
+      } else {
+        console.info("[Realtime] Socket not connected, attempting connection...");
+        sharedSocket.connect();
+      }
+    }
+    // If we have a socket (existing or newly created), notify the caller's connection listener
+    if (args.onConnectionChange) {
+      args.onConnectionChange(sharedSocket.connected);
     }
     return sharedSocket;
   }
@@ -160,7 +182,7 @@ export function createRealtimeInvalidationSocket(args: {
 
   sharedSocket = io(socketBaseUrl(), {
     withCredentials: true,
-    transports: ["websocket", "polling"],
+    transports: ["polling", "websocket"],
     autoConnect: true,
     reconnection: true,
     reconnectionAttempts: Infinity,
@@ -171,6 +193,11 @@ export function createRealtimeInvalidationSocket(args: {
     },
     query: tenantSlug ? { tenantSlug } : undefined,
   });
+
+  // Notify connection status for the first time
+  if (args.onConnectionChange) {
+    args.onConnectionChange(sharedSocket.connected);
+  }
 
   REALTIME_REFRESH_EVENTS.forEach((eventName) => {
     sharedSocket?.on(eventName, (data: any) => {
@@ -184,12 +211,23 @@ export function createRealtimeInvalidationSocket(args: {
   });
 
   sharedSocket.on("connect", () => {
-    console.info("[Realtime] Shared socket connected:", sharedSocket?.id);
+    console.info("[Realtime] ✅ Socket connected successfully. ID:", sharedSocket?.id);
+    statusListeners.forEach((fn) => fn(true));
     if (sharedSocket) joinRooms(sharedSocket);
   });
 
-  sharedSocket.on("disconnect", () => {
-    console.log("[Realtime] Shared socket disconnected");
+  sharedSocket.on("connect_error", (error) => {
+    console.error("[Realtime] ❌ Connection error:", error.message);
+    statusListeners.forEach((fn) => fn(false));
+  });
+
+  sharedSocket.on("reconnect_attempt", (attempt) => {
+    console.info("[Realtime] 🔄 Reconnection attempt #", attempt);
+  });
+
+  sharedSocket.on("disconnect", (reason) => {
+    console.warn("[Realtime] 🔌 Socket disconnected. Reason:", reason);
+    statusListeners.forEach((fn) => fn(false));
   });
 
   return sharedSocket;
@@ -198,9 +236,11 @@ export function createRealtimeInvalidationSocket(args: {
 export function destroyRealtimeInvalidationSocket(
   socket: Socket,
   invalidate: () => void,
+  onConnectionChange?: (connected: boolean) => void,
 ): void {
   // Remove this specific invalidator
   activeInvalidators.delete(invalidate);
+  if (onConnectionChange) statusListeners.delete(onConnectionChange);
 
   // We don't disconnect the shared socket unless all invalidators are gone
   if (activeInvalidators.size === 0 && sharedSocket) {

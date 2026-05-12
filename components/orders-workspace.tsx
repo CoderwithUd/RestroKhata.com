@@ -2458,6 +2458,7 @@ function WaiterView({
   // ── Socket: real-time updates ──────────────────────────────────────────────
   useOrderSocket({
     token,
+    tenantSlug: tenantProfile?.tenant?.slug,
     enabled: true,
     role: "waiter",
     onConnectionChange: setSocketConnected,
@@ -3793,6 +3794,7 @@ function ManagerView({ role }: { role: RoleKey }) {
   const router = useRouter();
   const confirm = useConfirm();
   const token = useAppSelector(selectAuthToken);
+  const { data: tenantProfile } = useTentantProfileQuery();
   const loadMoreRef = useRef<HTMLDivElement | null>(null);
   const [statusFilter, setStatusFilter] = useState<string>("active");
   const [ordersPage, setOrdersPage] = useState(1);
@@ -3834,6 +3836,7 @@ function ManagerView({ role }: { role: RoleKey }) {
   // ── Socket ────────────────────────────────────────────────────────────────
   useOrderSocket({
     token,
+    tenantSlug: tenantProfile?.tenant?.slug,
     enabled: true,
     role,
     onConnectionChange: setSocketConnected,
@@ -4332,6 +4335,7 @@ function KitchenView() {
 
   useOrderSocket({
     token,
+    tenantSlug: tenantProfile?.tenant?.slug,
     enabled: true,
     role: "kitchen",
     onConnectionChange: setSocketConnected,

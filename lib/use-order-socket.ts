@@ -2,7 +2,7 @@
 
 import { useEffect, useRef } from "react";
 import { readStoredSession } from "@/lib/auth-session";
-import { RAW_API_BASE_URL } from "@/lib/constants";
+import type { Socket } from "socket.io-client";
 
 export type SocketOrderEvent = {
   type: "created" | "updated" | "deleted" | "refresh";
@@ -31,10 +31,6 @@ type UseOrderSocketOptions = {
   onConnectionChange?: (connected: boolean) => void;
   onEvent?: (event: SocketOrderEvent) => void;
 };
-
-function socketBaseUrl(): string {
-  return RAW_API_BASE_URL.replace(/\/+$/, "").replace(/\/api$/, "");
-}
 
 function normalizeStatus(status?: string): string {
   return (status || "").toUpperCase();
@@ -85,14 +81,6 @@ function playBeep(type: "new" | "ready" | "update") {
   } catch {
     // Silent fallback.
   }
-}
-
-async function requestNotificationPermission(): Promise<boolean> {
-  if (typeof window === "undefined" || !("Notification" in window)) return false;
-  if (Notification.permission === "granted") return true;
-  if (Notification.permission === "denied") return false;
-  const result = await Notification.requestPermission();
-  return result === "granted";
 }
 
 function showNotification(title: string, body: string, tag: string) {
@@ -148,17 +136,12 @@ function announceVoice(text: string) {
     utterance.rate = 1;
     utterance.pitch = 1;
     utterance.volume = 0.9;
-    window.speechSynthesis.cancel();
+    window.speechSynthesis.cancel(); // Stop any pending speech
     window.speechSynthesis.speak(utterance);
   } catch {
     // Silent fallback.
   }
 }
-
-type LiveOptions = Pick<
-  UseOrderSocketOptions,
-  "role" | "voice" | "notifications" | "onEvent" | "onConnectionChange"
->;
 
 export function useOrderSocket({
   token,
@@ -170,40 +153,40 @@ export function useOrderSocket({
   onConnectionChange,
   onEvent,
 }: UseOrderSocketOptions) {
-  const liveRef = useRef<LiveOptions>({
+  const liveRef = useRef({
     role,
-    voice,
     notifications,
-    onEvent,
+    voice,
     onConnectionChange,
+    onEvent,
   });
 
-  liveRef.current = {
-    role,
-    voice,
-    notifications,
-    onEvent,
-    onConnectionChange,
-  };
+  useEffect(() => {
+    liveRef.current = { role, notifications, voice, onConnectionChange, onEvent };
+  }, [role, notifications, voice, onConnectionChange, onEvent]);
 
   useEffect(() => {
-    if (!enabled || (!token && !tenantSlug) || typeof window === "undefined") return;
+    if (!enabled || typeof window === "undefined") return;
 
-    let socket: import("socket.io-client").Socket | null = null;
+    let socket: Socket | null = null;
     let destroyed = false;
 
     async function connect() {
-      if (liveRef.current.notifications) {
-        await requestNotificationPermission();
-      }
-
-      const { getSharedSocket } = await import("@/store/api/realtime");
+      const { createRealtimeInvalidationSocket, destroyRealtimeInvalidationSocket } = await import("@/store/api/realtime");
       const session = readStoredSession();
-      const tenantId = session?.tenant?.id?.trim() || undefined;
-      const userId = session?.user?.id?.trim() || undefined;
-      if (destroyed) return;
       
-      socket = getSharedSocket({ auth: session });
+      if (destroyed) return;
+
+      const onStatus = (connected: boolean) => {
+        if (!destroyed) liveRef.current.onConnectionChange?.(connected);
+      };
+
+      // We use createRealtimeInvalidationSocket as it handles singleton logic
+      socket = createRealtimeInvalidationSocket({
+        getState: () => ({ auth: session }),
+        invalidate: () => {}, // Handled by global registry now
+        onConnectionChange: onStatus
+      });
 
       const createdHandler = (data: { order?: SocketOrderEvent["order"] }) => {
         const order = data?.order;
@@ -218,11 +201,7 @@ export function useOrderSocket({
           const text = buildVoiceText(currentRole, { type: "created", order });
           if (text) announceVoice(text);
         }
-
-        liveRef.current.onEvent?.({
-          type: "created",
-          order,
-        });
+        liveRef.current.onEvent?.({ type: "created", order });
       };
 
       const updatedHandler = (data: { order?: SocketOrderEvent["order"] }) => {
@@ -247,88 +226,55 @@ export function useOrderSocket({
           const text = buildVoiceText(currentRole, { type: "updated", order });
           if (text) announceVoice(text);
         }
-
-        liveRef.current.onEvent?.({
-          type: "updated",
-          order,
-        });
+        liveRef.current.onEvent?.({ type: "updated", order });
       };
 
       const deletedHandler = (data: { orderId?: string }) => {
-        liveRef.current.onEvent?.({
-          type: "deleted",
-          orderId: data?.orderId,
-        });
+        liveRef.current.onEvent?.({ type: "deleted", orderId: data?.orderId });
       };
 
-      const refreshHandler = (data: {
-        scope?: string;
-        action?: string;
-        orderId?: string;
-        invoiceId?: string;
-        tableId?: string;
-        targetTableId?: string;
-      }) => {
+      const refreshHandler = (data: any) => {
         liveRef.current.onEvent?.({
           type: "refresh",
-          scope: data?.scope,
-          action: data?.action,
-          orderId: data?.orderId,
-          invoiceId: data?.invoiceId,
-          tableId: data?.tableId,
-          targetTableId: data?.targetTableId,
+          ...data
         });
       };
 
-      socket.on("connect", () => {
-        console.info("[OrderSocket] Connected:", socket?.id);
-        if (tenantSlug) {
-          socket?.emit("tenant:join", { tenantSlug });
+      // Listeners
+      const events = {
+        created: ["order.created", "order:created"],
+        updated: ["order.updated", "order:updated", "order.status_updated", "order:status_updated"],
+        deleted: ["order.deleted", "order:deleted"],
+        refresh: [
+          "invoice.created", "invoice.updated", "invoice.deleted", "invoice.paid",
+          "invoice:created", "invoice:updated", "invoice:deleted", "invoice:paid",
+          "kitchen.queue.changed", "table.updated", "table:updated", "api.refresh"
+        ]
+      };
+
+      events.created.forEach(e => socket?.on(e, createdHandler));
+      events.updated.forEach(e => socket?.on(e, updatedHandler));
+      events.deleted.forEach(e => socket?.on(e, deletedHandler));
+      events.refresh.forEach(e => socket?.on(e, refreshHandler));
+
+      // Cleanup function within effect
+      return () => {
+        destroyed = true;
+        events.created.forEach(e => socket?.off(e, createdHandler));
+        events.updated.forEach(e => socket?.off(e, updatedHandler));
+        events.deleted.forEach(e => socket?.off(e, deletedHandler));
+        events.refresh.forEach(e => socket?.off(e, refreshHandler));
+        
+        if (socket) {
+          destroyRealtimeInvalidationSocket(socket, () => {}, onStatus);
         }
-        if (tenantId || tenantSlug || userId) {
-          socket?.emit("tenant:join", { tenantId, tenantSlug, userId });
-        }
-        liveRef.current.onConnectionChange?.(true);
-      });
-
-      socket.on("disconnect", (reason) => {
-        console.info("[OrderSocket] Disconnected:", reason);
-        liveRef.current.onConnectionChange?.(false);
-      });
-
-      socket.on("connect_error", (error) => {
-        console.warn("[OrderSocket] Connection error:", error.message);
-        liveRef.current.onConnectionChange?.(false);
-      });
-
-      ["order.created", "order:created"].forEach((eventName) => socket?.on(eventName, createdHandler));
-      ["order.updated", "order:updated", "order.status_updated", "order:status_updated"].forEach((eventName) => socket?.on(eventName, updatedHandler));
-      ["order.deleted", "order:deleted"].forEach((eventName) => socket?.on(eventName, deletedHandler));
-      [
-        "invoice.created",
-        "invoice.updated",
-        "invoice.deleted",
-        "invoice.paid",
-        "invoice:created",
-        "invoice:updated",
-        "invoice:deleted",
-        "invoice:paid",
-        "kitchen.queue.changed",
-        "table.updated",
-        "table:updated",
-        "api.refresh",
-      ].forEach((eventName) =>
-        socket?.on(eventName, refreshHandler),
-      );
+      };
     }
 
-    connect();
+    const cleanupPromise = connect();
 
     return () => {
-      destroyed = true;
-      liveRef.current.onConnectionChange?.(false);
-      socket?.disconnect();
-      socket = null;
+      cleanupPromise.then(cleanup => cleanup?.());
     };
   }, [token, tenantSlug, enabled]);
 }

@@ -687,6 +687,7 @@ export function InvoicesWorkspace({ rawRole }: Props) {
 
   useOrderSocket({
     token,
+    tenantSlug: tenantProfile?.tenant?.slug,
     enabled: true,
     role,
     onConnectionChange: setSocketConnected,
