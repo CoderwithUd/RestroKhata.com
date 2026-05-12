@@ -3,6 +3,7 @@ import { baseQueryWithReauth } from "@/store/api/baseQuery";
 import {
   createRealtimeInvalidationSocket,
   destroyRealtimeInvalidationSocket,
+  registerGlobalRefresh,
 } from "@/store/api/realtime";
 import { getCachedMenuResponse, setCachedMenuResponse } from "@/lib/menu-cache";
 import type {
@@ -505,7 +506,9 @@ export const menuApi = createApi({
         const invalidate = () => {
           dispatch(menuApi.util.invalidateTags([{ type: "MenuCategories", id: "LIST" }, { type: "MenuAggregate", id: "TREE" }]));
         };
-        const socket = createRealtimeInvalidationSocket({ getState, invalidate });
+        registerGlobalRefresh(() => menuApi.util.invalidateTags([{ type: "MenuCategories", id: "LIST" }, { type: "MenuAggregate", id: "TREE" }]));
+        
+        const socket = createRealtimeInvalidationSocket({ getState, invalidate, dispatch });
         await cacheEntryRemoved;
         destroyRealtimeInvalidationSocket(socket, invalidate);
       },
@@ -580,7 +583,9 @@ export const menuApi = createApi({
         const invalidate = () => {
           dispatch(menuApi.util.invalidateTags([{ type: "MenuOptionGroups", id: "LIST" }, { type: "MenuAggregate", id: "TREE" }]));
         };
-        const socket = createRealtimeInvalidationSocket({ getState, invalidate });
+        registerGlobalRefresh(() => menuApi.util.invalidateTags([{ type: "MenuOptionGroups", id: "LIST" }, { type: "MenuAggregate", id: "TREE" }]));
+        
+        const socket = createRealtimeInvalidationSocket({ getState, invalidate, dispatch });
         await cacheEntryRemoved;
         destroyRealtimeInvalidationSocket(socket, invalidate);
       },
@@ -711,7 +716,9 @@ export const menuApi = createApi({
         const invalidate = () => {
           dispatch(menuApi.util.invalidateTags([{ type: "MenuItems", id: "LIST" }, { type: "MenuAggregate", id: "TREE" }]));
         };
-        const socket = createRealtimeInvalidationSocket({ getState, invalidate });
+        registerGlobalRefresh(() => menuApi.util.invalidateTags([{ type: "MenuItems", id: "LIST" }, { type: "MenuAggregate", id: "TREE" }]));
+        
+        const socket = createRealtimeInvalidationSocket({ getState, invalidate, dispatch });
         await cacheEntryRemoved;
         destroyRealtimeInvalidationSocket(socket, invalidate);
       },
@@ -806,7 +813,9 @@ export const menuApi = createApi({
         const invalidate = () => {
           dispatch(menuApi.util.invalidateTags([{ type: "MenuAggregate", id: "TREE" }, { type: "MenuCategories", id: "LIST" }, { type: "MenuItems", id: "LIST" }]));
         };
-        const socket = createRealtimeInvalidationSocket({ getState, invalidate });
+        registerGlobalRefresh(() => menuApi.util.invalidateTags([{ type: "MenuAggregate", id: "TREE" }, { type: "MenuCategories", id: "LIST" }, { type: "MenuItems", id: "LIST" }]));
+        
+        const socket = createRealtimeInvalidationSocket({ getState, invalidate, dispatch });
         await cacheEntryRemoved;
         destroyRealtimeInvalidationSocket(socket, invalidate);
       },

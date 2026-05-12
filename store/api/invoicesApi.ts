@@ -3,6 +3,7 @@ import { baseQueryWithReauth } from "@/store/api/baseQuery";
 import {
   createRealtimeInvalidationSocket,
   destroyRealtimeInvalidationSocket,
+  registerGlobalRefresh,
 } from "@/store/api/realtime";
 import type {
   CreateInvoicePayload,
@@ -238,7 +239,9 @@ export const invoicesApi = createApi({
         const invalidate = () => {
           dispatch(invoicesApi.util.invalidateTags([{ type: "Invoices", id: "LIST" }]));
         };
-        const socket = createRealtimeInvalidationSocket({ getState, invalidate });
+        registerGlobalRefresh(() => invoicesApi.util.invalidateTags([{ type: "Invoices", id: "LIST" }]));
+        
+        const socket = createRealtimeInvalidationSocket({ getState, invalidate, dispatch });
 
         await cacheEntryRemoved;
         destroyRealtimeInvalidationSocket(socket, invalidate);

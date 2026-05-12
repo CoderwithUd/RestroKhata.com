@@ -3,6 +3,7 @@ import { baseQueryWithReauth } from "@/store/api/baseQuery";
 import {
   createRealtimeInvalidationSocket,
   destroyRealtimeInvalidationSocket,
+  registerGlobalRefresh,
 } from "@/store/api/realtime";
 import type {
   CancelOrderItemArgs,
@@ -454,7 +455,10 @@ export const ordersApi = createApi({
         const invalidate = () => {
           dispatch(ordersApi.util.invalidateTags([{ type: "Orders", id: "LIST" }]));
         };
-        const socket = createRealtimeInvalidationSocket({ getState, invalidate });
+        // Register for global refreshes even if this component unmounts
+        registerGlobalRefresh(() => ordersApi.util.invalidateTags([{ type: "Orders", id: "LIST" }]));
+        
+        const socket = createRealtimeInvalidationSocket({ getState, invalidate, dispatch });
 
         await cacheEntryRemoved;
         destroyRealtimeInvalidationSocket(socket, invalidate);
