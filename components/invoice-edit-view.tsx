@@ -10,8 +10,10 @@ import {
   useCreateInvoiceMutation,
   useDeleteInvoiceMutation,
 } from "@/store/api/invoicesApi";
+// Force re-compile to fix ReferenceError
 import {
   useGetOrdersQuery,
+  useGetOrderByIdQuery,
   useRemoveOrderItemMutation,
   useCancelOrderItemMutation,
   useMoveOrderItemMutation,
@@ -48,20 +50,35 @@ type Props = {
   invoiceId?: string;
   orderIds?: string[];
   onBack?: () => void;
+  onSuccess?: (invoiceId: string) => void;
 };
 
-export function InvoiceEditView({ invoiceId, orderIds, onBack }: Props) {
+export function InvoiceEditView({ invoiceId, orderIds, onBack, onSuccess }: Props) {
   const router = useRouter();
 
   // Queries
   const { data: invoice, isFetching: isInvoiceFetching, refetch: refetchInvoice } = useGetInvoiceByIdQuery(invoiceId || "", { skip: !invoiceId });
-  const { data: ordersData, refetch: refetchOrders } = useGetOrdersQuery({ status: ["PLACED", "IN_PROGRESS", "READY", "SERVED", "COMPLETED"] });
+  
+  // Use the same query as the dashboard to get instant cache hits for live orders
+  const { data: ordersData, refetch: refetchOrders } = useGetOrdersQuery({ 
+    status: ["PLACED", "IN_PROGRESS", "READY", "SERVED"],
+    page: 1,
+    limit: 100
+  });
+
+  // Also fetch the specific order if it's COMPLETED (and thus not in the live orders list)
+  const { data: specificOrder } = useGetOrderByIdQuery(invoice?.orderId || orderIds?.[0] || "", { 
+    skip: !invoice?.orderId && (!orderIds || orderIds.length === 0) 
+  });
+
   const { data: tablesData } = useGetTablesQuery({ isActive: true });
 
   // State for search
   const [searchQuery, setSearchQuery] = useState("");
   const { data: menuData, isFetching: isMenuFetching } = useGetMenuItemsQuery(
-    searchQuery.trim().length > 1 ? { q: searchQuery, limit: 10 } : { page: 1, limit: 20 },
+    searchQuery.trim().length > 1 
+      ? { q: searchQuery, limit: 10 } 
+      : { page: 1, limit: 100 }, // Match dashboard limit for initial load
     { skip: searchQuery.trim().length === 1 }
   );
 
@@ -96,16 +113,23 @@ export function InvoiceEditView({ invoiceId, orderIds, onBack }: Props) {
   }, [invoice]);
 
   const relevantOrders = useMemo(() => {
-    if (!ordersData?.items) return [];
+    // Combine list data with the specific order fetch
+    const allAvailableOrders = [...(ordersData?.items || [])];
+    if (specificOrder) {
+      if (!allAvailableOrders.find(o => o.id === specificOrder.id)) {
+        allAvailableOrders.push(specificOrder);
+      }
+    }
+
     if (invoiceId && invoice?.orderId) {
       const ids = [invoice.orderId, ...(invoice.orderIds || [])];
-      return ordersData.items.filter(o => ids.includes(o.id));
+      return allAvailableOrders.filter(o => ids.includes(o.id));
     }
     if (orderIds) {
-      return ordersData.items.filter(o => orderIds.includes(o.id));
+      return allAvailableOrders.filter(o => orderIds.includes(o.id));
     }
     return [];
-  }, [invoice, invoiceId, orderIds, ordersData?.items]);
+  }, [invoice, invoiceId, orderIds, ordersData?.items, specificOrder]);
 
   const baseItems = useMemo(() => {
     const items: (OrderItem & { orderId: string })[] = [];
@@ -282,10 +306,18 @@ export function InvoiceEditView({ invoiceId, orderIds, onBack }: Props) {
     try {
       if (invoiceId) {
         await updateInvoice({ invoiceId, payload }).unwrap();
-        router.replace(`/dashboard/invoices/${invoiceId}/preview`);
+        if (onSuccess) {
+          onSuccess(invoiceId);
+        } else {
+          router.replace(`/dashboard/invoices/${invoiceId}/preview`);
+        }
       } else if (orderIds?.length) {
         const res = await createInvoice({ orderId: orderIds[0], ...payload }).unwrap();
-        router.replace(`/dashboard/invoices/${res.invoice.id}/preview`);
+        if (onSuccess) {
+          onSuccess(res.invoice.id);
+        } else {
+          router.replace(`/dashboard/invoices/${res.invoice.id}/preview`);
+        }
       }
       showSuccess("Done");
     } catch (e) {

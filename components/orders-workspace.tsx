@@ -452,7 +452,13 @@ function TableGrid({
   issuedInvoiceTableIds,
   appendSignals,
   onSelectTable,
+  isLoading,
 }: {
+  tables: TableRecord[];
+  orders: OrderRecord[];
+  invoicedOrderIds: Set<string>;
+  issuedInvoiceTableIds: Set<string>;
+  appendSignals: Record<string, OrderAppendSignal>;
   onSelectTable: (table: TableRecord) => void;
   isLoading?: boolean;
 }) {
@@ -482,83 +488,83 @@ function TableGrid({
       ) : (
         <div className="grid grid-cols-3 gap-2.5 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-7">
           {tables.map((table) => {
-          const tableOrders = activeOrdersByTable[table.id] || [];
-          const latestOrder = tableOrders[0];
-          const hasOrder = tableOrders.length > 0;
-          const billingLocked = issuedInvoiceTableIds.has(table.id);
-          const readyCount = tableOrders.filter((order) =>
-            canGenerateInvoiceForStatus(order.status),
-          ).length;
-          const qrCount = tableOrders.filter(
-            (order) => normalizeStatus(order.source) === "QR",
-          ).length;
-          const appendSignal = latestOrder
-            ? appendSignals[latestOrder.id]
-            : undefined;
-          const visualStatus = hasOrder ? "OCCUPIED" : table.status;
-          return (
-            <div
-              key={table.id}
-              className={`flex aspect-square flex-col rounded-2xl border-2 text-center text-xs font-semibold ${tableStatusClass(visualStatus)}`}
-            >
-              <button
-                type="button"
-                onClick={() => {
-                  // if (!billingLocked) onSelectTable(table);
-                  onSelectTable(table);
-                }}
-                // disabled={billingLocked}
-                className="flex flex-1 flex-col items-center justify-center gap-0.5 rounded-t-[calc(1rem-2px)] px-1 transition active:scale-95 hover:scale-[1.03] disabled:cursor-not-allowed disabled:opacity-70"
+            const tableOrders = activeOrdersByTable[table.id] || [];
+            const latestOrder = tableOrders[0];
+            const hasOrder = tableOrders.length > 0;
+            const billingLocked = issuedInvoiceTableIds.has(table.id);
+            const readyCount = tableOrders.filter((order) =>
+              canGenerateInvoiceForStatus(order.status),
+            ).length;
+            const qrCount = tableOrders.filter(
+              (order) => normalizeStatus(order.source) === "QR",
+            ).length;
+            const appendSignal = latestOrder
+              ? appendSignals[latestOrder.id]
+              : undefined;
+            const visualStatus = hasOrder ? "OCCUPIED" : table.status;
+            return (
+              <div
+                key={table.id}
+                className={`flex aspect-square flex-col rounded-2xl border-2 text-center text-xs font-semibold ${tableStatusClass(visualStatus)}`}
               >
-                <span className="text-base font-bold">T{table.number}</span>
-                <span className="text-[10px] opacity-70">
-                  {table.capacity}p
-                </span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    // if (!billingLocked) onSelectTable(table);
+                    onSelectTable(table);
+                  }}
+                  // disabled={billingLocked}
+                  className="flex flex-1 flex-col items-center justify-center gap-0.5 rounded-t-[calc(1rem-2px)] px-1 transition active:scale-95 hover:scale-[1.03] disabled:cursor-not-allowed disabled:opacity-70"
+                >
+                  <span className="text-base font-bold">T{table.number}</span>
+                  <span className="text-[10px] opacity-70">
+                    {table.capacity}p
+                  </span>
+                  {billingLocked ? (
+                    <span className="rounded-full bg-slate-900 px-1.5 py-0.5 text-[9px] font-bold text-white">
+                      Billing
+                    </span>
+                  ) : hasOrder ? (
+                    <span className="rounded-full bg-amber-500 px-1.5 py-0.5 text-[9px] font-bold text-white">
+                      {tableOrders.length} active
+                    </span>
+                  ) : (
+                    <span className="mt-0.5 text-[9px] opacity-60">
+                      {(table.status || "available").toLowerCase()}
+                    </span>
+                  )}
+                </button>
                 {billingLocked ? (
-                  <span className="rounded-full bg-slate-900 px-1.5 py-0.5 text-[9px] font-bold text-white">
-                    Billing
-                  </span>
+                  <div className="px-1 pb-1">
+                    <span className="block w-full rounded-full border border-slate-300 bg-white px-1.5 py-0.5 text-[9px] font-bold text-slate-600">
+                      Invoice Issued
+                    </span>
+                  </div>
+                ) : appendSignal ? (
+                  <div className="px-1 pb-1">
+                    <span className="block w-full rounded-full border border-amber-300 bg-amber-100 px-1.5 py-0.5 text-[9px] font-bold text-amber-900">
+                      +{appendSignal.totalAddedQty} new
+                    </span>
+                  </div>
                 ) : hasOrder ? (
-                  <span className="rounded-full bg-amber-500 px-1.5 py-0.5 text-[9px] font-bold text-white">
-                    {tableOrders.length} active
-                  </span>
-                ) : (
-                  <span className="mt-0.5 text-[9px] opacity-60">
-                    {(table.status || "available").toLowerCase()}
-                  </span>
-                )}
-              </button>
-              {billingLocked ? (
-                <div className="px-1 pb-1">
-                  <span className="block w-full rounded-full border border-slate-300 bg-white px-1.5 py-0.5 text-[9px] font-bold text-slate-600">
-                    Invoice Issued
-                  </span>
-                </div>
-              ) : appendSignal ? (
-                <div className="px-1 pb-1">
-                  <span className="block w-full rounded-full border border-amber-300 bg-amber-100 px-1.5 py-0.5 text-[9px] font-bold text-amber-900">
-                    +{appendSignal.totalAddedQty} new
-                  </span>
-                </div>
-              ) : hasOrder ? (
-                <div className="px-1 pb-1">
-                  <span className="block w-full rounded-full border border-slate-200 bg-white px-1.5 py-0.5 text-[9px] font-bold text-slate-600">
-                    {readyCount > 0
-                      ? `${readyCount} ready`
-                      : STATUS_LABELS[latestOrder?.status || ""] || "Running"}
-                    {qrCount > 0 ? ` | ${qrCount} QR` : ""}
-                  </span>
-                </div>
-              ) : null}
+                  <div className="px-1 pb-1">
+                    <span className="block w-full rounded-full border border-slate-200 bg-white px-1.5 py-0.5 text-[9px] font-bold text-slate-600">
+                      {readyCount > 0
+                        ? `${readyCount} ready`
+                        : STATUS_LABELS[latestOrder?.status || ""] || "Running"}
+                      {qrCount > 0 ? ` | ${qrCount} QR` : ""}
+                    </span>
+                  </div>
+                ) : null}
+              </div>
+            );
+          })}
+          {tables.length === 0 && (
+            <div className="col-span-full rounded-xl border border-dashed border-slate-300 p-8 text-center text-sm text-slate-500">
+              No tables found. Ask the manager to create tables first.
             </div>
-          );
-        })}
-        {tables.length === 0 && (
-          <div className="col-span-full rounded-xl border border-dashed border-slate-300 p-8 text-center text-sm text-slate-500">
-            No tables found. Ask the manager to create tables first.
-          </div>
-        )}
-      </div>
+          )}
+        </div>
       )}
     </div>
   );
@@ -3002,7 +3008,7 @@ function WaiterView({
             onServeReadyItems={handleMarkReadyItemsServed}
             onBack={() => {
               if (routeDrivenMenu) {
-                router.push("/dashboard/orders/new");
+                router.back();
                 return;
               }
               setStep("tables");

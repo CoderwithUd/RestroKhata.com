@@ -10,6 +10,8 @@ import { isSubscriptionExpired } from "@/lib/subscription";
 import { FullPageLoader } from "@/components/full-page-loader";
 import { DashboardSkeleton } from "@/components/skeletons";
 import { InvoicesWorkspace } from "@/components/invoices-workspace";
+import { InvoiceEditView } from "@/components/invoice-edit-view";
+import { InvoicePreviewView } from "@/components/invoice-preview-view";
 import { MenuWorkspace } from "@/components/menu-workspace";
 import { OrdersWorkspace } from "@/components/orders-workspace";
 import {
@@ -38,7 +40,7 @@ import {
 } from "@/store/slices/authSlice";
 import { useGetTablesQuery } from "@/store/api/tablesApi";
 import { useOrderSocket } from "@/lib/use-order-socket";
-import { LogOut, Settings, UserCheck2, ChevronDown, ChevronUp, Printer, Receipt, Clock, MapPin, User } from "lucide-react";
+import { LogOut, Settings, UserCheck2, ChevronDown, ChevronUp, Printer, Receipt, Clock, MapPin, User, X } from "lucide-react";
 
 type DashboardCardProps = {
   section?: string;
@@ -1020,31 +1022,48 @@ export function DashboardCard({ section }: DashboardCardProps) {
   useEffect(() => {
     localStorage.setItem("sidebarCollapsed", sidebarCollapsed.toString());
   }, [sidebarCollapsed]);
-const [currentTablePage, setCurrentTablePage] = useState(1);  
-const tablesPerPage = 18;
+  const [currentTablePage, setCurrentTablePage] = useState(1);
+  const tablesPerPage = 18;
   const [expandedOrders, setExpandedOrders] = useState<Record<string, boolean>>({});
   const [createInvoice, { isLoading: isCreatingInvoice }] = useCreateInvoiceMutation();
+  const [invoiceDrawerOpen, setInvoiceDrawerOpen] = useState(false);
+  const [drawerOrderId, setDrawerOrderId] = useState<string | null>(null);
+  const [drawerInvoiceId, setDrawerInvoiceId] = useState<string | null>(null);
 
   const toggleOrderExpand = (orderId: string) => {
     setExpandedOrders(prev => ({ ...prev, [orderId]: !prev[orderId] }));
   };
 
   const handleCreateInvoice = async (order: any) => {
-    router.push(`/dashboard/invoices?orderId=${order.id}`);
+    // Check if an invoice already exists for this order
+    const existingInvoice = paidInvoicesPayload?.items.find(
+      (inv) => inv.orderId === order.id || (inv.orderIds || []).includes(order.id)
+    ) || pendingInvoicesPayload?.items.find(
+      (inv) => inv.orderId === order.id || (inv.orderIds || []).includes(order.id)
+    );
+
+    if (existingInvoice) {
+      setDrawerInvoiceId(existingInvoice.id);
+      setDrawerOrderId(null);
+    } else {
+      setDrawerOrderId(order.id);
+      setDrawerInvoiceId(null);
+    }
+    setInvoiceDrawerOpen(true);
   };
 
   const { data: tentantProfile, isLoading: isTenantProfileLoading } =
     useTentantProfileQuery();
 
-  const { 
-    data: ordersPayload, 
+  const {
+    data: ordersPayload,
     isFetching: isOrdersFetching,
-    refetch: refetchOrders 
+    refetch: refetchOrders
   } = useGetOrdersQuery({
-      status: ["PLACED", "IN_PROGRESS", "READY", "SERVED"],
-      page: 1,
-      limit: 100,
-    });
+    status: ["PLACED", "IN_PROGRESS", "READY", "SERVED"],
+    page: 1,
+    limit: 100,
+  });
 
   const subscriptionExpired = isSubscriptionExpired(
     tentantProfile?.subscription,
@@ -1059,24 +1078,24 @@ const tablesPerPage = 18;
 
   const reportsEnabled = role === "owner" || role === "manager";
 
-  const { 
-    data: reportsSummary, 
+  const {
+    data: reportsSummary,
     isFetching: isReportsFetching,
-    refetch: refetchReports 
+    refetch: refetchReports
   } = useReportsSummaryQuery();
 
-  const { 
-    data: paidInvoicesPayload, 
+  const {
+    data: paidInvoicesPayload,
     isFetching: isPaidInvoicesFetching,
-    refetch: refetchPaidInvoices 
+    refetch: refetchPaidInvoices
   } = useGetInvoicesQuery(
-      { status: "PAID", page: 1, limit: 100 },
-      // {
-      //   pollingInterval: 30000,
-      //   refetchOnFocus: true,
-      //   refetchOnReconnect: true,
-      // },
-    );
+    { status: "PAID", page: 1, limit: 100 },
+    // {
+    //   pollingInterval: 30000,
+    //   refetchOnFocus: true,
+    //   refetchOnReconnect: true,
+    // },
+  );
 
   const allowedIds = ROLE_SECTIONS[role];
   const defaultId = allowedIds[0];
@@ -1127,17 +1146,31 @@ const tablesPerPage = 18;
     pathname?.startsWith("/dashboard/staff");
 
   const isCafeMode = normalizeStatus(tentantProfile?.tenant?.settings?.orderMode) === "CAFE";
-  const liveOrders = (ordersPayload?.items || []).filter(o => 
-    ["PLACED", "IN_PROGRESS", "READY", "SERVED"].includes(normalizeStatus(o.status))
-  );
-  const activeOrderCount = ordersPayload?.pagination.total || liveOrders.length;
-  const kitchenActiveCount = (ordersPayload?.items || []).filter((order) => {
+
+  const liveOrders = useMemo(() => {
+    const rawOrders = ordersPayload?.items || [];
+    const paidIds = new Set(paidInvoicesPayload?.items.map(inv => inv.orderId).filter(Boolean));
+    // Also include order IDs from group invoices
+    paidInvoicesPayload?.items.forEach(inv => {
+      if (inv.isGroupInvoice && inv.orderIds) {
+        inv.orderIds.forEach(id => paidIds.add(id));
+      }
+    });
+
+    return rawOrders.filter(o =>
+      ["PLACED", "IN_PROGRESS", "READY", "SERVED"].includes(normalizeStatus(o.status)) &&
+      !paidIds.has(o.id)
+    );
+  }, [ordersPayload?.items, paidInvoicesPayload?.items]);
+
+  const activeOrderCount = liveOrders.length;
+  const kitchenActiveCount = liveOrders.filter((order) => {
     const status = (order.status || "").toUpperCase();
     return (
       status === "IN_PROGRESS" || status === "COOKING" || status === "PREPARING"
     );
   }).length;
-  const kitchenTickets = (ordersPayload?.items || [])
+  const kitchenTickets = liveOrders
     .slice(0, 5)
     .map((order) => ({
       id: order.id,
@@ -1707,7 +1740,7 @@ const tablesPerPage = 18;
                           const isExpanded = expandedOrders[order.id];
                           const batches = groupOrderItemsByBatch(order.items || []);
                           const status = normalizeStatus(order.status);
-                          
+
                           return (
                             <div
                               key={order.id}
@@ -1727,7 +1760,7 @@ const tablesPerPage = 18;
                                     #{order.orderNumber || order.id.slice(-6)} • {formatRelativeTime(order.updatedAt || order.createdAt)}
                                   </p>
                                 </div>
-                                
+
                                 <div className="flex items-center gap-1.5 ml-2">
                                   <button
                                     onClick={() => toggleOrderExpand(order.id)}
@@ -2010,6 +2043,41 @@ const tablesPerPage = 18;
           />
         </div>
       ) : null}
+
+      {/* ── Invoice Drawer ── */}
+      {invoiceDrawerOpen && (
+        <div className="fixed inset-0 z-[60] flex justify-end">
+          <div
+            className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm transition-opacity"
+            onClick={() => setInvoiceDrawerOpen(false)}
+          />
+          <div className="relative h-full w-full bg-white shadow-2xl transition-transform sm:w-[540px] md:w-[640px] lg:w-[720px] xl:w-[800px]">
+            <button
+              onClick={() => setInvoiceDrawerOpen(false)}
+              className="absolute right-4 top-4 z-[70] rounded-full bg-slate-100 p-2 text-slate-500 hover:bg-slate-200 hover:text-slate-900"
+            >
+              <X size={20} />
+            </button>
+            <div className="h-full overflow-hidden">
+              {drawerInvoiceId ? (
+                <InvoicePreviewView
+                  invoiceId={drawerInvoiceId}
+                  onBack={() => setInvoiceDrawerOpen(false)}
+                />
+              ) : drawerOrderId ? (
+                <InvoiceEditView
+                  orderIds={[drawerOrderId]}
+                  onBack={() => setInvoiceDrawerOpen(false)}
+                  onSuccess={(id) => {
+                    setDrawerInvoiceId(id);
+                    setDrawerOrderId(null);
+                  }}
+                />
+              ) : null}
+            </div>
+          </div>
+        </div>
+      )}
 
       <nav className="fixed inset-x-0 bottom-0 z-30 border-t border-[#e6dfd1] bg-[#fffdf9] px-2 py-2 lg:hidden">
         <div

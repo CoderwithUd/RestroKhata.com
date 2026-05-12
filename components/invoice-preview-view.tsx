@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { getErrorMessage } from "@/lib/error";
 import { showError, showSuccess } from "@/lib/feedback";
 import { useGetInvoiceByIdQuery, usePayInvoiceMutation } from "@/store/api/invoicesApi";
-import { useGetOrdersQuery } from "@/store/api/ordersApi";
+import { useGetOrdersQuery, useGetOrderByIdQuery } from "@/store/api/ordersApi";
 import { useTentantProfileQuery } from "@/store/api/authApi";
 import { useUpdateTableMutation } from "@/store/api/tablesApi";
 import { downloadInvoicePdf } from "@/lib/invoice-pdf";
@@ -33,10 +33,17 @@ function Spinner() {
    );
 }
 
-export function InvoicePreviewView({ invoiceId }: { invoiceId: string }) {
+export function InvoicePreviewView({ invoiceId, onBack }: { invoiceId: string; onBack?: () => void }) {
    const router = useRouter();
    const { data: invoice, isFetching, refetch: refetchInvoice } = useGetInvoiceByIdQuery(invoiceId);
-   const { data: ordersData } = useGetOrdersQuery({ status: ["PLACED", "IN_PROGRESS", "READY", "SERVED", "COMPLETED"] });
+   // Align with dashboard query for cache reuse
+   const { data: ordersData } = useGetOrdersQuery({ 
+      status: ["PLACED", "IN_PROGRESS", "READY", "SERVED"],
+      page: 1,
+      limit: 100
+   });
+   // Targeted fetch for the specific order
+   const { data: orderFetch } = useGetOrderByIdQuery(invoice?.orderId || "", { skip: !invoice?.orderId });
    const { data: profile } = useTentantProfileQuery();
    const [payInvoice, { isLoading: isPaying }] = usePayInvoiceMutation();
    const [updateTable] = useUpdateTableMutation();
@@ -46,9 +53,13 @@ export function InvoicePreviewView({ invoiceId }: { invoiceId: string }) {
    const [showDrawer, setShowDrawer] = useState(false);
 
    const order = useMemo(() => {
-      if (!invoice?.orderId || !ordersData?.items) return null;
-      return ordersData.items.find(o => o.id === invoice.orderId) || null;
-   }, [invoice?.orderId, ordersData?.items]);
+      if (!invoice?.orderId) return null;
+      // Try to find in the list query first (cache hit)
+      const inList = ordersData?.items?.find(o => o.id === invoice.orderId);
+      if (inList) return inList;
+      // Fallback to the targeted fetch
+      return orderFetch || null;
+   }, [invoice?.orderId, ordersData?.items, orderFetch]);
 
    if (isFetching && !invoice) {
       return (
@@ -105,7 +116,11 @@ export function InvoicePreviewView({ invoiceId }: { invoiceId: string }) {
             }
          }
 
-         router.push("/dashboard");
+         if (onBack) {
+            onBack();
+         } else {
+            router.push("/dashboard");
+         }
       } catch (e) {
          showError(getErrorMessage(e));
       }
@@ -217,7 +232,11 @@ export function InvoicePreviewView({ invoiceId }: { invoiceId: string }) {
             <div className="flex items-center gap-3">
                <button 
                   onClick={() => {
-                     router.push("/dashboard/invoices" + (invoice?.status === "PAID" ? "?tab=PAID" : ""));
+                     if (onBack) {
+                        onBack();
+                     } else {
+                        router.push("/dashboard/invoices" + (invoice?.status === "PAID" ? "?tab=PAID" : ""));
+                     }
                   }} 
                   className="p-1 text-slate-500 hover:text-slate-900 transition-colors"
                >
