@@ -22,6 +22,7 @@ import { useAppSelector } from "@/store/hooks";
 import { selectAuthToken } from "@/store/slices/authSlice";
 import type { MenuItemRecord } from "@/store/types/menu";
 import { CategorySkeleton, MenuGridSkeleton } from "@/components/skeletons";
+import { InvoiceDrawer } from "./invoice-drawer";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -98,6 +99,8 @@ export function TakeawayView() {
   const [socketConnected, setSocketConnected] = useState(false);
   const [appendToOrderId, setAppendToOrderId] = useState<string | null>(null);
   const [lastToken, setLastToken] = useState<string | null>(null);
+  const [previewInvoiceId, setPreviewInvoiceId] = useState<string | null>(null);
+  const [drawerMode, setDrawerMode] = useState<"view" | "edit">("view");
 
   // Option Groups Data
   const { data: ogData } = useGetMenuOptionGroupsQuery();
@@ -281,7 +284,7 @@ export function TakeawayView() {
       if (!orderId) throw new Error("Order creation failed");
 
       // Auto create invoice for takeaway
-      // const invoiceResult = await createInvoice({ orderId }).unwrap();
+      const invoiceResult = await createInvoice({ orderId }).unwrap();
 
       const tokenNum = result.order?.orderNumber || orderId.slice(-6);
       const msg = appendToOrderId ? `Items added to #${tokenNum}!` : `Order placed! Token: #${tokenNum}`;
@@ -294,7 +297,10 @@ export function TakeawayView() {
       setAppendToOrderId(null);
       refetchOrders();
       refetchInvoices();
-      // router.push(`/dashboard/invoices/${invoiceResult.invoice.id}/edit`);
+      if (invoiceResult.invoice?.id) {
+        setDrawerMode("edit");
+        setPreviewInvoiceId(invoiceResult.invoice.id);
+      }
     } catch (error) {
       showError(getErrorMessage(error));
     }
@@ -884,6 +890,11 @@ export function TakeawayView() {
           </div>
         </div>
       )}
+      <InvoiceDrawer
+        invoiceId={previewInvoiceId}
+        mode={drawerMode}
+        onClose={() => setPreviewInvoiceId(null)}
+      />
     </div>
   );
 }

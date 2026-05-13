@@ -10,8 +10,7 @@ import { isSubscriptionExpired } from "@/lib/subscription";
 import { FullPageLoader } from "@/components/full-page-loader";
 import { DashboardSkeleton } from "@/components/skeletons";
 import { InvoicesWorkspace } from "@/components/invoices-workspace";
-import { InvoiceEditView } from "@/components/invoice-edit-view";
-import { InvoicePreviewView } from "@/components/invoice-preview-view";
+import { InvoiceDrawer } from "@/components/invoice-drawer";
 import { MenuWorkspace } from "@/components/menu-workspace";
 import { OrdersWorkspace } from "@/components/orders-workspace";
 import {
@@ -1027,8 +1026,9 @@ export function DashboardCard({ section }: DashboardCardProps) {
   const [expandedOrders, setExpandedOrders] = useState<Record<string, boolean>>({});
   const [createInvoice, { isLoading: isCreatingInvoice }] = useCreateInvoiceMutation();
   const [invoiceDrawerOpen, setInvoiceDrawerOpen] = useState(false);
-  const [drawerOrderId, setDrawerOrderId] = useState<string | null>(null);
+  const [drawerOrderIds, setDrawerOrderIds] = useState<string[] | null>(null);
   const [drawerInvoiceId, setDrawerInvoiceId] = useState<string | null>(null);
+  const [drawerMode, setDrawerMode] = useState<"view" | "edit">("view");
 
   const toggleOrderExpand = (orderId: string) => {
     setExpandedOrders(prev => ({ ...prev, [orderId]: !prev[orderId] }));
@@ -1044,12 +1044,13 @@ export function DashboardCard({ section }: DashboardCardProps) {
 
     if (existingInvoice) {
       setDrawerInvoiceId(existingInvoice.id);
-      setDrawerOrderId(null);
+      setDrawerOrderIds(null);
+      setDrawerMode("view");
     } else {
-      setDrawerOrderId(order.id);
+      setDrawerOrderIds([order.id]);
       setDrawerInvoiceId(null);
+      setDrawerMode("edit");
     }
-    setInvoiceDrawerOpen(true);
   };
 
   const { data: tentantProfile, isLoading: isTenantProfileLoading } =
@@ -1111,7 +1112,7 @@ export function DashboardCard({ section }: DashboardCardProps) {
 
   // New queries for badges
   const { data: pendingInvoicesPayload, refetch: refetchPendingInvoices } = useGetInvoicesQuery(
-    { status: "ISSUED", page: 1, limit: 1 },
+    { status: "ISSUED", page: 1, limit: 100 },
     { pollingInterval: 30000 },
   );
 
@@ -1832,7 +1833,7 @@ export function DashboardCard({ section }: DashboardCardProps) {
                   </article>
                 </section>
 
-                <section className="mt-4 grid gap-4 xl:grid-cols-2">
+                <section className="mt-4 grid gap-4 lg:grid-cols-2">
                   {/* Kitchen Queue */}
                   <article className="rounded-2xl border border-[#e6dfd1] bg-[#fffdf9] shadow-sm">
                     <div className="flex items-center justify-between border-b border-[#eee7d8] px-4 py-3">
@@ -1862,11 +1863,11 @@ export function DashboardCard({ section }: DashboardCardProps) {
                                   : "border-amber-300 bg-amber-50"
                               }`}
                           >
-                            <div className="mb-1.5 flex items-center justify-between gap-2">
-                              <p className="truncate text-sm font-semibold">
+                            <div className="mb-1.5 flex items-center justify-between gap-2 min-w-0">
+                              <p className="truncate text-sm font-semibold min-w-0 flex-1">
                                 {ticket.label}
                               </p>
-                              <p className="shrink-0 text-xs text-slate-500">
+                              <p className="shrink-0 text-[10px] text-slate-500 font-medium">
                                 {ticket.time}
                               </p>
                             </div>
@@ -1939,11 +1940,11 @@ export function DashboardCard({ section }: DashboardCardProps) {
                         ].map((row) => (
                           <div
                             key={row.label}
-                            className="flex items-center justify-between rounded-xl border border-slate-200 bg-slate-50 px-3 py-2"
+                            className="flex items-center justify-between gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 min-w-0"
                           >
-                            <span className="text-slate-600">{row.label}</span>
+                            <span className="text-slate-600 truncate flex-1">{row.label}</span>
                             <span
-                              className={`font-semibold ${row.profit !== null && row.profit !== undefined
+                              className={`font-bold shrink-0 ${row.profit !== null && row.profit !== undefined
                                 ? row.profit >= 0
                                   ? "text-emerald-700"
                                   : "text-rose-700"
@@ -2046,39 +2047,19 @@ export function DashboardCard({ section }: DashboardCardProps) {
       ) : null}
 
       {/* ── Invoice Drawer ── */}
-      {invoiceDrawerOpen && (
-        <div className="fixed inset-0 z-[60] flex justify-end">
-          <div
-            className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm transition-opacity"
-            onClick={() => setInvoiceDrawerOpen(false)}
-          />
-          <div className="relative h-full w-full bg-white shadow-2xl transition-transform sm:w-[540px] ">
-            {/* <button
-              onClick={() => setInvoiceDrawerOpen(false)}
-              className="absolute right-4 top-4 z-[70] rounded-full bg-slate-100 p-2 text-slate-500 hover:bg-slate-200 hover:text-slate-900"
-            >
-              <X size={20} />
-            </button> */}
-            <div className="h-full overflow-hidden">
-              {drawerInvoiceId ? (
-                <InvoicePreviewView
-                  invoiceId={drawerInvoiceId}
-                  onBack={() => setInvoiceDrawerOpen(false)}
-                />
-              ) : drawerOrderId ? (
-                <InvoiceEditView
-                  orderIds={[drawerOrderId]}
-                  onBack={() => setInvoiceDrawerOpen(false)}
-                  onSuccess={(id) => {
-                    setDrawerInvoiceId(id);
-                    setDrawerOrderId(null);
-                  }}
-                />
-              ) : null}
-            </div>
-          </div>
-        </div>
-      )}
+      <InvoiceDrawer
+        invoiceId={drawerInvoiceId}
+        orderIds={drawerOrderIds}
+        mode={drawerMode}
+        onClose={() => {
+          setDrawerInvoiceId(null);
+          setDrawerOrderIds(null);
+        }}
+        onSuccess={(id) => {
+          setDrawerInvoiceId(id);
+          setDrawerOrderIds(null);
+        }}
+      />
 
       <nav className="fixed inset-x-0 bottom-0 z-30 border-t border-[#e6dfd1] bg-[#fffdf9] px-2 py-2 lg:hidden">
         <div

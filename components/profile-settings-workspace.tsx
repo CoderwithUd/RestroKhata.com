@@ -433,17 +433,17 @@ export function ProfileWorkspace() {
   const sub = data?.subscription || null;
 
   return (
-    <section className="grid gap-4">
+    <section className="grid gap-4 ">
       {/* Hero */}
       <div className="rounded-2xl border border-[#E8E0D0] bg-gradient-to-br from-amber-50 via-[#FFFDF9] to-stone-50 px-5 py-5">
         <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-amber-600">Profile</p>
         <h2 className="mt-1 text-xl font-semibold text-stone-900">Business & Owner Details</h2>
         <p className="mt-1 text-[13px] text-stone-500">Contact, address aur basic info update karo.</p>
-        <div className="mt-4 grid grid-cols-3 gap-2">
+        {/* <div className="mt-4 grid grid-cols-3 gap-2">
           <Chip label="Role" value={data?.role || "—"} />
           <Chip label="Plan" value={sub?.status || "—"} />
           <Chip label="Slug" value={data?.tenant?.slug || "—"} />
-        </div>
+        </div> */}
       </div>
 
       <div className="grid gap-4 xl:grid-cols-[1fr_320px]">
@@ -485,7 +485,7 @@ export function ProfileWorkspace() {
         </form>
 
         {/* Right panel */}
-        <div className="grid gap-4 content-start">
+        {/* <div className="grid gap-4 content-start">
           <Card eyebrow="Account" title="Quick Info">
             <div className="grid gap-2">
               <Chip label="Name" value={data?.user?.name || data?.tenant?.ownerName || "—"} />
@@ -502,7 +502,7 @@ export function ProfileWorkspace() {
               {isLoggingOut ? "Signing out..." : "Logout"}
             </button>
           </Card>
-        </div>
+        </div> */}
       </div>
     </section>
   );
@@ -556,11 +556,11 @@ export function SettingsWorkspace() {
         <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-emerald-700">Settings</p>
         <h2 className="mt-1 text-xl font-semibold text-stone-900">Billing, Tax & Operation Mode</h2>
         <p className="mt-1 text-[13px] text-stone-500">Receipt, tax aur cafe/restaurant mode yahin se manage karo.</p>
-        <div className="mt-4 grid grid-cols-3 gap-2">
+        {/* <div className="mt-4 grid grid-cols-3 gap-2">
           <Chip label="Mode" value={form.orderMode === "CAFE" ? "Cafe" : "Restaurant"} />
           <Chip label="Tax" value={`${form.defaultTaxPercentage || 0}%`} />
           <Chip label="Access" value={isOwner ? "Owner" : "Read only"} />
-        </div>
+        </div> */}
       </div>
 
       <form onSubmit={submit} className="grid gap-4">

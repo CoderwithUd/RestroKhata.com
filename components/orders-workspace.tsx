@@ -41,6 +41,7 @@ import type { MenuItemRecord, MenuVariantRecord } from "@/store/types/menu";
 import { normalizePhoneInput } from "@/lib/phone";
 import { printKOT } from "@/lib/print-kot";
 import { CategorySkeleton, MenuGridSkeleton, TableGridSkeleton, OrderGridSkeleton } from "@/components/skeletons";
+import { InvoiceDrawer } from "./invoice-drawer";
 
 // ─── Role ────────────────────────────────────────────────────────────────────
 type RoleKey = "owner" | "manager" | "waiter" | "kitchen";
@@ -1738,6 +1739,7 @@ function WaiterActionBoard({
   onCancelPlacedItem,
   onMovePlacedItem,
   setMovingItem,
+  isLoading,
   className,
 }: {
   orders: OrderRecord[];
@@ -1767,6 +1769,7 @@ function WaiterActionBoard({
     quantity: number,
   ) => void;
   setMovingItem: (item: { order: OrderRecord; item: OrderItem; correctionValue: number } | null) => void;
+  isLoading?: boolean;
   className?: string;
 }) {
   const readyCount = orders.filter(
@@ -1875,7 +1878,12 @@ function WaiterActionBoard({
         </div>
 
         <div className="space-y-2">
-          {orders.length === 0 ? (
+          {isLoading && orders.length === 0 ? (
+            <>
+              <OrderCardSkeleton />
+              <OrderCardSkeleton />
+            </>
+          ) : orders.length === 0 ? (
             <div className="rounded-[22px] border border-dashed border-slate-300 bg-white/80 py-8 text-center text-sm text-slate-500">
               No waiter actions pending.
             </div>
@@ -2354,6 +2362,7 @@ function WaiterActionBoard({
           )}
         </div>
       </div>
+
     </div>
   );
 }
@@ -2419,6 +2428,9 @@ function WaiterView({
       customerName: "",
       customerPhone: "",
     });
+  const [previewInvoiceId, setPreviewInvoiceId] = useState<string | null>(null);
+  const [drawerOrderIds, setDrawerOrderIds] = useState<string[] | null>(null);
+  const [drawerMode, setDrawerMode] = useState<"view" | "edit">("view");
   const [composeMode, setComposeMode] =
     useState<WaiterComposerMode>("force-new");
   const autoSelectedTableRef = useRef<string | null>(null);
@@ -2568,16 +2580,28 @@ function WaiterView({
 
   async function handleCreateInvoice(order: OrderRecord) {
     if (!order.id) return;
+    
+    // Check if an invoice already exists for this order
+    const existingInvoice = invoices.find(
+      (inv) => inv.orderId === order.id || (inv.orderIds || []).includes(order.id)
+    );
+
+    if (existingInvoice) {
+      setPreviewInvoiceId(existingInvoice.id);
+      setDrawerOrderIds(null);
+      setDrawerMode("view");
+      return;
+    }
+
     try {
       setCreatingInvoiceOrderId(order.id);
       const response = await createInvoice({ orderId: order.id }).unwrap();
-      showSuccess(
-        response.message ||
-        `Invoice created for Table ${order.table?.number || ""}`,
-      );
       refetchOrders();
       refetchInvoices();
       refetchTables();
+      setPreviewInvoiceId(response.invoice.id);
+      setDrawerOrderIds(null);
+      setDrawerMode("edit");
     } catch (error) {
       showError(getErrorMessage(error));
     } finally {
@@ -2946,6 +2970,7 @@ function WaiterView({
                 onCancelPlacedItem={handleCancelPlacedItem}
                 onMovePlacedItem={handleMovePlacedItem}
                 setMovingItem={setMovingItem}
+                isLoading={ordersLoading}
                 className="mt-0"
               />
             </div>
@@ -3177,6 +3202,19 @@ function WaiterView({
           </div>
         );
       })()}
+      <InvoiceDrawer
+        invoiceId={previewInvoiceId}
+        orderIds={drawerOrderIds}
+        mode={drawerMode}
+        onClose={() => {
+          setPreviewInvoiceId(null);
+          setDrawerOrderIds(null);
+        }}
+        onSuccess={(id) => {
+          setPreviewInvoiceId(id);
+          setDrawerOrderIds(null);
+        }}
+      />
     </div>
   );
 }
@@ -3933,7 +3971,10 @@ function ManagerView({ role }: { role: RoleKey }) {
     return () => observer.disconnect();
   }, [hasMoreOrders, isFetching]);
 
-  const orders = useMemo(() => ordersFeed, [ordersFeed]);
+  const orders = useMemo(() => {
+    if (ordersPage === 1 && ordersData?.items) return sortOrdersByLatest(ordersData.items);
+    return ordersFeed;
+  }, [ordersFeed, ordersData, ordersPage]);
 
   async function handleStatusChange(orderId: string, status: OrderStatus) {
     try {
@@ -4145,10 +4186,8 @@ function ManagerView({ role }: { role: RoleKey }) {
       </div>
 
       {/* Orders grid */}
-      {isFetching && orders.length === 0 ? (
-        <div className="flex items-center justify-center gap-2 py-12 text-slate-500">
-          <Spinner /> Loading orders...
-        </div>
+      {((isFetching && ordersPage === 1) || !ordersData) && orders.length === 0 ? (
+        <OrderGridSkeleton />
       ) : orders.length === 0 ? (
         <div className="rounded-2xl border border-dashed border-slate-300 py-16 text-center text-sm text-slate-500">
           No orders found for this filter.

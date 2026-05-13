@@ -7,6 +7,7 @@ import { showError, showSuccess } from "@/lib/feedback";
 import { useGetOrdersQuery } from "@/store/api/ordersApi";
 import { useGetInvoicesQuery } from "@/store/api/invoicesApi";
 import type { OrderRecord } from "@/store/types/orders";
+import { InvoiceDrawer } from "./invoice-drawer";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -275,7 +276,7 @@ function FilterDrawer({
 }
 
 // ── Order Row ─────────────────────────────────────────────────────────────────
-function OrderRow({ order, invoiced ,index}: { order: OrderRecord; invoiced: boolean ,index:number}) {
+function OrderRow({ order, invoiced, index, onViewInvoice }: { order: OrderRecord; invoiced: string | null; index: number; onViewInvoice: (id: string) => void }) {
   const [expanded, setExpanded] = useState(false);
   const tableLabel = order.table?.name || (order.table?.number ? `Table ${order.table.number}` : null);
   const tokenLabel = order.orderNumber ? `#${order.orderNumber}` : `#${order.id.slice(-6)}`;
@@ -285,17 +286,12 @@ function OrderRow({ order, invoiced ,index}: { order: OrderRecord; invoiced: boo
   const activeItems = (order.items || []).filter((i) => ns(i.status) !== "CANCELLED");
 
   return (
-    <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-[0_2px_8px_rgba(15,23,42,0.04)]">
-      {/* Row header */}
-      <button
-        type="button"
-        onClick={() => setExpanded((v) => !v)}
-        className="flex w-full flex-wrap items-center gap-2 px-4 py-3 text-left hover:bg-slate-50 transition relative"
+    <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm transition-all hover:border-slate-300">
+      <div
+        onClick={() => setExpanded((prev) => !prev)}
+        className="flex w-full flex-wrap items-center gap-2 px-4 py-3 text-left hover:bg-slate-50 cursor-pointer relative"
       >
-        {/* Order number */}
-        {/* <span className="text-[10px] font-bold text-slate-500 min-w-[60px]">{tokenLabel}</span> */}
-
-  <span className="text-[8px]  font-bold text-slate-500 left-0.5 top-0.5 absolute"> # {index + 1}</span>
+        <span className="text-[8px] font-bold text-slate-500 left-0.5 top-0.5 absolute"> # {index + 1}</span>
         {/* Table / customer */}
         <span className="text-sm text-slate-900 flex-1 truncate min-w-[80px]">
           {tableLabel || order.customerName || "—"}
@@ -313,9 +309,16 @@ function OrderRow({ order, invoiced ,index}: { order: OrderRecord; invoiced: boo
 
         {/* Invoice badge */}
         {invoiced && (
-          <span className="rounded-full border border-teal-200 bg-teal-50 px-2 py-0.5 text-[10px] font-semibold text-teal-700">
-            Invoiced
-          </span>
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              onViewInvoice(invoiced);
+            }}
+            className="rounded-full border border-teal-200 bg-teal-50 px-2 py-0.5 text-[10px] font-semibold text-teal-700 hover:bg-teal-100 transition-colors"
+          >
+            View Bill
+          </button>
         )}
 
         {/* Amount */}
@@ -336,7 +339,7 @@ function OrderRow({ order, invoiced ,index}: { order: OrderRecord; invoiced: boo
         >
           <path d="M4 6l4 4 4-4" />
         </svg>
-      </button>
+      </div>
 
       {/* Expanded items */}
       {expanded && (
@@ -385,6 +388,8 @@ export function OrdersHistoryView() {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [page, setPage] = useState(1);
   const [feed, setFeed] = useState<OrderRecord[]>([]);
+  const [previewInvoiceId, setPreviewInvoiceId] = useState<string | null>(null);
+  const [drawerMode, setDrawerMode] = useState<"view" | "edit">("view");
   const loadMoreRef = useRef<HTMLDivElement | null>(null);
 
   // Derive API params from quickFilter + custom filter
@@ -413,8 +418,14 @@ export function OrdersHistoryView() {
 
   const { data: invoicesData } = useGetInvoicesQuery({ limit: 100 });
 
-  const invoicedOrderIds = useMemo(
-    () => new Set((invoicesData?.items || []).map((inv) => inv.orderId).filter(Boolean) as string[]),
+  const invoicedOrderMap = useMemo(
+    () => {
+      const map: Record<string, string> = {};
+      (invoicesData?.items || []).forEach(inv => {
+        if (inv.orderId) map[inv.orderId] = inv.id;
+      });
+      return map;
+    },
     [invoicesData],
   );
 
@@ -541,8 +552,17 @@ export function OrdersHistoryView() {
           </div>
         ) : (
           <div className="space-y-2 pb-4">
-            {feed.map((order,index) => (
-              <OrderRow  index={index} key={order.id} order={order} invoiced={invoicedOrderIds.has(order.id)} />
+            {feed.map((order, index) => (
+              <OrderRow
+                index={index}
+                key={order.id}
+                order={order}
+                invoiced={invoicedOrderMap[order.id] || null}
+                onViewInvoice={(id) => {
+                  setDrawerMode("view");
+                  setPreviewInvoiceId(id);
+                }}
+              />
             ))}
             {/* Load more sentinel */}
             <div ref={loadMoreRef} className="h-4" />
@@ -564,6 +584,11 @@ export function OrdersHistoryView() {
         onClose={() => setDrawerOpen(false)}
         filter={filter}
         onChange={(f) => { setFilter(f); setPage(1); setFeed([]); }}
+      />
+      <InvoiceDrawer
+        invoiceId={previewInvoiceId}
+        mode={drawerMode}
+        onClose={() => setPreviewInvoiceId(null)}
       />
     </div>
   );

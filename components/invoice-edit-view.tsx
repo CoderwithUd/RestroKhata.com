@@ -283,7 +283,11 @@ export function InvoiceEditView({ invoiceId, orderIds, onBack, onSuccess }: Prop
     const hasQtyChanges = baseItems.some(item => quantities[item.lineId!] !== undefined && quantities[item.lineId!] !== item.quantity);
 
     if (invoiceId && !hasMetadataChanges && !hasNewItems && !hasQtyChanges) {
-      router.push(`/dashboard/invoices/${invoiceId}/preview`);
+      if (onSuccess) {
+        onSuccess(invoiceId);
+      } else {
+        router.push(`/dashboard/invoices/${invoiceId}/preview`);
+      }
       return;
     }
 

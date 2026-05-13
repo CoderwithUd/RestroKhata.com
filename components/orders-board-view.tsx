@@ -25,6 +25,8 @@ import type { OrderItem, OrderRecord, OrderStatus } from "@/store/types/orders";
 import type { TableRecord } from "@/store/types/tables";
 import { printKOT } from "@/lib/print-kot";
 import { ArrowRightLeft } from "lucide-react";
+import { OrderGridSkeleton } from "./skeletons";
+import { InvoiceDrawer } from "./invoice-drawer";
 
 // ── Shared helpers ────────────────────────────────────────────────────────────
 
@@ -761,7 +763,12 @@ export function OrdersBoardView() {
   const confirm = useConfirm();
   const router = useRouter();
 
-  const { data: ordersData, refetch: refetchOrders } = useGetOrdersQuery({
+  const {
+    data: ordersData,
+    isLoading: isLoadingOrders,
+    isFetching: isFetchingOrders,
+    refetch: refetchOrders,
+  } = useGetOrdersQuery({
     status: ["PLACED", "IN_PROGRESS", "READY", "SERVED"],
     limit: 100,
   });
@@ -797,6 +804,8 @@ export function OrdersBoardView() {
     item: OrderItem;
     correctionValue: number;
   } | null>(null);
+  const [previewInvoiceId, setPreviewInvoiceId] = useState<string | null>(null);
+  const [drawerMode, setDrawerMode] = useState<"view" | "edit">("view");
 
   useOrderSocket({
     token,
@@ -931,10 +940,10 @@ export function OrdersBoardView() {
     try {
       setCreatingInvoiceOrderId(order.id);
       const r = await createInvoice({ orderId: order.id }).unwrap();
-      // showSuccess(r.message || "Invoice created");
       refetchOrders();
       refetchInvoices();
-      router.push(`/dashboard/invoices/${r.invoice.id}/edit`);
+      setDrawerMode("edit"); // Open in edit mode so they can adjust discount/items
+      setPreviewInvoiceId(r.invoice.id);
     } catch (e) {
       showError(getErrorMessage(e));
     } finally {
@@ -1155,7 +1164,11 @@ export function OrdersBoardView() {
       </div>
 
       {/* Orders list — all in one */}
-      {activeOrders.length === 0 ? (
+      {isLoadingOrders && activeOrders.length === 0 ? (
+        <div className="flex-1 overflow-y-auto no-scrollbar">
+          <OrderGridSkeleton />
+        </div>
+      ) : activeOrders.length === 0 ? (
         <div className="flex flex-1 flex-col items-center justify-center gap-3 rounded-2xl border border-dashed border-slate-300 py-16 text-center">
           <svg
             viewBox="0 0 48 48"
@@ -1204,6 +1217,7 @@ export function OrdersBoardView() {
       )}
       {/* Unified Move Item Modal */}
       {movingItem && (() => {
+        // ... (existing move modal logic)
         const moveTargets = allOrders.filter(
           (o) =>
             o.id !== movingItem.order.id &&
@@ -1291,6 +1305,12 @@ export function OrdersBoardView() {
           </div>
         );
       })()}
+
+      <InvoiceDrawer
+        invoiceId={previewInvoiceId}
+        mode={drawerMode}
+        onClose={() => setPreviewInvoiceId(null)}
+      />
     </div>
   );
 }

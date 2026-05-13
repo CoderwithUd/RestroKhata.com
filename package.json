@@ -3,7 +3,7 @@
   "version": "0.1.25",
   "private": true,
   "scripts": {
-    "dev": "C:\\Progra~1\\nodejs\\node.exe scripts/dev-server.js",
+    "dev": "C:\\Progra~1\\nodejs\\node.exe --max-old-space-size=4096 scripts/dev-server.js",
     "build": "next build --webpack",
     "start": "next start",
     "lint": "eslint"
