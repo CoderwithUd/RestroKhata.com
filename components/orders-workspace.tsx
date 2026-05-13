@@ -5141,9 +5141,15 @@ export function OrdersWorkspace({ rawRole }: Props) {
       routeSelectTablePage ||
       routeSelectItemsPage
     ) {
-      router.push("/dashboard/orders");
+      // Owner/Manager → back to dashboard overview; Waiter → stay on orders page
+      if (isWaiter) {
+        router.push("/dashboard/orders");
+      } else {
+        router.push("/dashboard");
+      }
     }
   }, [
+    isWaiter,
     routeNewOrder,
     routeSelectItemsPage,
     routeSelectTablePage,
