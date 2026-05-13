@@ -2842,15 +2842,10 @@ function WaiterView({
         refetchInvoices();
         refetchTables();
         onOrderPlaced();
-        if (isCafeMode) {
-          router.push("/dashboard");
-          return;
-        }
-        setStep("tables");
-        setSelectedTable(null);
-        setExistingOrder(undefined);
-        setSelectedOrderId(null);
-        setComposeMode("force-new");
+        // Always redirect to dashboard after order placement
+        // (use replace to avoid black screen and prevent back-button returning to order form)
+        router.replace("/dashboard");
+        return;
       } catch (error) {
         showError(getErrorMessage(error));
         setStep("menu");
@@ -5135,27 +5130,7 @@ export function OrdersWorkspace({ rawRole }: Props) {
 
   const handleOrderPlaced = useCallback(() => {
     setToast({ msg: "Order placed!", type: "ok" });
-    if (
-      routeNewOrder ||
-      routeTableId ||
-      routeSelectTablePage ||
-      routeSelectItemsPage
-    ) {
-      // Owner/Manager → back to dashboard overview; Waiter → stay on orders page
-      if (isWaiter) {
-        router.push("/dashboard/orders");
-      } else {
-        router.push("/dashboard");
-      }
-    }
-  }, [
-    isWaiter,
-    routeNewOrder,
-    routeSelectItemsPage,
-    routeSelectTablePage,
-    routeTableId,
-    router,
-  ]);
+  }, []);
 
   useEffect(() => {
     if (!toast) return;
