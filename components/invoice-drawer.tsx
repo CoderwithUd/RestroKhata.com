@@ -20,15 +20,26 @@ export function InvoiceDrawer({ invoiceId, orderIds, mode = "view", onClose, onS
 
   useEffect(() => {
     if (invoiceId || (orderIds && orderIds.length > 0)) {
-      setLocalMode(mode);
       setCurrentInvoiceId(invoiceId);
+      // Only set mode from props if the drawer is currently closed (opening for the first time)
+      if (!isOpen) {
+        setLocalMode(mode);
+      }
+      
       // Trigger opening animation
       const timer = setTimeout(() => setIsOpen(true), 10);
       return () => clearTimeout(timer);
     } else {
       setIsOpen(false);
     }
-  }, [invoiceId, orderIds, mode]);
+  }, [invoiceId, orderIds]);
+
+  // If the mode prop explicitly changes while the drawer is open, we should respect it
+  useEffect(() => {
+    if (isOpen) {
+      setLocalMode(mode);
+    }
+  }, [mode]);
 
   if (!currentInvoiceId && (!orderIds || orderIds.length === 0)) return null;
 
