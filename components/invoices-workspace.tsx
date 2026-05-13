@@ -32,6 +32,7 @@ import type { TableRecord } from "@/store/types/tables";
 import { InvoiceEditView } from "./invoice-edit-view";
 import { InvoicePreviewView } from "./invoice-preview-view";
 import { InvoiceDrawer } from "./invoice-drawer";
+import { TableGridSkeleton, OrderGridSkeleton } from "@/components/skeletons";
 
 type Props = {
   rawRole?: string;
@@ -697,7 +698,7 @@ export function InvoicesWorkspace({ rawRole }: Props) {
 
       const order = ordersFeed.find((o) => o.id === orderId);
       if (order && !drawerOrderIds) {
-        openDraftInvoice(order.table || { id: order.tableId, number: 0, name: "Table", status: "OCCUPIED", capacity: 0, isActive: true }, [order]);
+        openDraftInvoice((order.table as any) || { id: order.tableId, number: 0, name: "Table", status: "OCCUPIED", capacity: 0, isActive: true }, [order]);
       }
     }
   }, [searchParams, ordersFeed, invoicesFeed, drawerOrderIds, router]);

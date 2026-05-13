@@ -40,7 +40,7 @@ import type { TableRecord } from "@/store/types/tables";
 import type { MenuItemRecord, MenuVariantRecord } from "@/store/types/menu";
 import { normalizePhoneInput } from "@/lib/phone";
 import { printKOT } from "@/lib/print-kot";
-import { CategorySkeleton, MenuGridSkeleton, TableGridSkeleton, OrderGridSkeleton } from "@/components/skeletons";
+import { CategorySkeleton, MenuGridSkeleton, TableGridSkeleton, OrderGridSkeleton, OrderCardSkeleton } from "@/components/skeletons";
 import { InvoiceDrawer } from "./invoice-drawer";
 
 // ─── Role ────────────────────────────────────────────────────────────────────
@@ -640,9 +640,15 @@ function MenuBrowser({
 
   const displayedItems = useMemo(() => {
     const bySearch = search.trim()
-      ? allItems.filter((i) =>
-        i.name.toLowerCase().includes(search.toLowerCase().trim()),
-      )
+      ? allItems.filter((i) => {
+        const q = search.toLowerCase().trim();
+        const searchable = [
+          i.name,
+          i.catName,
+          ...(i.variants || []).map(v => v.name)
+        ];
+        return searchable.filter(Boolean).some(text => text.toLowerCase().includes(q));
+      })
       : allItems;
 
     if (!activeCat || search.trim()) return bySearch;
@@ -3879,7 +3885,7 @@ function ManagerView({ role }: { role: RoleKey }) {
   const [cancelOrderItem] = useCancelOrderItemMutation();
   const [moveOrderItem] = useMoveOrderItemMutation();
   const { data: tablesData } = useGetTablesQuery({ isActive: true });
-  const tables = tablesData?.data || [];
+  const tables = tablesData?.items || [];
 
   const [movingItem, setMovingItem] = useState<{
     order: OrderRecord;
@@ -4213,6 +4219,7 @@ function ManagerView({ role }: { role: RoleKey }) {
                 onCancelPlacedItem={handleCancelPlacedItem}
                 onMovePlacedItem={handleMovePlacedItem}
                 updatingItemKey={updatingItemKey}
+                setMovingItem={setMovingItem}
               />
             ))}
           </div>

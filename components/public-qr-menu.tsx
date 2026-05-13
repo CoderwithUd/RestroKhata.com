@@ -923,7 +923,8 @@ export function PublicQrMenu({ tenantSlug: tenantSlugFromPath }: PublicQrMenuPro
       if (activeCategoryId !== "all" && category.id !== activeCategoryId) return null;
       const items = category.items.filter(item => {
         if (!q) return true;
-        return [item.name, item.description, ...item.variants.map(v => v.name)].filter(Boolean).join(" ").toLowerCase().includes(q);
+        const searchable = [item.name, item.description, category.name, ...item.variants.map(v => v.name)];
+        return searchable.filter(Boolean).join(" ").toLowerCase().includes(q);
       });
       if (!items.length) return null;
       return { category, depth, items };

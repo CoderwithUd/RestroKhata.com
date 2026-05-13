@@ -156,7 +156,15 @@ export function TakeawayView() {
 
   const displayedItems = useMemo(() => {
     const bySearch = search.trim()
-      ? allItems.filter((i) => i.name.toLowerCase().includes(search.toLowerCase().trim()))
+      ? allItems.filter((i) => {
+        const q = search.toLowerCase().trim();
+        const searchable = [
+          i.name,
+          i.catName,
+          ...(i.variants || []).map(v => v.name)
+        ];
+        return searchable.filter(Boolean).some(text => text.toLowerCase().includes(q));
+      })
       : allItems;
     if (!activeCat || search.trim()) return bySearch;
     return bySearch.filter((i) => {
