@@ -1,6 +1,6 @@
 {
   "name": "restro-khata-auth",
-  "version": "0.1.25",
+  "version": "0.1.26",
   "private": true,
   "scripts": {
     "dev": "C:\\Progra~1\\nodejs\\node.exe --max-old-space-size=4096 scripts/dev-server.js",
