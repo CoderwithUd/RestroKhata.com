@@ -16,10 +16,12 @@ interface InvoiceDrawerProps {
 export function InvoiceDrawer({ invoiceId, orderIds, mode = "view", onClose, onSuccess }: InvoiceDrawerProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [localMode, setLocalMode] = useState<"view" | "edit">(mode);
+  const [currentInvoiceId, setCurrentInvoiceId] = useState<string | null>(invoiceId);
 
   useEffect(() => {
     if (invoiceId || (orderIds && orderIds.length > 0)) {
       setLocalMode(mode);
+      setCurrentInvoiceId(invoiceId);
       // Trigger opening animation
       const timer = setTimeout(() => setIsOpen(true), 10);
       return () => clearTimeout(timer);
@@ -28,7 +30,7 @@ export function InvoiceDrawer({ invoiceId, orderIds, mode = "view", onClose, onS
     }
   }, [invoiceId, orderIds, mode]);
 
-  if (!invoiceId && (!orderIds || orderIds.length === 0)) return null;
+  if (!currentInvoiceId && (!orderIds || orderIds.length === 0)) return null;
 
   return (
     <div className={`fixed inset-0 z-[100] flex justify-end transition-opacity duration-300 ${isOpen ? "bg-slate-900/40 backdrop-blur-sm opacity-100" : "bg-slate-900/0 backdrop-blur-none opacity-0 pointer-events-none"}`} onClick={onClose}>
@@ -52,12 +54,13 @@ export function InvoiceDrawer({ invoiceId, orderIds, mode = "view", onClose, onS
               orderIds={orderIds || undefined}
               onBack={onClose}
               onSuccess={(newId) => {
+                setCurrentInvoiceId(newId);
                 if (onSuccess) onSuccess(newId);
                 setLocalMode("view");
               }}
             />
           ) : (
-            <InvoicePreviewView invoiceId={invoiceId!} onBack={onClose} />
+            <InvoicePreviewView invoiceId={currentInvoiceId!} onBack={onClose} />
           )}
         </div>
       </div>
