@@ -1,4 +1,4 @@
-﻿@import "tailwindcss";
+@import "tailwindcss";
 
 :root {
   --c-bg: #f8f6ef;
@@ -228,6 +228,29 @@ a {
   to {
     transform: rotate(360deg);
   }
+}
+
+@keyframes shimmer {
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
+}
+
+.saas-skeleton {
+  background: linear-gradient(
+    90deg,
+    color-mix(in srgb, var(--c-brand) 5%, transparent) 25%,
+    color-mix(in srgb, var(--c-brand) 12%, transparent) 37%,
+    color-mix(in srgb, var(--c-brand) 5%, transparent) 63%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.5s ease-in-out infinite;
+  position: relative;
+  overflow: hidden;
+  border-radius: 0.5rem;
 }
 
 .dashboard-layout {

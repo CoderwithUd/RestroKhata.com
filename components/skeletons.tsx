@@ -20,14 +20,14 @@ export function CategorySkeleton() {
 
 export function MenuItemSkeleton() {
   return (
-    <div className="flex flex-col rounded-2xl border border-slate-100 bg-white/60 p-3 shadow-sm backdrop-blur-sm">
-      <div className="space-y-2">
-        <Skeleton className="h-4 w-3/4 rounded-lg" />
-        <Skeleton className="h-3 w-1/2 rounded-lg" />
+    <div className="flex flex-col rounded-3xl border border-slate-100 bg-white/40 p-4 shadow-sm backdrop-blur-sm">
+      <div className="space-y-3">
+        <Skeleton className="h-5 w-3/4 rounded-xl" />
+        <Skeleton className="h-3 w-1/2 rounded-lg opacity-60" />
       </div>
-      <div className="mt-4 flex items-center justify-between">
-        <Skeleton className="h-5 w-16 rounded-md" />
-        <Skeleton className="h-8 w-16 rounded-xl" />
+      <div className="mt-6 flex items-center justify-between">
+        <Skeleton className="h-6 w-16 rounded-lg" />
+        <Skeleton className="h-9 w-20 rounded-2xl" />
       </div>
     </div>
   );
@@ -57,18 +57,18 @@ export function TableGridSkeleton() {
 
 export function OrderCardSkeleton() {
   return (
-    <div className="rounded-3xl border border-slate-100 bg-white/80 p-5 shadow-sm backdrop-blur-md">
-      <div className="mb-4 flex items-center justify-between">
-        <Skeleton className="h-7 w-20 rounded-full" />
-        <Skeleton className="h-4 w-28 rounded-lg" />
+    <div className="rounded-[2.5rem] border border-[#e6dfd1] bg-white/70 p-6 shadow-sm backdrop-blur-lg">
+      <div className="mb-5 flex items-center justify-between">
+        <Skeleton className="h-8 w-24 rounded-full" />
+        <Skeleton className="h-4 w-32 rounded-lg opacity-70" />
       </div>
       <div className="space-y-3">
-        <Skeleton className="h-5 w-full rounded-xl" />
-        <Skeleton className="h-5 w-4/5 rounded-xl" />
+        <Skeleton className="h-6 w-full rounded-2xl" />
+        <Skeleton className="h-6 w-4/5 rounded-2xl" />
       </div>
-      <div className="mt-6 flex gap-3">
-        <Skeleton className="h-11 flex-1 rounded-2xl" />
-        <Skeleton className="h-11 w-24 rounded-2xl" />
+      <div className="mt-8 flex gap-3">
+        <Skeleton className="h-12 flex-1 rounded-2xl" />
+        <Skeleton className="h-12 w-28 rounded-2xl" />
       </div>
     </div>
   );
@@ -120,22 +120,27 @@ export function DashboardSkeleton() {
          {/* KPI Grid */}
          <div className="mb-8 grid grid-cols-2 gap-4 lg:grid-cols-4">
             {[1, 2, 3, 4].map(i => (
-              <Skeleton key={i} className="h-28 w-full rounded-3xl border border-[#e6dfd1] bg-white" />
+              <div key={i} className="h-32 w-full rounded-[2rem] border border-[#e6dfd1] bg-white/50 p-5">
+                 <Skeleton className="h-4 w-20 mb-4 rounded-lg" />
+                 <Skeleton className="h-8 w-32 rounded-xl" />
+              </div>
             ))}
-         </div>
-         
-         {/* Large Card Content */}
-         <div className="flex-1 rounded-3xl border border-[#e6dfd1] bg-white p-6 shadow-sm">
-            <div className="mb-6 flex items-center justify-between">
-               <Skeleton className="h-6 w-40" />
-               <Skeleton className="h-8 w-24 rounded-lg" />
+          </div>
+          
+          {/* Large Card Content */}
+          <div className="flex-1 rounded-[2.5rem] border border-[#e6dfd1] bg-white/60 p-8 shadow-sm backdrop-blur-sm">
+            <div className="mb-8 flex items-center justify-between">
+               <Skeleton className="h-7 w-48 rounded-xl" />
+               <Skeleton className="h-10 w-32 rounded-2xl" />
             </div>
-            <div className="space-y-4">
+            <div className="space-y-5">
                {[1, 2, 3, 4, 5].map(i => (
-                 <Skeleton key={i} className="h-16 w-full rounded-2xl" />
+                 <div key={i} className="flex gap-4">
+                    <Skeleton className="h-14 w-full rounded-2xl" />
+                 </div>
                ))}
             </div>
-         </div>
+          </div>
       </div>
     </div>
   );

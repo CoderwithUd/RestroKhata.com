@@ -94,21 +94,22 @@ export function printKOT(
         .items-table th {
           text-align: left;
           border-bottom: 2px solid #000;
-          padding: 1mm 0;
-          font-size: 10px;
+          padding: 2mm 0;
+          font-size: 11px;
           text-transform: uppercase;
         }
         .item-row td {
           padding: 2mm 0;
           vertical-align: top;
-          border-bottom: 1px dashed #666;
+          border-bottom: 1px solid #000;
         }
         .item-row:last-child td {
           border-bottom: 2px solid #000;
         }
         .qty-cell {
-          width: 35px;
+          width: 60px;
           text-align: left;
+          padding-right: 5mm;
         }
         .qty-box {
           font-size: 18px;
@@ -116,14 +117,14 @@ export function printKOT(
           display: block;
         }
         .name-cell {
-          padding-left: 1mm;
+          padding-left: 0;
         }
         .item-name {
           font-weight: 900;
-          font-size: 13px;
+          font-size: 15px;
           text-transform: uppercase;
           display: block;
-          margin-bottom: 0.5mm;
+          margin-bottom: 1mm;
         }
         .variant {
           font-size: 10px;

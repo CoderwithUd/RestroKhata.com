@@ -229,9 +229,13 @@ export function createRealtimeInvalidationSocket(args: {
   });
 
   sharedSocket.on("connect_error", (error) => {
-    // Suppress "access token missing" error logs as it's expected during bootstrap/logout
-    if (error.message.includes("access token missing")) {
-      console.info("[Realtime] ℹ️ Socket waiting for authentication...");
+    // Suppress auth-related errors as they are expected during bootstrap or token refresh
+    const isAuthError = error.message.includes("access token missing") || 
+                        error.message.includes("invalid access token") ||
+                        error.message.includes("jwt expired");
+
+    if (isAuthError) {
+      console.info("[Realtime] ℹ️ Socket waiting for valid session/auth...");
     } else {
       console.error("[Realtime] ❌ Connection error:", error.message);
     }

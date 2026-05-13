@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Printer, Clock, User, ChefHat } from "lucide-react";
+import { Printer, Clock, User, ChefHat, ArrowRightLeft } from "lucide-react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useConfirm } from "@/components/confirm-provider";
 import { getErrorMessage } from "@/lib/error";
@@ -1737,6 +1737,7 @@ function WaiterActionBoard({
   onRemovePlacedItem,
   onCancelPlacedItem,
   onMovePlacedItem,
+  setMovingItem,
   className,
 }: {
   orders: OrderRecord[];
@@ -1765,6 +1766,7 @@ function WaiterActionBoard({
     target: MoveTargetSelection,
     quantity: number,
   ) => void;
+  setMovingItem: (item: { order: OrderRecord; item: OrderItem; correctionValue: number } | null) => void;
   className?: string;
 }) {
   const readyCount = orders.filter(
@@ -2267,60 +2269,24 @@ function WaiterActionBoard({
 
                                       {canCorrectItem ? (
                                         <>
-                                          {tableTargets.length > 0 ? (
-                                            <select
-                                              defaultValue=""
+                                          {(moveTargets.length > 0 || tableTargets.length > 0) ? (
+                                            <button
+                                              type="button"
                                               disabled={
                                                 correctingLineKey === correctionKey
                                               }
-                                              onChange={(e) => {
-                                                const v = e.target.value;
-                                                if (!v) return;
-                                                onMovePlacedItem(
+                                              onClick={() =>
+                                                setMovingItem({
                                                   order,
                                                   item,
-                                                  { targetTableId: v },
                                                   correctionValue,
-                                                );
-                                                e.currentTarget.value = "";
-                                              }}
-                                              className="min-h-10 min-w-0 border-t border-slate-100 bg-sky-50 px-3 py-2 text-center text-[11px] font-semibold text-sky-700 disabled:opacity-40 sm:flex-1 sm:border-l sm:border-t-0"
-                                            >
-                                              <option value="">Move table</option>
-                                              {tableTargets.map((t) => (
-                                                <option key={t.id} value={t.id}>
-                                                  T{t.number}
-                                                </option>
-                                              ))}
-                                            </select>
-                                          ) : null}
-
-                                          {moveTargets.length > 0 ? (
-                                            <select
-                                              defaultValue=""
-                                              disabled={
-                                                correctingLineKey === correctionKey
+                                                })
                                               }
-                                              onChange={(e) => {
-                                                const v = e.target.value;
-                                                if (!v) return;
-                                                onMovePlacedItem(
-                                                  order,
-                                                  item,
-                                                  { targetOrderId: v },
-                                                  correctionValue,
-                                                );
-                                                e.currentTarget.value = "";
-                                              }}
-                                              className="min-h-10 min-w-0 border-t border-slate-100 bg-sky-50 px-3 py-2 text-center text-[11px] font-semibold text-sky-700 disabled:opacity-40 sm:flex-1 sm:border-l sm:border-t-0"
+                                              className="flex min-h-10 min-w-0 flex-1 items-center justify-center gap-1 border-t border-slate-100 bg-sky-50 px-3 py-2 text-[11px] font-bold text-sky-700 disabled:opacity-40 sm:border-l sm:border-t-0"
                                             >
-                                              <option value="">Move order</option>
-                                              {moveTargets.map((c) => (
-                                                <option key={c.id} value={c.id}>
-                                                  #{c.orderNumber || c.id.slice(-4)}
-                                                </option>
-                                              ))}
-                                            </select>
+                                              <ArrowRightLeft size={14} />
+                                              Move
+                                            </button>
                                           ) : null}
 
                                           <button
@@ -2436,6 +2402,11 @@ function WaiterView({
   const [correctionQuantities, setCorrectionQuantities] = useState<
     Record<string, number>
   >({});
+  const [movingItem, setMovingItem] = useState<{
+    order: OrderRecord;
+    item: OrderItem;
+    correctionValue: number;
+  } | null>(null);
   const [step, setStep] = useState<WaiterStep>("tables");
   const [selectedTable, setSelectedTable] = useState<TableRecord | null>(null);
   const [, setExistingOrder] = useState<OrderRecord | undefined>(undefined);
@@ -2974,6 +2945,7 @@ function WaiterView({
                 onRemovePlacedItem={handleRemovePlacedItem}
                 onCancelPlacedItem={handleCancelPlacedItem}
                 onMovePlacedItem={handleMovePlacedItem}
+                setMovingItem={setMovingItem}
                 className="mt-0"
               />
             </div>
@@ -3115,6 +3087,96 @@ function WaiterView({
           </div>
         </div>
       ) : null}
+
+      {/* Unified Move Item Modal */}
+      {movingItem && (() => {
+        const moveTargets = orders.filter(
+          (o) =>
+            o.id !== movingItem.order.id &&
+            (o.tableId || o.table?.id) === (movingItem.order.tableId || movingItem.order.table?.id) &&
+            ["PLACED", "IN_PROGRESS", "READY", "SERVED"].includes(normalizeStatus(o.status))
+        );
+
+        return (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/60 p-4 backdrop-blur-sm">
+            <div className="w-full max-w-md overflow-hidden rounded-[32px] bg-white p-6 shadow-2xl animate-in fade-in zoom-in-95">
+              <div className="mb-6 flex items-center justify-between">
+                <div>
+                  <h4 className="text-lg font-black text-slate-900 uppercase">Move Item</h4>
+                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
+                    Select destination for {movingItem.item.name}
+                  </p>
+                </div>
+                <button
+                  onClick={() => setMovingItem(null)}
+                  className="rounded-full bg-slate-100 p-2 text-slate-400 hover:text-slate-900"
+                >
+                  <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2.5">
+                    <path d="M18 6L6 18M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+
+              <div className="space-y-6 max-h-[60vh] overflow-y-auto no-scrollbar p-1">
+                {/* Section: Other Orders on Same Table */}
+                {moveTargets.length > 0 && (
+                  <div>
+                    <h5 className="mb-3 text-[10px] font-black text-slate-400 uppercase tracking-widest">Orders on this Table</h5>
+                    <div className="grid grid-cols-2 gap-3">
+                      {moveTargets.map((target) => (
+                        <button
+                          key={target.id}
+                          onClick={() => {
+                            handleMovePlacedItem(movingItem.order, movingItem.item, { targetOrderId: target.id }, movingItem.correctionValue);
+                            setMovingItem(null);
+                          }}
+                          className="flex flex-col items-center justify-center gap-1 rounded-2xl border border-sky-100 bg-sky-50 py-4 hover:border-sky-400 hover:bg-sky-100 transition-all active:scale-95 group"
+                        >
+                          <span className="text-xs font-black text-sky-900 uppercase group-hover:text-sky-700">
+                            #{target.orderNumber || target.id.slice(-4)}
+                          </span>
+                          <span className="text-[9px] font-bold text-sky-400">EXCHANGE ORDER</span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Section: Other Tables */}
+                <div>
+                  <h5 className="mb-3 text-[10px] font-black text-slate-400 uppercase tracking-widest">Other Tables</h5>
+                  <div className="grid grid-cols-3 gap-3">
+                    {tables
+                      .filter((t) => t.id !== (movingItem.order.table?.id || movingItem.order.tableId))
+                      .map((table) => (
+                        <button
+                          key={table.id}
+                          onClick={() => {
+                            handleMovePlacedItem(movingItem.order, movingItem.item, { targetTableId: table.id }, movingItem.correctionValue);
+                            setMovingItem(null);
+                          }}
+                          className="flex flex-col items-center justify-center gap-1 rounded-2xl border border-slate-100 bg-slate-50 py-4 hover:border-amber-400 hover:bg-amber-50 transition-all active:scale-95 group"
+                        >
+                          <span className="text-xs font-black text-slate-900 uppercase group-hover:text-amber-700">
+                            {table.name || `T${table.number}`}
+                          </span>
+                          <span className="text-[10px] font-bold text-slate-400">T{table.number}</span>
+                        </button>
+                      ))}
+                  </div>
+                </div>
+              </div>
+
+              <button
+                onClick={() => setMovingItem(null)}
+                className="mt-6 w-full rounded-2xl border border-slate-200 py-4 text-sm font-bold text-slate-700 hover:bg-slate-50 transition-colors"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 }
@@ -3307,6 +3369,7 @@ function SmartOrderCard({
   onRemovePlacedItem,
   onCancelPlacedItem,
   onMovePlacedItem,
+  setMovingItem,
   updatingItemKey,
   compact,
 }: {
@@ -3337,6 +3400,7 @@ function SmartOrderCard({
     target: MoveTargetSelection,
     quantity: number,
   ) => void;
+  setMovingItem: (item: { order: OrderRecord; item: OrderItem; correctionValue: number } | null) => void;
   updatingItemKey?: string | null;
   compact?: boolean;
 }) {
@@ -3515,58 +3579,20 @@ function SmartOrderCard({
                 </div>
                 {canCorrectItem ? (
                   <div className="flex items-center gap-1.5">
-                    {/* Exchange order */}
-                    {moveTargets.length > 0 && (
-                      <select
-                        defaultValue=""
+                    {/* Unified Move Button */}
+                    {(moveTargets.length > 0 || tableTargets.length > 0) && (
+                      <button
+                        type="button"
                         disabled={correctingLineKey === correctionKey}
-                        onChange={(e) => {
-                          if (!e.target.value) return;
-                          onMovePlacedItem(
-                            order,
-                            item,
-                            { targetOrderId: e.target.value },
-                            correctionValue,
-                          );
-                          e.currentTarget.value = "";
-                        }}
-                        title="Move to another order"
-                        className="h-6 rounded-md border border-slate-200 bg-white px-1.5 text-[10px] font-medium text-slate-600 disabled:opacity-40"
+                        onClick={() =>
+                          setMovingItem({ order, item, correctionValue })
+                        }
+                        title="Move to another order or table"
+                        className="flex h-6 items-center gap-1 rounded-md border border-sky-200 bg-sky-50 px-2 text-[10px] font-black text-sky-700 hover:bg-sky-100 disabled:opacity-40 uppercase tracking-tight"
                       >
-                        <option value="">↔ Order</option>
-                        {moveTargets.map((c) => (
-                          <option key={c.id} value={c.id}>
-                            #{c.orderNumber || c.id.slice(-4)}
-                          </option>
-                        ))}
-                      </select>
-                    )}
-
-                    {/* Exchange table */}
-                    {tableTargets.length > 0 && (
-                      <select
-                        defaultValue=""
-                        disabled={correctingLineKey === correctionKey}
-                        onChange={(e) => {
-                          if (!e.target.value) return;
-                          onMovePlacedItem(
-                            order,
-                            item,
-                            { targetTableId: e.target.value },
-                            correctionValue,
-                          );
-                          e.currentTarget.value = "";
-                        }}
-                        title="Move to another table"
-                        className="h-6 rounded-md border border-slate-200 bg-white px-1.5 text-[10px] font-medium text-slate-600 disabled:opacity-40"
-                      >
-                        <option value="">⇄ Table</option>
-                        {tableTargets.map((t) => (
-                          <option key={t.id} value={t.id}>
-                            T{t.number}
-                          </option>
-                        ))}
-                      </select>
+                        <ArrowRightLeft size={12} strokeWidth={3} />
+                        Move
+                      </button>
                     )}
 
                     {/* Divider */}
@@ -3815,6 +3841,13 @@ function ManagerView({ role }: { role: RoleKey }) {
   const [cancelOrderItem] = useCancelOrderItemMutation();
   const [moveOrderItem] = useMoveOrderItemMutation();
   const { data: tablesData } = useGetTablesQuery({ isActive: true });
+  const tables = tablesData?.data || [];
+
+  const [movingItem, setMovingItem] = useState<{
+    order: OrderRecord;
+    item: OrderItem;
+    correctionValue: number;
+  } | null>(null);
 
   const queryStatus = useMemo(() => {
     if (statusFilter === "active") return ["PLACED", "IN_PROGRESS", "READY", "SERVED"];
@@ -4158,6 +4191,95 @@ function ManagerView({ role }: { role: RoleKey }) {
           </div>
         </>
       )}
+      {/* Unified Move Item Modal */}
+      {movingItem && (() => {
+        const moveTargets = ordersFeed.filter(
+          (o) =>
+            o.id !== movingItem.order.id &&
+            (o.tableId || o.table?.id) === (movingItem.order.tableId || movingItem.order.table?.id) &&
+            ["PLACED", "IN_PROGRESS", "READY", "SERVED"].includes(normalizeStatus(o.status))
+        );
+
+        return (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/60 p-4 backdrop-blur-sm">
+            <div className="w-full max-w-md overflow-hidden rounded-[32px] bg-white p-6 shadow-2xl animate-in fade-in zoom-in-95">
+              <div className="mb-6 flex items-center justify-between">
+                <div>
+                  <h4 className="text-lg font-black text-slate-900 uppercase">Move Item</h4>
+                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
+                    Select destination for {movingItem.item.name}
+                  </p>
+                </div>
+                <button
+                  onClick={() => setMovingItem(null)}
+                  className="rounded-full bg-slate-100 p-2 text-slate-400 hover:text-slate-900"
+                >
+                  <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2.5">
+                    <path d="M18 6L6 18M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+
+              <div className="space-y-6 max-h-[60vh] overflow-y-auto no-scrollbar p-1">
+                {/* Section: Other Orders on Same Table */}
+                {moveTargets.length > 0 && (
+                  <div>
+                    <h5 className="mb-3 text-[10px] font-black text-slate-400 uppercase tracking-widest">Orders on this Table</h5>
+                    <div className="grid grid-cols-2 gap-3">
+                      {moveTargets.map((target) => (
+                        <button
+                          key={target.id}
+                          onClick={() => {
+                            handleMovePlacedItem(movingItem.order, movingItem.item, { targetOrderId: target.id }, movingItem.correctionValue);
+                            setMovingItem(null);
+                          }}
+                          className="flex flex-col items-center justify-center gap-1 rounded-2xl border border-sky-100 bg-sky-50 py-4 hover:border-sky-400 hover:bg-sky-100 transition-all active:scale-95 group"
+                        >
+                          <span className="text-xs font-black text-sky-900 uppercase group-hover:text-sky-700">
+                            #{target.orderNumber || target.id.slice(-4)}
+                          </span>
+                          <span className="text-[9px] font-bold text-sky-400">EXCHANGE ORDER</span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Section: Other Tables */}
+                <div>
+                  <h5 className="mb-3 text-[10px] font-black text-slate-400 uppercase tracking-widest">Other Tables</h5>
+                  <div className="grid grid-cols-3 gap-3">
+                    {tables
+                      .filter((t) => t.id !== (movingItem.order.table?.id || movingItem.order.tableId))
+                      .map((table) => (
+                        <button
+                          key={table.id}
+                          onClick={() => {
+                            handleMovePlacedItem(movingItem.order, movingItem.item, { targetTableId: table.id }, movingItem.correctionValue);
+                            setMovingItem(null);
+                          }}
+                          className="flex flex-col items-center justify-center gap-1 rounded-2xl border border-slate-100 bg-slate-50 py-4 hover:border-amber-400 hover:bg-amber-50 transition-all active:scale-95 group"
+                        >
+                          <span className="text-xs font-black text-slate-900 uppercase group-hover:text-amber-700">
+                            {table.name || `T${table.number}`}
+                          </span>
+                          <span className="text-[10px] font-bold text-slate-400">T{table.number}</span>
+                        </button>
+                      ))}
+                  </div>
+                </div>
+              </div>
+
+              <button
+                onClick={() => setMovingItem(null)}
+                className="mt-6 w-full rounded-2xl border border-slate-200 py-4 text-sm font-bold text-slate-700 hover:bg-slate-50 transition-colors"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 }
@@ -5136,6 +5258,7 @@ export function OrdersWorkspace({ rawRole }: Props) {
           </button>
         </div>
       }
+
     </div>
   );
 }

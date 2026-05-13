@@ -218,14 +218,14 @@ export function InvoiceEditView({ invoiceId, orderIds, onBack, onSuccess }: Prop
     }
   };
 
-  const handleMove = async (targetTableId: string) => {
+  const handleMove = async (target: { targetTableId?: string; targetOrderId?: string }) => {
     if (!movingItem) return;
     try {
       setBusyKey(movingItem.lineId);
       await moveOrderItem({
         orderId: movingItem.orderId,
         lineId: movingItem.lineId,
-        payload: { targetTableId, quantity: quantities[movingItem.lineId] || movingItem.maxQty }
+        payload: { ...target, quantity: quantities[movingItem.lineId] || movingItem.maxQty }
       }).unwrap();
       showSuccess(`${movingItem.itemName} moved successfully`);
       setMovingItem(null);
@@ -528,24 +528,91 @@ export function InvoiceEditView({ invoiceId, orderIds, onBack, onSuccess }: Prop
         </div>
       )}
 
-      {/* Move/Exchange Table Modal */}
-      {movingItem && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-900/60 p-4 backdrop-blur-sm">
-          <div className="w-full max-w-md overflow-hidden rounded-[32px] bg-white p-6 shadow-2xl animate-in fade-in zoom-in-95">
-            <h4 className="text-lg font-black text-slate-900">Move Item</h4>
-            <p className="mt-1 text-xs font-semibold text-slate-500 uppercase tracking-widest">Select target table for {movingItem.itemName}</p>
-            <div className="mt-6 grid grid-cols-3 gap-3 max-h-[40vh] overflow-y-auto p-1">
-              {tablesData?.items.filter(t => t.id !== relevantOrders[0]?.table?.id).map(table => (
-                <button key={table.id} onClick={() => handleMove(table.id)} className="flex flex-col items-center justify-center gap-1 rounded-2xl border border-slate-100 bg-slate-50 py-4 hover:border-amber-400 hover:bg-amber-50 transition-all active:scale-95">
-                  <span className="text-xs font-black text-slate-900 uppercase">{table.name}</span>
-                  <span className="text-[10px] font-bold text-slate-400">T{table.number}</span>
+      {/* Unified Move Item Modal */}
+      {movingItem && (() => {
+        const currentOrder = relevantOrders.find(o => o.id === movingItem.orderId);
+        const currentTableId = currentOrder?.table?.id || currentOrder?.tableId;
+        
+        // Other orders on the same table
+        const moveTargets = ordersData?.items.filter(
+          (o) =>
+            o.id !== movingItem.orderId &&
+            (o.tableId || o.table?.id) === currentTableId &&
+            ["PLACED", "IN_PROGRESS", "READY", "SERVED"].includes(o.status)
+        ) || [];
+
+        return (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/60 p-4 backdrop-blur-sm">
+            <div className="w-full max-w-md overflow-hidden rounded-[32px] bg-white p-6 shadow-2xl animate-in fade-in zoom-in-95">
+              <div className="mb-6 flex items-center justify-between">
+                <div>
+                  <h4 className="text-lg font-black text-slate-900 uppercase">Move Item</h4>
+                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
+                    Select destination for {movingItem.itemName}
+                  </p>
+                </div>
+                <button
+                  onClick={() => setMovingItem(null)}
+                  className="rounded-full bg-slate-100 p-2 text-slate-400 hover:text-slate-900"
+                >
+                  <XCircle size={24} />
                 </button>
-              ))}
+              </div>
+
+              <div className="space-y-6 max-h-[60vh] overflow-y-auto no-scrollbar p-1">
+                {/* Section: Other Orders on Same Table */}
+                {moveTargets.length > 0 && (
+                  <div>
+                    <h5 className="mb-3 text-[10px] font-black text-slate-400 uppercase tracking-widest">Orders on this Table</h5>
+                    <div className="grid grid-cols-2 gap-3">
+                      {moveTargets.map((target) => (
+                        <button
+                          key={target.id}
+                          onClick={() => handleMove({ targetOrderId: target.id })}
+                          className="flex flex-col items-center justify-center gap-1 rounded-2xl border border-sky-100 bg-sky-50 py-4 hover:border-sky-400 hover:bg-sky-100 transition-all active:scale-95 group"
+                        >
+                          <span className="text-xs font-black text-sky-900 uppercase group-hover:text-sky-700">
+                            #{target.orderNumber || target.id.slice(-4)}
+                          </span>
+                          <span className="text-[9px] font-bold text-sky-400 uppercase tracking-tight">Exchange Order</span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Section: Other Tables */}
+                <div>
+                  <h5 className="mb-3 text-[10px] font-black text-slate-400 uppercase tracking-widest">Other Tables</h5>
+                  <div className="grid grid-cols-3 gap-3">
+                    {tablesData?.items
+                      .filter((t) => t.id !== currentTableId)
+                      .map((table) => (
+                        <button
+                          key={table.id}
+                          onClick={() => handleMove({ targetTableId: table.id })}
+                          className="flex flex-col items-center justify-center gap-1 rounded-2xl border border-slate-100 bg-slate-50 py-4 hover:border-amber-400 hover:bg-amber-50 transition-all active:scale-95 group"
+                        >
+                          <span className="text-xs font-black text-slate-900 uppercase group-hover:text-amber-700">
+                            {table.name || `T${table.number}`}
+                          </span>
+                          <span className="text-[10px] font-bold text-slate-400 uppercase tracking-tight">T{table.number}</span>
+                        </button>
+                      ))}
+                  </div>
+                </div>
+              </div>
+
+              <button
+                onClick={() => setMovingItem(null)}
+                className="mt-6 w-full rounded-2xl border border-slate-200 py-4 text-sm font-bold text-slate-700 hover:bg-slate-50 transition-colors"
+              >
+                Cancel
+              </button>
             </div>
-            <button onClick={() => setMovingItem(null)} className="mt-6 w-full rounded-2xl border border-slate-200 py-4 text-sm font-bold text-slate-700">Cancel</button>
           </div>
-        </div>
-      )}
+        );
+      })()}
     </div>
   );
 }

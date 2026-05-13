@@ -2052,13 +2052,13 @@ export function DashboardCard({ section }: DashboardCardProps) {
             className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm transition-opacity"
             onClick={() => setInvoiceDrawerOpen(false)}
           />
-          <div className="relative h-full w-full bg-white shadow-2xl transition-transform sm:w-[540px] md:w-[640px] lg:w-[720px] xl:w-[800px]">
-            <button
+          <div className="relative h-full w-full bg-white shadow-2xl transition-transform sm:w-[540px] ">
+            {/* <button
               onClick={() => setInvoiceDrawerOpen(false)}
               className="absolute right-4 top-4 z-[70] rounded-full bg-slate-100 p-2 text-slate-500 hover:bg-slate-200 hover:text-slate-900"
             >
               <X size={20} />
-            </button>
+            </button> */}
             <div className="h-full overflow-hidden">
               {drawerInvoiceId ? (
                 <InvoicePreviewView
