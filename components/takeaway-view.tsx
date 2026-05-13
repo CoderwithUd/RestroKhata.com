@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { getErrorMessage } from "@/lib/error";
 import { sanitizePhone, isValidIndianPhone } from "@/lib/phone";
@@ -86,6 +86,9 @@ export function TakeawayView() {
   const [createOrder, { isLoading: isCreating }] = useCreateOrderMutation();
   const [createInvoice, { isLoading: isCreatingInvoice }] = useCreateInvoiceMutation();
   const router = useRouter();
+
+  // Guard against double-submission (useRef is synchronous unlike useState)
+  const isPlacingRef = useRef(false);
 
   // Cart + order state
   const [cart, setCart] = useState<CartEntry[]>([]);
@@ -260,6 +263,9 @@ export function TakeawayView() {
   // Place order
   const handleTAPlaceOrder = useCallback(async () => {
     if (cart.length === 0) return;
+    // Prevent double-click duplicate orders
+    if (isPlacingRef.current) return;
+    isPlacingRef.current = true;
 
     const nameVal = customerName.trim();
     const phoneVal = customerPhone.trim(); // already sanitized on input
@@ -311,6 +317,8 @@ export function TakeawayView() {
       }
     } catch (error) {
       showError(getErrorMessage(error));
+    } finally {
+      isPlacingRef.current = false;
     }
   }, [appendToOrderId, cart, createOrder, createInvoice, customerName, customerPhone, packingNote, refetchInvoices, refetchOrders, router]);
 

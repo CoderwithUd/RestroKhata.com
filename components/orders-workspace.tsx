@@ -2405,6 +2405,9 @@ function WaiterView({
   const [moveOrderItem] = useMoveOrderItemMutation();
   const [createInvoice, { isLoading: isCreatingInvoice }] =
     useCreateInvoiceMutation();
+
+  // Guard against double-submission from rapid double-clicks
+  const isPlacingOrderRef = useRef(false);
   const [socketConnected, setSocketConnected] = useState(false);
   const [creatingInvoiceOrderId, setCreatingInvoiceOrderId] = useState<
     string | null
@@ -2782,6 +2785,9 @@ function WaiterView({
       customerDetails: OptionalCustomerDetails,
     ) => {
       if (!selectedTable) return;
+      // Prevent double-click duplicate orders
+      if (isPlacingOrderRef.current) return;
+      isPlacingOrderRef.current = true;
 
       const nextCustomer = skipCustomer
         ? { customerName: "", customerPhone: "" }
@@ -2848,6 +2854,8 @@ function WaiterView({
       } catch (error) {
         showError(getErrorMessage(error));
         setStep("menu");
+      } finally {
+        isPlacingOrderRef.current = false;
       }
     },
     [
