@@ -1833,7 +1833,7 @@ export function DashboardCard({ section }: DashboardCardProps) {
                   </article>
                 </section>
 
-                <section className="mt-4 grid gap-4 lg:grid-cols-2">
+                <section className="mt-4 grid gap-4 grid-cols-1 lg:grid-cols-2">
                   {/* Kitchen Queue */}
                   <article className="rounded-2xl border border-[#e6dfd1] bg-[#fffdf9] shadow-sm">
                     <div className="flex items-center justify-between border-b border-[#eee7d8] px-4 py-3">
@@ -1854,7 +1854,7 @@ export function DashboardCard({ section }: DashboardCardProps) {
                         kitchenTickets.map((ticket) => (
                           <div
                             key={ticket.id}
-                            className={`rounded-xl border-l-4 border p-3 ${ticket.tone === "red"
+                            className={`rounded-xl border-l-4 border p-3 min-w-0 overflow-hidden ${ticket.tone === "red"
                               ? "border-rose-300 bg-rose-50"
                               : ticket.tone === "green"
                                 ? "border-emerald-300 bg-emerald-50"
@@ -1871,7 +1871,7 @@ export function DashboardCard({ section }: DashboardCardProps) {
                                 {ticket.time}
                               </p>
                             </div>
-                            <p className="truncate text-xs text-slate-600">
+                            <p className="truncate text-[11px] sm:text-xs text-slate-600">
                               {ticket.items}
                             </p>
                             <div className="mt-2">
@@ -1940,11 +1940,11 @@ export function DashboardCard({ section }: DashboardCardProps) {
                         ].map((row) => (
                           <div
                             key={row.label}
-                            className="flex items-center justify-between gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 min-w-0"
+                            className="flex items-center justify-between gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 min-w-0 overflow-hidden"
                           >
-                            <span className="text-slate-600 truncate flex-1">{row.label}</span>
+                            <span className="text-slate-600 truncate flex-1 text-[11px] sm:text-xs">{row.label}</span>
                             <span
-                              className={`font-bold shrink-0 ${row.profit !== null && row.profit !== undefined
+                              className={`font-bold shrink-0 text-[11px] sm:text-xs ${row.profit !== null && row.profit !== undefined
                                 ? row.profit >= 0
                                   ? "text-emerald-700"
                                   : "text-rose-700"

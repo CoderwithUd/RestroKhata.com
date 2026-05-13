@@ -936,14 +936,14 @@ export function PublicQrMenu({ tenantSlug: tenantSlugFromPath }: PublicQrMenuPro
   const tableLabel = data?.table?.name || (Number.isFinite(data?.table?.number) ? `Table ${data?.table?.number}` : "Guest Order");
   const resolvedTableId = tableId || data?.table?.id || "";
   const resolvedTableNumber = tableNumber || (typeof data?.table?.number === "number" ? String(data.table.number) : "");
-  const orderEnabled = Boolean(token || (tenantSlug && (resolvedTableId || resolvedTableNumber)));
+  const orderEnabled = Boolean(token || tenantSlug);
 
   const publicOrderLocator = useMemo(() => buildPublicOrderLocator({ token, tenantSlug, tableId: resolvedTableId, tableNumber: resolvedTableNumber, sessionToken }), [resolvedTableId, resolvedTableNumber, sessionToken, tenantSlug, token]);
   const publicHeaders = useMemo(() => ({ "Content-Type": "application/json", ...(tenantSlug ? { "x-tenant-slug": tenantSlug } : {}) }), [tenantSlug]);
 
   // Refresh current order
   const refreshCurrentOrder = useCallback(async () => {
-    if (!sessionToken || (!token && !(tenantSlug && (resolvedTableId || resolvedTableNumber)))) {
+    if (!sessionToken || (!token && !tenantSlug)) {
       setCurrentOrder(null); setCurrentInvoice(null); setCurrentOrderError(""); return;
     }
     setIsCurrentOrderLoading(true); setCurrentOrderError("");
@@ -1021,7 +1021,7 @@ export function PublicQrMenu({ tenantSlug: tenantSlugFromPath }: PublicQrMenuPro
   async function handleSubmitOrder() {
     const trimmedName = customerName.trim();
     const normalizedPhone = sanitizePhone(customerPhone.trim());
-    if (!orderEnabled) { setSubmitError("QR link missing valid table details."); return; }
+    if (!orderEnabled) { setSubmitError("QR link missing restaurant details."); return; }
     if (!cart.length) { setSubmitError("Add at least one item."); return; }
     if (!trimmedName) { setSubmitError("Name is required."); return; }
     if (!normalizedPhone || normalizedPhone.replace(/\D/g, "").length < 10) { setSubmitError("Enter a valid 10-digit mobile number."); return; }
@@ -1037,6 +1037,7 @@ export function PublicQrMenu({ tenantSlug: tenantSlugFromPath }: PublicQrMenuPro
           customerName: trimmedName, customerPhone: normalizedPhone,
           items: cart.map(i => ({ itemId: i.itemId, variantId: i.variantId, quantity: i.quantity, optionIds: i.optionIds || [] })),
           note: note.trim() || undefined,
+          serviceMode: resolvedTableId || resolvedTableNumber ? "DINE-IN" : "TAKEAWAY",
         }),
       });
       const body = await res.json().catch(() => ({}));

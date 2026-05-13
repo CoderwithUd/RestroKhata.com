@@ -5,7 +5,7 @@ import { useConfirm } from "@/components/confirm-provider";
 import { getErrorMessage } from "@/lib/error";
 import { showError, showSuccess } from "@/lib/feedback";
 import { clearMenuCache } from "@/lib/menu-cache";
-import { Eye, EyeOff, Plus } from "lucide-react";
+import { Eye, EyeOff, Plus, QrCode, ChevronRight, X, Download, Share2, Copy, Check } from "lucide-react";
 import { useOrderSocket } from "@/lib/use-order-socket";
 import { useAppSelector } from "@/store/hooks";
 import { selectAuthToken } from "@/store/slices/authSlice";
@@ -1066,6 +1066,10 @@ export function MenuWorkspace({ tenantSlug }: Props) {
     "all" | "available" | "unavailable"
   >("all");
   const [isMenuPreviewOpen, setIsMenuPreviewOpen] = useState(false);
+  const [isDigitalQrOpen, setIsDigitalQrOpen] = useState(false);
+  const [digitalQrTemplateId, setDigitalQrTemplateId] = useState("spice");
+  const [isCopied, setIsCopied] = useState(false);
+
 
   // ── Item modal state ──
   const [isItemModalOpen, setIsItemModalOpen] = useState(false);
@@ -1777,10 +1781,61 @@ export function MenuWorkspace({ tenantSlug }: Props) {
     ? `/qr?tenantSlug=${encodeURIComponent(tenantSlug)}`
     : "";
 
+  const digitalMenuUrl = tenantSlug
+    ? `https://restro-khata-com.vercel.app/qr?tenantSlug=${encodeURIComponent(tenantSlug)}`
+    : "";
+
+  const digitalQrCodeSrc = digitalMenuUrl
+    ? `https://api.qrserver.com/v1/create-qr-code/?size=1000x1000&data=${encodeURIComponent(digitalMenuUrl)}`
+    : "";
+
+  async function copyDigitalUrl() {
+    if (!digitalMenuUrl) return;
+    try {
+      await navigator.clipboard.writeText(digitalMenuUrl);
+      setIsCopied(true);
+      setTimeout(() => setIsCopied(false), 2000);
+    } catch (err) {
+      showError("Link copy nahi ho paya");
+    }
+  }
+
+  function downloadDigitalQr() {
+    if (!digitalQrCodeSrc) return;
+    const a = document.createElement("a");
+    a.href = digitalQrCodeSrc;
+    a.download = `digital-menu-qr-${tenantSlug}.png`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+  }
+
   // ─── Render ───────────────────────────────────────────────────────────────
 
   return (
     <>
+      {/* ── Digital Menu Banner ── */}
+      <div
+        className="mb-4 group relative overflow-hidden rounded-2xl border border-amber-200 bg-gradient-to-r from-amber-50 to-orange-50 p-4 shadow-sm transition-all hover:shadow-md active:scale-[0.99] cursor-pointer"
+        onClick={() => setIsDigitalQrOpen(true)}
+      >
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3.5">
+            <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-amber-500 text-white shadow-lg shadow-amber-200">
+              <QrCode size={22} />
+            </div>
+            <div>
+              <h2 className="text-[14px] font-bold text-stone-900">Digital Menu & QR Ordering</h2>
+              <p className="text-[11px] font-medium text-amber-700/80 mt-0.5">Scan to view menu & place takeaway orders</p>
+            </div>
+          </div>
+          <div className="flex h-8 w-8 items-center justify-center rounded-full bg-white/80 text-amber-600 shadow-sm transition-transform group-hover:translate-x-1">
+            <ChevronRight size={18} />
+          </div>
+        </div>
+        {/* Subtle decorative element */}
+        <div className="absolute -right-4 -top-4 h-24 w-24 rounded-full bg-amber-200/20 blur-2xl" />
+      </div>
       {/* ── Tab Bar ── */}
       <nav className="flex gap-2 overflow-x-auto pb-0.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
         {(["itemList", "category", "optionGroup"] as MenuPanelTab[]).map(
@@ -3810,6 +3865,105 @@ export function MenuWorkspace({ tenantSlug }: Props) {
                       : "Create Option Group"}
                 </button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Digital Menu QR Modal ── */}
+      {isDigitalQrOpen && (
+        <div className="fixed inset-0 z-[60] flex items-end justify-center p-0 sm:items-center sm:p-4">
+          <div
+            className="absolute inset-0 bg-stone-900/60 backdrop-blur-sm"
+            onClick={() => setIsDigitalQrOpen(false)}
+          />
+          <div className="relative w-full max-w-md overflow-hidden rounded-t-[2.5rem] sm:rounded-[2.5rem] bg-[#fffdfa] shadow-2xl animate-in slide-in-from-bottom sm:zoom-in duration-300 max-h-[92vh] flex flex-col">
+            {/* Header */}
+            <div className="p-5 pb-0 flex items-center justify-between shrink-0">
+              <div className="flex items-center gap-3">
+                <div className="h-10 w-10 flex items-center justify-center rounded-xl bg-amber-50 text-amber-600">
+                  <QrCode size={20} />
+                </div>
+                <div>
+                  <p className="text-[10px] font-bold uppercase tracking-widest text-amber-600 leading-none">Digital Menu</p>
+                  <h2 className="text-base font-bold text-stone-900 mt-1">QR Selection</h2>
+                </div>
+              </div>
+              <button
+                onClick={() => setIsDigitalQrOpen(false)}
+                className="h-9 w-9 flex items-center justify-center rounded-full bg-stone-100 text-stone-500 hover:bg-stone-200 transition-colors"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            {/* Content Area */}
+            <div className="p-5 pt-4 overflow-y-auto no-scrollbar">
+              <div className="flex flex-col items-center">
+                {/* QR Preview Area */}
+                <div className="relative w-full max-w-[240px] aspect-square overflow-hidden rounded-3xl bg-white border-2 border-amber-100 p-6 shadow-sm">
+                  {digitalQrCodeSrc ? (
+                    <img
+                      src={digitalQrCodeSrc}
+                      alt="Digital Menu QR"
+                      className="h-full w-full object-contain"
+                    />
+                  ) : (
+                    <div className="flex h-full w-full items-center justify-center text-stone-300">
+                      <QrCode size={48} strokeWidth={1} />
+                    </div>
+                  )}
+                  <div className="absolute inset-0 flex items-center justify-center pointer-events-none opacity-[0.03]">
+                    <span className="text-3xl font-black rotate-45 uppercase tracking-tighter">RESTRO KHATA</span>
+                  </div>
+                </div>
+
+                <div className="mt-5 text-center px-4">
+                  <p className="text-[15px] font-bold text-stone-800">Scan to View & Order</p>
+              
+                </div>
+              </div>
+
+              {/* URL Display */}
+              <div className="mt-6 rounded-2xl bg-stone-50 border border-stone-200/60 p-3.5">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="min-w-0 flex-1">
+                    <p className="text-[10px] font-bold text-stone-400 uppercase tracking-wider">Public Menu Link</p>
+                    <p className="mt-0.5 text-[11px] text-stone-600 truncate font-medium">{digitalMenuUrl}</p>
+                  </div>
+                  <button 
+                    onClick={copyDigitalUrl}
+                    className={`shrink-0 flex h-8 w-8 items-center justify-center rounded-lg transition-all ${isCopied ? "bg-emerald-500 text-white" : "bg-white border border-stone-200 text-stone-500 shadow-sm"}`}
+                  >
+                    {isCopied ? <Check size={14} /> : <Copy size={14} />}
+                  </button>
+                </div>
+              </div>
+
+              {/* Main Actions */}
+              <div className="mt-6 flex gap-3">
+                <button
+                  onClick={downloadDigitalQr}
+                  className="flex-1 flex items-center justify-center gap-2.5 rounded-2xl bg-amber-500 py-3.5 text-[13px] font-bold text-white shadow-lg shadow-amber-200 transition-all active:scale-[0.98] hover:bg-amber-600"
+                >
+                  <Download size={18} />
+                  Download QR
+                </button>
+                <button
+                  onClick={copyDigitalUrl}
+                  className="flex-1 flex items-center justify-center gap-2.5 rounded-2xl border-2 border-stone-100 bg-white py-3.5 text-[13px] font-bold text-stone-700 transition-all active:scale-[0.98] hover:bg-stone-50"
+                >
+                  {isCopied ? <Check size={18} className="text-emerald-500" /> : <Share2 size={18} />}
+                  {isCopied ? "Copied!" : "Share Link"}
+                </button>
+              </div>
+            </div>
+
+            {/* Bottom Footer */}
+            <div className="bg-stone-50/80 backdrop-blur-md p-4 border-t border-stone-100 text-center shrink-0">
+              <p className="text-[10px] font-medium text-stone-400">
+                Powered by Restro Khata • Digital Menu Suite
+              </p>
             </div>
           </div>
         </div>

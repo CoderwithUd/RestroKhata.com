@@ -2580,7 +2580,7 @@ function WaiterView({
 
   async function handleCreateInvoice(order: OrderRecord) {
     if (!order.id) return;
-    
+
     // Check if an invoice already exists for this order
     const existingInvoice = invoices.find(
       (inv) => inv.orderId === order.id || (inv.orderIds || []).includes(order.id)

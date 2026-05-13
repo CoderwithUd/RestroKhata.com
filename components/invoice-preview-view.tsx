@@ -37,7 +37,7 @@ export function InvoicePreviewView({ invoiceId, onBack }: { invoiceId: string; o
    const router = useRouter();
    const { data: invoice, isFetching, refetch: refetchInvoice } = useGetInvoiceByIdQuery(invoiceId);
    // Align with dashboard query for cache reuse
-   const { data: ordersData } = useGetOrdersQuery({ 
+   const { data: ordersData } = useGetOrdersQuery({
       status: ["PLACED", "IN_PROGRESS", "READY", "SERVED"],
       page: 1,
       limit: 100
@@ -105,7 +105,7 @@ export function InvoicePreviewView({ invoiceId, onBack }: { invoiceId: string; o
             payload: { method, paidAmount: due || invoice!.grandTotal || 0 }
          }).unwrap();
          showSuccess(`Paid via ${method}`);
-         
+
          // Free up table if associated
          const tableId = invoice?.table?.id || order?.tableId || order?.table?.id;
          if (tableId) {
@@ -230,14 +230,14 @@ export function InvoicePreviewView({ invoiceId, onBack }: { invoiceId: string; o
          {/* Header - Responsive Sticky */}
          <div className="sticky top-0 z-30 flex-shrink-0 flex items-center justify-between border-b border-slate-100 bg-white/95 backdrop-blur px-4 py-3 shadow-sm no-print">
             <div className="flex items-center gap-3">
-               <button 
+               <button
                   onClick={() => {
                      if (onBack) {
                         onBack();
                      } else {
                         router.push("/dashboard/invoices" + (invoice?.status === "PAID" ? "?tab=PAID" : ""));
                      }
-                  }} 
+                  }}
                   className="p-1 text-slate-500 hover:text-slate-900 transition-colors"
                >
                   <ChevronLeft size={24} />

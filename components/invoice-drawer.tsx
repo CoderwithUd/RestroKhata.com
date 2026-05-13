@@ -32,7 +32,7 @@ export function InvoiceDrawer({ invoiceId, orderIds, mode = "view", onClose, onS
 
   return (
     <div className={`fixed inset-0 z-[100] flex justify-end transition-opacity duration-300 ${isOpen ? "bg-slate-900/40 backdrop-blur-sm opacity-100" : "bg-slate-900/0 backdrop-blur-none opacity-0 pointer-events-none"}`} onClick={onClose}>
-      <div 
+      <div
         className={`relative flex h-full w-full flex-col bg-white shadow-2xl transition-transform duration-500 ease-out sm:max-w-2xl sm:rounded-l-[40px] ${isOpen ? "translate-x-0" : "translate-x-full"}`}
         onClick={(e) => e.stopPropagation()}
       >
@@ -46,19 +46,19 @@ export function InvoiceDrawer({ invoiceId, orderIds, mode = "view", onClose, onS
 
         {/* Drawer Content */}
         <div className="flex-1 overflow-hidden">
-           {localMode === "edit" ? (
-             <InvoiceEditView 
-               invoiceId={invoiceId || undefined} 
-               orderIds={orderIds || undefined}
-               onBack={onClose} 
-               onSuccess={(newId) => {
-                 if (onSuccess) onSuccess(newId);
-                 setLocalMode("view");
-               }} 
-             />
-           ) : (
-             <InvoicePreviewView invoiceId={invoiceId!} onBack={onClose} />
-           )}
+          {localMode === "edit" ? (
+            <InvoiceEditView
+              invoiceId={invoiceId || undefined}
+              orderIds={orderIds || undefined}
+              onBack={onClose}
+              onSuccess={(newId) => {
+                if (onSuccess) onSuccess(newId);
+                setLocalMode("view");
+              }}
+            />
+          ) : (
+            <InvoicePreviewView invoiceId={invoiceId!} onBack={onClose} />
+          )}
         </div>
       </div>
     </div>
