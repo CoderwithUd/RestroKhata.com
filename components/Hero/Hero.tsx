@@ -24,7 +24,7 @@ export default function Hero() {
       </Reveal>
       <Reveal delay={3}>
         <div className={styles.actions}>
-          <Link href="#pricing" className="btn-hero-primary">
+          <Link href="https://app.restrokhata.com/register" className="btn-hero-primary">
             Get Started Free <ArrowRight size={18} />
           </Link>
           <Link href="#demo" className="btn-hero-ghost">
