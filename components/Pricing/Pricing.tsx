@@ -32,7 +32,7 @@ export default function Pricing() {
               <div className={styles.offerPrice}><del>₹2,500</del><strong>₹1,000</strong><span>all-inclusive</span></div>
               <small>Physical QR stand delivered, 1 year activated, setup done on WhatsApp</small>
             </div>
-            <a href="#demo" className={styles.offerButton}>Order QR Stand - ₹1,000</a>
+            <a href="https://app.restrokhata.com/register" className={styles.offerButton}>Order QR Stand - ₹1,000</a>
           </aside>
         </Reveal>
       </div>

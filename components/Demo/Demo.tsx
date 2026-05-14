@@ -18,7 +18,7 @@ const cards = [
     body: "Sign up and explore the full platform yourself with real data. No demo required.",
     points: ["Full platform access during trial", "Test with real orders on Day 1", "WhatsApp support through setup", "3 months free with no commitment"],
     cta: "Start Free Trial",
-    href: "#pricing",
+    href: "https://app.restrokhata.com/register",
     note: "Takes less than 2 minutes to register"
   }
 ];
