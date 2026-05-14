@@ -9,6 +9,15 @@ export const metadata: Metadata = {
   metadataBase: new URL("https://restrokhata.com"),
   title,
   description,
+  icons: {
+    icon: [
+      {
+        url: "/RestroKhata-RK-Complete-Icons/favicon-32x32.png",
+        sizes: "32x32",
+        type: "image/png"
+      }
+    ]
+  },
   keywords: [
     "restaurant management software India",
     "cafe management system",

@@ -26,6 +26,26 @@ export default function Navigation() {
     return () => window.removeEventListener("scroll", onScroll);
   }, []);
 
+  useEffect(() => {
+    if (!open) return;
+
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setOpen(false);
+      }
+    };
+
+    window.addEventListener("keydown", onKeyDown);
+
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener("keydown", onKeyDown);
+    };
+  }, [open]);
+
   return (
     <>
       <Link className={styles.whatsappFloat} href={whatsappUrl} target="_blank" rel="noreferrer" aria-label="WhatsApp support">
@@ -57,20 +77,39 @@ export default function Navigation() {
             <span className={styles.srOnly}>Toggle menu</span>
           </button>
         </nav>
-        <div id="mobile-menu" className={`${styles.mobileMenu} ${open ? styles.mobileMenuOpen : ""}`}>
+      </header>
+      <button
+        className={`${styles.drawerBackdrop} ${open ? styles.drawerBackdropOpen : ""}`}
+        type="button"
+        aria-label="Close navigation menu"
+        onClick={() => setOpen(false)}
+      />
+      <aside id="mobile-menu" className={`${styles.mobileDrawer} ${open ? styles.mobileDrawerOpen : ""}`} aria-label="Mobile navigation">
+        <div className={styles.drawerHeader}>
+          <Link className={styles.logo} href="#hero" aria-label="RestroKhata home" onClick={() => setOpen(false)}>
+            <Image src="/RestroKhata-RK-Complete-Icons/icon-circle-512x512.png" alt="logo" width={44} height={44} />
+            <span>RestroKhata</span>
+          </Link>
+          <button className={styles.closeButton} type="button" onClick={() => setOpen(false)} aria-label="Close menu">
+            <X size={22} />
+          </button>
+        </div>
+        <nav className={styles.drawerLinks} aria-label="Mobile menu links">
           {links.map((link) => (
             <Link key={link.href} href={link.href} onClick={() => setOpen(false)}>
               {link.label}
             </Link>
           ))}
-          <Link href="#demo" onClick={() => setOpen(false)}>
+        </nav>
+        <div className={styles.drawerActions}>
+          <Link href="#demo" className="btn-ghost" onClick={() => setOpen(false)}>
             Book Demo
           </Link>
-          <Link href="#pricing" onClick={() => setOpen(false)}>
+          <Link href="#pricing" className="btn-primary" onClick={() => setOpen(false)}>
             Start Free Trial
           </Link>
         </div>
-      </header>
+      </aside>
     </>
   );
 }

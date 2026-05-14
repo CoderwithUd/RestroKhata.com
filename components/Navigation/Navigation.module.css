@@ -55,7 +55,7 @@
 }
 
 .links a,
-.mobileMenu a {
+.drawerLinks a {
   color: var(--text-secondary);
   font-size: 14px;
   font-weight: 700;
@@ -63,7 +63,7 @@
 }
 
 .links a:hover,
-.mobileMenu a:hover {
+.drawerLinks a:hover {
   color: var(--orange);
 }
 
@@ -83,6 +83,7 @@
   border-radius: var(--radius-sm);
   background: #fff;
   color: var(--text-primary);
+  cursor: pointer;
 }
 
 .srOnly {
@@ -93,8 +94,87 @@
   clip: rect(0, 0, 0, 0);
 }
 
-.mobileMenu {
-  display: none;
+.drawerBackdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 120;
+  border: 0;
+  background: rgba(26, 26, 26, 0.42);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.2s ease;
+}
+
+.drawerBackdropOpen {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.mobileDrawer {
+  position: fixed;
+  top: 0;
+  right: 0;
+  z-index: 130;
+  display: flex;
+  flex-direction: column;
+  width: min(360px, 88vw);
+  height: 100dvh;
+  padding: 18px;
+  border-left: 1px solid var(--border);
+  background: #fff;
+  box-shadow: -16px 0 40px rgba(0, 0, 0, 0.16);
+  transform: translateX(100%);
+  transition: transform 0.24s ease;
+}
+
+.mobileDrawerOpen {
+  transform: translateX(0);
+}
+
+.drawerHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding-bottom: 18px;
+  border-bottom: 1px solid var(--border);
+}
+
+.closeButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 42px;
+  height: 42px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: #fff;
+  color: var(--text-primary);
+  cursor: pointer;
+}
+
+.drawerLinks {
+  display: grid;
+  gap: 4px;
+  padding: 20px 0;
+}
+
+.drawerLinks a {
+  display: flex;
+  align-items: center;
+  min-height: 48px;
+  border-bottom: 1px solid var(--border);
+}
+
+.drawerActions {
+  display: grid;
+  gap: 12px;
+  margin-top: auto;
+  padding-top: 20px;
+}
+
+.drawerActions a {
+  width: 100%;
 }
 
 .whatsappFloat {
@@ -126,35 +206,23 @@
     display: inline-flex;
   }
 
-  .mobileMenu {
-    display: grid;
-    grid-template-rows: 0fr;
-    width: min(1180px, 100%);
-    margin: 0 auto;
-    padding: 0 24px;
-    overflow: hidden;
-    transition: grid-template-rows 0.2s ease, padding-bottom 0.2s ease;
-  }
-
-  .mobileMenuOpen {
-    grid-template-rows: 1fr;
-    padding-bottom: 18px;
-  }
-
-  .mobileMenu > * {
-    min-height: 0;
-  }
-
-  .mobileMenu a {
-    display: block;
-    padding: 12px 0;
-    border-bottom: 1px solid var(--border);
-  }
 }
 
 @media (max-width: 520px) {
   .nav {
     height: 60px;
     padding-inline: 18px;
+  }
+
+  .mobileDrawer {
+    width: min(330px, 90vw);
+    padding: 16px;
+  }
+}
+
+@media (min-width: 921px) {
+  .drawerBackdrop,
+  .mobileDrawer {
+    display: none;
   }
 }
