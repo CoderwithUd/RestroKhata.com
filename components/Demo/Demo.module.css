@@ -1,0 +1,70 @@
+.section {
+  background: var(--orange-pale);
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 22px;
+  margin-top: 34px;
+}
+
+.card {
+  height: 100%;
+  padding: 30px;
+  border: 1px solid var(--orange-pale-2);
+  border-radius: var(--radius-lg);
+  background: #fff;
+}
+
+.card h3 {
+  margin: 0 0 10px;
+  font-size: 1.35rem;
+}
+
+.card p {
+  color: var(--text-secondary);
+}
+
+.card ul {
+  display: grid;
+  gap: 9px;
+  margin: 22px 0;
+  padding: 0;
+  list-style: none;
+}
+
+.card li {
+  color: var(--text-secondary);
+  font-size: 14px;
+}
+
+.card li::before {
+  content: "✓ ";
+  color: var(--orange);
+  font-weight: 900;
+}
+
+.card a {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  border-radius: 999px;
+  background: var(--orange);
+  color: #fff;
+  padding: 13px 24px;
+  font-weight: 900;
+  text-decoration: none;
+}
+
+.card small {
+  display: block;
+  margin-top: 12px;
+  color: var(--text-muted);
+}
+
+@media (max-width: 760px) {
+  .grid {
+    grid-template-columns: 1fr;
+  }
+}

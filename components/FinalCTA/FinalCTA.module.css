@@ -1,0 +1,64 @@
+.section {
+  background: linear-gradient(135deg, var(--orange), var(--orange-dark));
+  color: #fff;
+  text-align: center;
+}
+
+.section h2 {
+  max-width: 760px;
+  margin: 0 auto 14px;
+  font-family: var(--font-fraunces), Georgia, serif;
+  font-size: clamp(2rem, 5vw, 3.6rem);
+  line-height: 1.1;
+}
+
+.section p {
+  max-width: 720px;
+  margin: 0 auto 28px;
+  color: rgba(255, 255, 255, 0.88);
+}
+
+.buttons {
+  display: flex;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 14px;
+  margin-bottom: 22px;
+}
+
+.whiteButton,
+.outlineButton,
+.whatsapp {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 48px;
+  border-radius: 999px;
+  padding: 0 24px;
+  font-weight: 900;
+  text-decoration: none;
+}
+
+.whiteButton {
+  background: #fff;
+  color: var(--orange-dark);
+}
+
+.outlineButton {
+  border: 1.5px solid rgba(255, 255, 255, 0.75);
+  color: #fff;
+}
+
+.whatsapp {
+  background: #25d366;
+  color: #fff;
+}
+
+@media (max-width: 620px) {
+  .whiteButton,
+  .outlineButton,
+  .whatsapp {
+    width: 100%;
+  }
+}

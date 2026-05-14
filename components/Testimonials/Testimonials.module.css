@@ -1,0 +1,58 @@
+.section {
+  background: #fff;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 20px;
+  margin-top: 34px;
+}
+
+.card {
+  height: 100%;
+  margin: 0;
+  padding: 26px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--surface-2);
+}
+
+.avatar {
+  display: grid;
+  place-items: center;
+  width: 42px;
+  height: 42px;
+  margin-bottom: 16px;
+  border-radius: 50%;
+  background: var(--orange);
+  color: #fff;
+  font-weight: 900;
+}
+
+.stars {
+  color: var(--orange);
+  letter-spacing: 2px;
+}
+
+.card blockquote {
+  margin: 12px 0 18px;
+  color: var(--text-secondary);
+}
+
+.card figcaption {
+  display: grid;
+  font-weight: 900;
+}
+
+.card figcaption span {
+  color: var(--text-muted);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+@media (max-width: 860px) {
+  .grid {
+    grid-template-columns: 1fr;
+  }
+}
