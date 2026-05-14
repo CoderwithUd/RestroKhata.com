@@ -68,7 +68,7 @@ export default function Navigation() {
             <Link href="#demo" className="btn-ghost">
               Book Demo
             </Link>
-            <Link href="#pricing" className="btn-primary">
+            <Link href="https://app.restrokhata.com/register" className="btn-primary" target="_blank" rel="noreferrer">
               Start Free
             </Link>
           </div>
@@ -105,7 +105,7 @@ export default function Navigation() {
           <Link href="#demo" className="btn-ghost" onClick={() => setOpen(false)}>
             Book Demo
           </Link>
-          <Link href="#pricing" className="btn-primary" onClick={() => setOpen(false)}>
+          <Link href="https://app.restrokhata.com/register" className="btn-primary" onClick={() => setOpen(false)}>
             Start Free Trial
           </Link>
         </div>
