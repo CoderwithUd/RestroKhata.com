@@ -15,7 +15,7 @@ export default function Footer() {
             </Link>
             <p>All-in-one restaurant management for Indian cafes, restaurants, and dhabas. QR ordering, live kitchen display, GST billing, and more.</p>
             <address>
-              <Link href="mailto:hello@restrokhata.com">support@restrokhata.com</Link>
+              <Link href="mailto:hello@restrokhata.com">restrokhata@gmail.com</Link>
               <Link href={whatsappUrl} target="_blank" rel="noreferrer">WhatsApp: +91 9131695767</Link>
               <span>Mon-Sat, 10 AM - 7 PM</span>
             </address>
