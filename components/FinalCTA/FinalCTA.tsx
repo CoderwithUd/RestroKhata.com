@@ -13,8 +13,8 @@ export default function FinalCTA() {
         <Reveal delay={1}><p>Join cafe and restaurant owners already running smarter with RestroKhata. Start your 3-month free trial today or grab the QR Stand launch offer.</p></Reveal>
         <Reveal delay={2}>
           <div className={styles.buttons}>
-            <Link href="#pricing" className={styles.whiteButton}>Start Free Trial - 3 Months Free</Link>
-            <Link href="#pricing" className={styles.outlineButton}>Get QR Stand + 1 Year - ₹1,000</Link>
+            <Link href="#https://app.restrokhata.com/" className={styles.whiteButton}>Start Free Trial - 3 Months Free</Link>
+            <Link href="#https://app.restrokhata.com/" className={styles.outlineButton}>Get QR Stand + 1 Year - ₹1,000</Link>
           </div>
         </Reveal>
         <Reveal delay={3}>

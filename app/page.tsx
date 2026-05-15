@@ -43,7 +43,7 @@ export default function Home() {
         <HowItWorks />
         <Features />
         <Modes />
-        <Pricing />
+        {/* <Pricing /> */}
         <Transparency />
         <Demo />
         <Testimonials />

@@ -24,8 +24,8 @@ export default function Footer() {
             <h2>Product</h2>
             <ul>
               <li><Link href="#features">Features</Link></li>
-              <li><Link href="#pricing">Pricing</Link></li>
-              <li><Link href="#pricing">QR Stand Offer - ₹1,000</Link></li>
+              {/* <li><Link href="#pricing">Pricing</Link></li> */}
+              {/* <li><Link href="#pricing">QR Stand Offer - ₹1,000</Link></li> */}
               <li><Link href="#modes">Cafe Mode</Link></li>
               <li><Link href="#modes">Restaurant Mode</Link></li>
               <li><Link href="#features">KDS & Kitchen Display</Link></li>
@@ -38,7 +38,7 @@ export default function Footer() {
               <li><Link href="#demo">Contact Us</Link></li>
               <li><Link href={whatsappUrl} target="_blank" rel="noreferrer">WhatsApp Support</Link></li>
               <li><Link href="#faq">FAQ</Link></li>
-              <li><Link href="#pricing">Free Trial</Link></li>
+              <li><Link href="https://app.restrokhata.com/">Free Trial</Link></li>
             </ul>
             <p>Proudly serving restaurants in Raipur, Bhilai, Durg, and beyond.</p>
           </nav>
