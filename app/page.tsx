@@ -25,6 +25,9 @@ const organizationSchema = {
   "@context": "https://schema.org",
   "@type": "SoftwareApplication",
   name: "RestroKhata",
+  url: "https://restrokhata.com",
+  logo: "https://restrokhata.com/RestroKhata-RK-Complete-Icons/icon-512x512.png",
+  image: "https://restrokhata.com/RestroKhata-RK-Complete-Icons/og-image-1200x630.png",
   applicationCategory: "BusinessApplication",
   operatingSystem: "Web",
   description:

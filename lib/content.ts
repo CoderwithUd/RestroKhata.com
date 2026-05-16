@@ -1,4 +1,15 @@
-export const whatsappUrl = "https://wa.me/9131695767";
+const whatsappMessage = [
+  "Hello RestroKhata team,",
+  "",
+  "I am interested in RestroKhata for my restaurant/cafe.",
+  "Please share details about the QR ordering, KDS, GST billing, pricing, and setup process.",
+  "",
+  "Business name:",
+  "City:",
+  "Best time to call:"
+].join("\n");
+
+export const whatsappUrl = `https://wa.me/9131695767?text=${encodeURIComponent(whatsappMessage)}`;
 
 export const steps = [
   {
