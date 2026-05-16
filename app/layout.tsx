@@ -13,6 +13,16 @@ export const metadata: Metadata = {
         sizes: "any"
       },
       {
+        url: "/RestroKhata-RK-Complete-Icons/favicon-48x48.png",
+        sizes: "48x48",
+        type: "image/png"
+      },
+      {
+        url: "/RestroKhata-RK-Complete-Icons/icon-192x192.png",
+        sizes: "192x192",
+        type: "image/png"
+      },
+      {
         url: "/RestroKhata-RK-Complete-Icons/favicon-16x16.png",
         sizes: "16x16",
         type: "image/png"
