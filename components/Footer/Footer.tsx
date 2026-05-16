@@ -27,6 +27,7 @@ export default function Footer() {
             <p className={styles.navTitle}>Product</p>
             <ul>
               <li><Link href="#feature-menu">QR Self-Ordering</Link></li>
+              {/* priceing */}
               {/* <li><Link href="#pricing">Pricing</Link></li> */}
               {/* <li><Link href="#pricing">QR Stand Offer - ₹1,000</Link></li> */}
               <li><Link href="#modes">Cafe POS Mode</Link></li>
