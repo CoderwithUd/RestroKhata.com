@@ -15,9 +15,9 @@ export default function Tagline() {
         </Reveal>
         <Reveal delay={2}>
           <div className={styles.statRow}>
-            <article><strong>10 min</strong><span>Average setup time</span></article>
-            <article><strong>3 Mo.</strong><span>Full-access free trial</span></article>
-            <article><strong>100%</strong><span>Cloud-based on any device</span></article>
+            <article><span className={styles.statValue}>10 min</span><span>Average setup time</span></article>
+            <article><span className={styles.statValue}>3 Mo.</span><span>Full-access free trial</span></article>
+            <article><span className={styles.statValue}>100%</span><span>Cloud-based on any device</span></article>
           </div>
         </Reveal>
       </div>

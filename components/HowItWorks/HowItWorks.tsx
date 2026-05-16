@@ -11,14 +11,14 @@ export default function HowItWorks() {
         <Reveal delay={2}><p className="section-sub">No IT team. No complicated setup. Just sign up and start taking orders.</p></Reveal>
         <ol className={styles.grid}>
           {steps.map((step, index) => (
-            <Reveal delay={((index % 3) + 1) as 1 | 2 | 3} key={step.title}>
-              <li className={styles.card}>
+            <li className={styles.card} key={step.title}>
+              <Reveal delay={((index % 3) + 1) as 1 | 2 | 3}>
                 <span className={styles.number}>{index + 1}</span>
-                <h3>{step.title}</h3>
+                <p className={styles.cardTitle}>{step.title}</p>
                 <p>{step.body}</p>
                 <small>{step.time}</small>
-              </li>
-            </Reveal>
+              </Reveal>
+            </li>
           ))}
         </ol>
       </div>

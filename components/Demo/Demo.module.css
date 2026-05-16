@@ -17,9 +17,11 @@
   background: #fff;
 }
 
-.card h3 {
+.cardTitle {
   margin: 0 0 10px;
+  color: var(--text-primary);
   font-size: 1.35rem;
+  font-weight: 800;
 }
 
 .card p {

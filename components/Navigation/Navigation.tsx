@@ -97,7 +97,7 @@ export default function Navigation() {
         <nav className={styles.drawerLinks} aria-label="Mobile menu links">
           {links.map((link) => (
             <Link key={link.href} href={link.href} onClick={() => setOpen(false)}>
-              {link.label}
+              View {link.label}
             </Link>
           ))}
         </nav>

@@ -6,6 +6,24 @@
   text-align: center;
 }
 
+.hero::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  /* background-image: url("/images/dashboard.png"); */
+  background-position: center top;
+  top: 5rem;
+  background-repeat: no-repeat;
+  background-size: min(1180px, 96vw) auto;
+  opacity: 0.08;
+  pointer-events: none;
+}
+
+.hero > * {
+  position: relative;
+  z-index: 1;
+}
+
 .badge {
   display: inline-flex;
   align-items: center;
@@ -94,7 +112,7 @@
   box-shadow: var(--shadow-sm);
 }
 
-.stat strong {
+.statValue {
   display: block;
   margin-bottom: 4px;
   color: var(--orange);
@@ -103,7 +121,7 @@
   line-height: 1;
 }
 
-.stat span {
+.stat span:not(.statValue) {
   color: var(--text-muted);
   font-size: 12px;
   font-weight: 700;
@@ -126,6 +144,10 @@
 
 .mockup article {
   padding: 18px;
+}
+
+.mockupValue {
+  font-weight: 800;
 }
 
 .orange {

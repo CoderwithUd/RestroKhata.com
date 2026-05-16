@@ -48,7 +48,7 @@ export default function Hero() {
             ["₹0", "To start today"]
           ].map(([value, label]) => (
             <article className={styles.stat} key={label}>
-              <strong>{value}</strong>
+              <span className={styles.statValue}>{value}</span>
               <span>{label}</span>
             </article>
           ))}
@@ -65,10 +65,10 @@ export default function Hero() {
           </article>
           <article className="mockup-card">
             <div className="mockup-header">Today&apos;s Summary</div>
-            <div className="mockup-row"><span>Total Orders</span><strong>47</strong></div>
-            <div className="mockup-row"><span>Revenue</span><strong className={styles.orange}>₹18,420</strong></div>
-            <div className="mockup-row"><span>GST Collected</span><strong>₹1,842</strong></div>
-            <div className="mockup-row"><span>UPI Payments</span><strong>38</strong></div>
+            <div className="mockup-row"><span>Total Orders</span><span className={styles.mockupValue}>47</span></div>
+            <div className="mockup-row"><span>Revenue</span><span className={`${styles.mockupValue} ${styles.orange}`}>₹18,420</span></div>
+            <div className="mockup-row"><span>GST Collected</span><span className={styles.mockupValue}>₹1,842</span></div>
+            <div className="mockup-row"><span>UPI Payments</span><span className={styles.mockupValue}>38</span></div>
           </article>
           <article className="mockup-card">
             <div className="mockup-header">Table Status</div>

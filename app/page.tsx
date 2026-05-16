@@ -5,12 +5,21 @@ import FinalCTA from "@/components/FinalCTA/FinalCTA";
 import Footer from "@/components/Footer/Footer";
 import Hero from "@/components/Hero/Hero";
 import HowItWorks from "@/components/HowItWorks/HowItWorks";
+import type { Metadata } from "next";
 import Modes from "@/components/Modes/Modes";
 import Navigation from "@/components/Navigation/Navigation";
-import Pricing from "@/components/Pricing/Pricing";
+import { siteDescription, siteTitle } from "@/lib/seo";
 import Tagline from "@/components/Tagline/Tagline";
 import Testimonials from "@/components/Testimonials/Testimonials";
 import Transparency from "@/components/Transparency/Transparency";
+
+export const metadata: Metadata = {
+  title: siteTitle,
+  description: siteDescription,
+  alternates: {
+    canonical: "/"
+  }
+};
 
 const organizationSchema = {
   "@context": "https://schema.org",

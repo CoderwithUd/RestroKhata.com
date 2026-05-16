@@ -22,7 +22,7 @@ export default function FAQ() {
               <article className={`${styles.item} ${isOpen ? styles.open : ""}`} key={faq.question}>
                 <button type="button" aria-expanded={isOpen} onClick={() => setOpenIndex(isOpen ? -1 : index)}>
                   <span>{faq.question}</span>
-                  <b>{isOpen ? "−" : "+"}</b>
+                  <span className={styles.toggleIcon}>{isOpen ? "−" : "+"}</span>
                 </button>
                 <div className={styles.answer} hidden={!isOpen}>
                   <p>{faq.answer}</p>

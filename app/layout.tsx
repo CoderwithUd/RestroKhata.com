@@ -1,23 +1,43 @@
 import type { Metadata, Viewport } from "next";
+import { siteDescription, siteTitle } from "@/lib/seo";
 import "./globals.css";
-
-const title = "RestroKhata - Smart Restaurant & Cafe POS with QR Ordering";
-const description =
-  "RestroKhata is an all-in-one restaurant management system for Indian cafes, restaurants, and dhabas with QR ordering, KDS, GST billing, table management, staff roles, and revenue reports.";
 
 export const metadata: Metadata = {
   metadataBase: new URL("https://restrokhata.com"),
-  title,
-  description,
+  title: siteTitle,
+  description: siteDescription,
   icons: {
     icon: [
+      {
+        url: "/favicon.ico",
+        sizes: "any"
+      },
+      {
+        url: "/RestroKhata-RK-Complete-Icons/favicon-16x16.png",
+        sizes: "16x16",
+        type: "image/png"
+      },
       {
         url: "/RestroKhata-RK-Complete-Icons/favicon-32x32.png",
         sizes: "32x32",
         type: "image/png"
       }
+    ],
+    shortcut: "/favicon.ico",
+    apple: [
+      {
+        url: "/apple-touch-icon.png",
+        sizes: "180x180",
+        type: "image/png"
+      },
+      {
+        url: "/RestroKhata-RK-Complete-Icons/apple-touch-icon-180x180.png",
+        sizes: "180x180",
+        type: "image/png"
+      }
     ]
   },
+  manifest: "/RestroKhata-RK-Complete-Icons/manifest.json",
   keywords: [
     "restaurant management software India",
     "cafe management system",
@@ -35,12 +55,21 @@ export const metadata: Metadata = {
     siteName: "RestroKhata",
     title: "RestroKhata - Run Your Cafe or Restaurant Like a Pro",
     description:
-      "All-in-one restaurant POS with QR ordering, live kitchen display, GST billing, and staff management. Free 3-month trial. Made in India."
+      "Restaurant POS with QR ordering, live kitchen display, GST billing, and staff management. Free 3-month trial. Made in India.",
+    images: [
+      {
+        url: "/RestroKhata-RK-Complete-Icons/og-image-1200x630.png",
+        width: 1200,
+        height: 630,
+        alt: "RestroKhata restaurant POS dashboard"
+      }
+    ]
   },
   twitter: {
     card: "summary_large_image",
-    title,
-    description
+    title: siteTitle,
+    description: siteDescription,
+    images: ["/RestroKhata-RK-Complete-Icons/og-image-1200x630.png"]
   },
   robots: {
     index: true,
@@ -57,7 +86,7 @@ export const viewport: Viewport = {
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="en-IN">
-      <body>{children}</body>
+      <body suppressHydrationWarning>{children}</body>
     </html>
   );
 }

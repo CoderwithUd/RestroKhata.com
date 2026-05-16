@@ -41,10 +41,11 @@
   font-family: var(--font-fraunces), Georgia, serif;
 }
 
-.footer h2 {
+.navTitle {
   margin: 0 0 14px;
   color: #fff;
   font-size: 14px;
+  font-weight: 800;
 }
 
 .footer ul {
@@ -74,6 +75,26 @@
   display: grid;
   gap: 6px;
   font-style: normal;
+}
+
+.share {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 34px;
+  color: rgba(255, 255, 255, 0.8);
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.share a {
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.06);
 }
 
 .bottom {

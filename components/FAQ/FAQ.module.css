@@ -39,7 +39,7 @@
   cursor: pointer;
 }
 
-.item b {
+.toggleIcon {
   display: grid;
   flex: 0 0 28px;
   place-items: center;

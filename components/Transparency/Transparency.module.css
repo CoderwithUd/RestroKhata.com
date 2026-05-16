@@ -22,9 +22,11 @@
   background: #eff6ff;
 }
 
-.card h3 {
+.cardTitle {
   margin: 0 0 18px;
+  color: var(--text-primary);
   font-size: 1rem;
+  font-weight: 800;
 }
 
 .card ul {

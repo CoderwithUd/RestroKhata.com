@@ -30,10 +30,10 @@ export default function Modes() {
             <Reveal delay={(index + 1) as 1 | 2} key={mode.name}>
               <article className={`${styles.card} ${mode.featured ? styles.featured : ""}`}>
                 <p className={styles.badge}>{mode.name}</p>
-                <h3>{mode.title}</h3>
+                <p className={styles.cardTitle}>{mode.title}</p>
                 <p>{mode.description}</p>
                 <ul>{mode.points.map((point) => <li key={point}>{point}</li>)}</ul>
-                <strong>{mode.best}</strong>
+                <p className={styles.bestFor}>{mode.best}</p>
               </article>
             </Reveal>
           ))}

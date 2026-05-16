@@ -32,7 +32,7 @@
   background: #fff;
 }
 
-.statRow strong {
+.statValue {
   display: block;
   color: var(--orange);
   font-family: var(--font-fraunces), Georgia, serif;
@@ -40,7 +40,7 @@
   line-height: 1.1;
 }
 
-.statRow span {
+.statRow span:not(.statValue) {
   color: var(--text-muted);
   font-size: 13px;
   font-weight: 700;

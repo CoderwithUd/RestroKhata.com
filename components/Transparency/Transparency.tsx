@@ -14,13 +14,13 @@ export default function Transparency() {
         <div className={styles.grid}>
           <Reveal>
             <article className={styles.card}>
-              <h3>What&apos;s Fully Ready Today</h3>
+              <p className={styles.cardTitle}>What&apos;s Fully Ready Today</p>
               <ul>{ready.map((item) => <li key={item}>{item}</li>)}</ul>
             </article>
           </Reveal>
           <Reveal delay={1}>
             <article className={`${styles.card} ${styles.coming}`}>
-              <h3>Coming on the Roadmap</h3>
+              <p className={styles.cardTitle}>Coming on the Roadmap</p>
               <ul>{roadmap.map((item) => <li key={item}>{item}</li>)}</ul>
               <p>When multi-outlet launches, current subscribers get access automatically with no plan change.</p>
             </article>

@@ -33,7 +33,7 @@ export default function Demo() {
           {cards.map((card, index) => (
             <Reveal delay={(index + 1) as 1 | 2} key={card.title}>
               <article className={styles.card}>
-                <h3>{card.title}</h3>
+                <p className={styles.cardTitle}>{card.title}</p>
                 <p>{card.body}</p>
                 <ul>{card.points.map((point) => <li key={point}>{point}</li>)}</ul>
                 <Link href={card.href} target={card.href.startsWith("http") ? "_blank" : undefined} rel={card.href.startsWith("http") ? "noreferrer" : undefined}>
