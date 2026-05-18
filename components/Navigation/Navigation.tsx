@@ -10,7 +10,7 @@ import Link from "next/link";
 const links = [
   { href: "#how-it-works", label: "How It Works" },
   { href: "#features", label: "Features" },
-  { href: "#modes", label: "Modes" },
+  { href: "/privacy-policy", label: "Privacy Policy" },
   // { href: "#pricing", label: "Pricing" },
   { href: "#faq", label: "FAQ" }
 ];
@@ -53,7 +53,7 @@ export default function Navigation() {
       </Link>
       <header className={`${styles.header} ${scrolled ? styles.scrolled : ""}`}>
         <nav className={styles.nav} aria-label="Primary navigation">
-          <Link className={styles.logo} href="#hero" aria-label="RestroKhata home">
+          <Link className={styles.logo} href="/" aria-label="RestroKhata home">
             <Image src="/RestroKhata-RK-Complete-Icons/icon-circle-512x512.png" alt="logo" width={50} height={50} />
             <span>RestroKhata</span>
           </Link>
