@@ -53,7 +53,15 @@ export const metadata: Metadata = {
     "cafe management system",
     "QR code restaurant ordering system",
     "GST billing software for restaurant",
-    "restaurant POS free trial India"
+    "restaurant POS free trial India",
+    "restaurant billing software",
+    "restaurant POS software",
+    "billing software for restaurant",
+    "GST billing software",
+    "cafe billing software",
+    "hotel billing software",
+    "thermal invoice software",
+    "restaurant management software",
   ],
   alternates: {
     canonical: "/"

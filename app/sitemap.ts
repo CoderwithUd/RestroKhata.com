@@ -8,6 +8,19 @@ export default function sitemap(): MetadataRoute.Sitemap {
       changeFrequency: 'daily',
       priority: 1,
     },
-    // Add more URLs as the site grows
+    
+    {
+      url: "https://restrokhata.com/privacy-policy",
+      lastModified: new Date(),
+      changeFrequency: "monthly",
+      priority: 0.6,
+    },
+
+    {
+      url: "https://restrokhata.com/terms-and-condition",
+      lastModified: new Date(),
+      changeFrequency: "monthly",
+      priority: 0.6,
+    },
   ]
 }

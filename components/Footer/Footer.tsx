@@ -42,6 +42,8 @@ export default function Footer() {
               <li><Link href={whatsappUrl} target="_blank" rel="noreferrer">WhatsApp Support</Link></li>
               <li><Link href="#faq">Restaurant POS Questions</Link></li>
               <li><Link href="https://app.restrokhata.com/register">Create Free Account</Link></li>
+              <li><Link href="/privacy-policy">Privacy Policy</Link></li>
+              <li><Link href="/terms-and-condition">Terms and Condition</Link></li>
             </ul>
             <p>Proudly serving restaurants in Raipur, Bhilai, Durg, and beyond.</p>
           </nav>
