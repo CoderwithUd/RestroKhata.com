@@ -70,7 +70,7 @@ svg {
 }
 
 section {
-  padding: 48px 24px;
+  padding: 16px 0;
 }
 
 .container {
@@ -256,7 +256,7 @@ section {
 
 @media (max-width: 760px) {
   section {
-    padding: 64px 18px;
+    padding: 2px 18px;
   }
 
   .section-title {

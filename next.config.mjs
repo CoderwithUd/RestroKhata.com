@@ -2,7 +2,8 @@
 const nextConfig = {
   reactStrictMode: true,
   poweredByHeader: false,
-  productionBrowserSourceMaps: true
+  productionBrowserSourceMaps: true,
+  htmlLimitedBots: /.*/
 };
 
 export default nextConfig;
