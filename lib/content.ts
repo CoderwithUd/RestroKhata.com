@@ -14,7 +14,7 @@ export const whatsappUrl = `https://wa.me/9131695767?text=${encodeURIComponent(w
 export const steps = [
   {
     title: "Register Your Restaurant",
-    body: "Sign up with your restaurant name, WhatsApp number, email, and address. Your account, 3-month free trial, and first outlet are created instantly.",
+    body: "Sign up with your restaurant name, WhatsApp number, email, and address. Your account, 1-month free trial, and first outlet are created instantly.",
     time: "~2 minutes"
   },
   {
@@ -43,6 +43,7 @@ export const steps = [
     time: "You are live"
   }
 ];
+// 
 
 export const features = [
   {
@@ -58,19 +59,23 @@ export const features = [
     ],
     visual: "menu"
   },
-  {
-    number: "02",
-    eyebrow: "Kitchen Display (KDS)",
-    title: "No More Paper KOTs",
-    body: "Every order hits the kitchen display the second it is placed. Separate queues for Kitchen, Bar, and Counter keep preparation moving.",
-    bullets: [
-      "Live order queue: Placed, In Progress, Ready, Served",
-      "KOT print support for thermal printers",
-      "Kitchen, Bar, and Counter tabs on one dashboard",
-      "Takeaway token display for counter pickup orders"
-    ],
-    visual: "kds"
-  },
+ {
+  number: "02",
+  eyebrow: "Kitchen Display & KOT System",
+  title: "Smart Kitchen Workflow",
+  body: "Orders instantly appear on the Kitchen Display Screen (KDS) as soon as they are placed. Restaurants can manage orders digitally on kitchen screens or print KOTs directly for chefs and kitchen staff.",
+
+  bullets: [
+    "Live order updates for chefs and kitchen staff",
+    "Digital Kitchen Display Screen (KDS) support",
+    "Thermal printer KOT printing support",
+    "Track order status: Placed, Cooking, Ready, Served",
+    "Separate Kitchen, Bar, and Counter order screens",
+    "Real-time order sync between billing and kitchen"
+  ],
+
+  visual: "kds"
+},
   {
     number: "03",
     eyebrow: "GST Invoicing & UPI Billing",
@@ -145,7 +150,7 @@ export const plans = [
     name: "Growth",
     price: "₹999",
     suffix: "/month",
-    description: "After 3-month free trial",
+    description: "After 1-month free trial",
     features: [
       "Everything in Starter",
       "Unlimited staff members",
@@ -187,9 +192,9 @@ export const faqs = [
       "No special hardware is required. Any Android or iOS phone or tablet works. For KOT printing, standard Bluetooth or USB thermal printers are compatible."
   },
   {
-    question: "Is the 3-month free trial actually free?",
+    question: "Is the 1-month free trial actually free?",
     answer:
-      "Yes. No credit card or payment details are needed. Your account starts with a 3-month active subscription automatically."
+      "Yes. No credit card or payment details are needed. Your account starts with a 1-month active subscription automatically."
   },
   {
     question: "Can I manage multiple outlets?",

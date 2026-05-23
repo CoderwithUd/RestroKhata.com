@@ -73,7 +73,7 @@ export const metadata: Metadata = {
     siteName: "RestroKhata",
     title: "RestroKhata - Run Your Cafe or Restaurant Like a Pro",
     description:
-      "Restaurant POS with QR ordering, live kitchen display, GST billing, and staff management. Free 3-month trial. Made in India.",
+      "Restaurant POS with QR ordering, live kitchen display, GST billing, and staff management. Free 1-month trial. Made in India.",
     images: [
       {
         url: "/RestroKhata-RK-Complete-Icons/og-image-1200x630.png",

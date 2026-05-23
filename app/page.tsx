@@ -36,7 +36,7 @@ const organizationSchema = {
     "@type": "Offer",
     price: "0",
     priceCurrency: "INR",
-    description: "3-month free trial"
+    description: "1-month free trial"
   },
   areaServed: "IN"
 };

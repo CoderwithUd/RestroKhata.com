@@ -9,7 +9,7 @@ export default function Hero() {
       <Reveal>
         <p className={styles.badge}>
           <span aria-hidden="true" />
-          Free 3-month trial - no credit card required
+          Free 1-month trial - no credit card required
         </p>
       </Reveal>
       <Reveal delay={1}>
