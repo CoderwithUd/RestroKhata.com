@@ -39,7 +39,7 @@ export async function generateMetadata({ params }: BlogPageProps) {
     return {}
   }
 
-  const canonicalUrl = `/blogs/${blog.slug}`;
+  const canonicalUrl = `https://restrokhata.com/blogs/${blog.slug}`;
   
   return {
     title: blog.title,
@@ -60,6 +60,10 @@ export async function generateMetadata({ params }: BlogPageProps) {
       title: blog.title,
       description: blog.description,
       images: [blog.image],
+    },
+    robots: {
+      index: true,
+      follow: true,
     },
   };
 }

@@ -50,12 +50,12 @@ export default function Navigation() {
   return (
     <>
       <Link className={styles.whatsappFloat} href={whatsappUrl} target="_blank" rel="noreferrer" aria-label="WhatsApp support">
-        <Image src="/icons/whatsapp.png" alt="WhatsApp" width={50} height={50} />
+        <Image src="/icons/whatsapp.png" alt="WhatsApp support" width={50} height={50} />
       </Link>
       <header className={`${styles.header} ${scrolled ? styles.scrolled : ""}`}>
         <nav className={styles.nav} aria-label="Primary navigation">
           <Link className={styles.logo} href="/" aria-label="RestroKhata home">
-            <Image src="/RestroKhata-RK-Complete-Icons/icon-circle-512x512.png" alt="logo" width={50} height={50} />
+            <Image src="/RestroKhata-RK-Complete-Icons/icon-circle-512x512.png" alt="RestroKhata logo" width={50} height={50} />
             <span>RestroKhata</span>
           </Link>
           <ul className={styles.links}>
@@ -88,7 +88,7 @@ export default function Navigation() {
       <aside id="mobile-menu" className={`${styles.mobileDrawer} ${open ? styles.mobileDrawerOpen : ""}`} aria-label="Mobile navigation">
         <div className={styles.drawerHeader}>
           <Link className={styles.logo} href="#hero" aria-label="RestroKhata home" onClick={() => setOpen(false)}>
-            <Image src="/RestroKhata-RK-Complete-Icons/icon-circle-512x512.png" alt="logo" width={44} height={44} />
+            <Image src="/RestroKhata-RK-Complete-Icons/icon-circle-512x512.png" alt="RestroKhata logo" width={44} height={44} />
             <span>RestroKhata</span>
           </Link>
           <button className={styles.closeButton} type="button" onClick={() => setOpen(false)} aria-label="Close menu">

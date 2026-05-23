@@ -26,6 +26,10 @@ export const metadata: Metadata = {
     siteName: "RestroKhata",
     type: "website",
   },
+  robots: {
+    index: true,
+    follow: true,
+  },
 };
 
 export default function PrivacyPolicyPage() {

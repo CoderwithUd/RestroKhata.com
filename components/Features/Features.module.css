@@ -10,13 +10,13 @@
 
 .block {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 420px;
+  grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr);
   align-items: center;
   gap: 56px;
 }
 
 .reverse {
-  grid-template-columns: 420px minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1.1fr) minmax(0, 0.9fr);
 }
 
 .reverse .copy {
@@ -50,6 +50,10 @@
   color: var(--text-secondary);
 }
 
+.copy {
+  max-width: 520px;
+}
+
 .copy ul {
   display: grid;
   gap: 10px;
@@ -75,6 +79,22 @@
   border-radius: var(--radius-lg);
   background: #fff;
   box-shadow: var(--shadow-lg);
+}
+
+.imageWrap {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  width: 100%;
+}
+
+.featureImage {
+  display: block;
+  width: 100%;
+  max-width: 820px;
+  height: auto;
+  border-radius: 18px;
+  object-fit: contain;
 }
 
 .menuItem {
@@ -276,9 +296,17 @@
   .reverse .visual {
     order: initial;
   }
+
+  .visualInner {
+    padding: 18px;
+  }
 }
 
 @media (max-width: 480px) {
+  .visualInner {
+    padding: 14px;
+  }
+
   .floor,
   .kdsGrid,
   .reportCards {

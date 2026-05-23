@@ -13,7 +13,7 @@ export default function Footer() {
         <div className={styles.grid}>
           <section className={styles.brand} aria-label="RestroKhata contact">
             <Link className={styles.logo} href="#hero">
-              <Image src="/RestroKhata-RK-Complete-Icons/icon-circle-512x512.png" alt="logo" width={50} height={50} />
+              <Image src="/RestroKhata-RK-Complete-Icons/icon-circle-512x512.png" alt="RestroKhata logo" width={50} height={50} />
               RestroKhata
             </Link>
             <p>All-in-one restaurant management for Indian cafes, restaurants, and dhabas. QR ordering, live kitchen display, GST billing, and more.</p>

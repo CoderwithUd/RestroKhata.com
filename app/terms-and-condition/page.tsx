@@ -15,15 +15,19 @@ export const metadata: Metadata = {
     "Restaurant SaaS agreement",
   ],
   alternates: {
-    canonical: "https://restrokhata.com/terms-of-service",
+    canonical: "https://restrokhata.com/terms-and-condition",
   },
   openGraph: {
     title: "Terms of Service | RestroKhata",
     description:
       "Understand the legal terms and conditions for using RestroKhata Restaurant CRM.",
-    url: "https://restrokhata.com/terms-of-service",
+    url: "https://restrokhata.com/terms-and-condition",
     siteName: "RestroKhata",
     type: "website",
+  },
+  robots: {
+    index: true,
+    follow: true,
   },
 };
 
@@ -246,7 +250,7 @@ export default function TermsPage() {
               <h2>4. Free Trial</h2>
 
               <div className={styles.highlight_box}>
-                3-month FREE trial with no credit card required.
+                1-month FREE trial with no credit card required.
               </div>
 
               <ul className={styles.terms_list}>
