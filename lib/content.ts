@@ -165,18 +165,18 @@ export const plans = [
   },
   {
     name: "Annual",
-    price: "₹9,999",
+    price: "₹3,999",
     suffix: "/year",
-    description: "Save ₹1,989 vs monthly",
+    description: "Biggest Offer: Limited time only",
     features: [
       "Everything in Growth",
-      "Save 2 months vs monthly billing",
+      "Massive savings vs monthly billing",
       "Priority onboarding call",
       "Early access to new features",
       "Custom domain invoice branding",
       "Dedicated WhatsApp support line"
     ],
-    cta: "Get Annual Plan"
+    cta: "Claim Yearly Offer"
   }
 ];
 
