@@ -231,7 +231,7 @@ export default function Blog2({ blog, relatedBlogs }: BlogPostProps) {
 
               <div className={styles.Blog_new_image}>
                 <Image
-                  src={"/blogs/b2/raipur-chhattisgarh-restaurant-industry-growth.png"}
+                  src={"/blogs/b2/restrokhata-gst-invoice-restaurant-chhattisgarh.png"}
                   alt="GST-compliant restaurant receipt print format built by RestroKhata billing engine"
                   title="RestroKhata GST Invoice – Auto CGST SGST calculation restaurant"
                   width={2048}
