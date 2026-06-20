@@ -73,29 +73,37 @@
   text-transform: uppercase;
 }
 
-.price {
-  margin: 0;
-  color: var(--orange);
-  font-family: var(--font-fraunces), Georgia, serif;
-  font-size: 2.5rem;
-  font-weight: 800;
-  line-height: 1;
+.priceBlock {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  margin: 0 0 16px;
 }
 
 .originalPrice {
   color: var(--text-muted);
   font-size: 1rem;
   font-weight: 500;
-  margin-right: 8px;
   text-decoration: line-through;
   font-family: var(--font-jakarta), Arial, sans-serif;
   opacity: 0.7;
+  margin-bottom: 4px;
 }
 
-.price span {
+.price {
+  color: var(--orange);
+  font-family: var(--font-fraunces), Georgia, serif;
+  font-size: 2.5rem;
+  font-weight: 800;
+  line-height: 1;
+  margin: 0;
+}
+
+.priceSuffix {
   color: var(--text-muted);
   font-family: var(--font-jakarta), Arial, sans-serif;
-  font-size: 1rem;
+  font-size: 0.95rem;
+  margin-top: 6px;
 }
 
 .desc {

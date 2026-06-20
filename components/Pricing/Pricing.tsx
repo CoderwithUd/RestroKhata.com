@@ -19,11 +19,13 @@ export default function Pricing() {
                   {/* @ts-expect-error adding custom field */}
                   {plan.discountBadge && <span className={styles.discountBadge}>{plan.discountBadge}</span>}
                 </h3>
-                <p className={styles.price}>
+                <div className={styles.priceBlock}>
                   {/* @ts-expect-error adding custom field */}
                   {plan.originalPrice && <del className={styles.originalPrice}>{plan.originalPrice}</del>}
-                  {plan.price}<span>{plan.suffix}</span>
-                </p>
+                  <p className={styles.price}>{plan.price}</p>
+                  {/* @ts-expect-error adding custom field */}
+                  {plan.suffix && <span className={styles.priceSuffix}>{plan.suffix}</span>}
+                </div>
                 <p className={styles.desc}>{plan.description}</p>
                 <a href="#demo" className={plan.popular ? styles.primaryButton : styles.ghostButton}>{plan.cta}</a>
               </article>
