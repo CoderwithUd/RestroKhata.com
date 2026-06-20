@@ -156,20 +156,20 @@ export const plans = [
   },
   {
     name: "6 Months",
-    price: "₹3,899",
+    price: "₹2,999",
     originalPrice: "₹5,994",
-    discountBadge: "35% OFF",
+    discountBadge: "50% OFF",
     suffix: "/6 mo",
-    description: "Smart choice. Save ₹2,095.",
+    description: "Good value for medium term.",
     cta: "Get 6 Months Plan"
   },
   {
     name: "1 Year",
-    price: "₹3,599",
+    price: "₹3,999",
     originalPrice: "₹11,988",
-    discountBadge: "70% OFF",
+    discountBadge: "67% OFF",
     suffix: "/year",
-    description: "Ultimate Value! Save massive ₹8,389.",
+    description: "Best Value! Just ₹1,000 more for 6 extra months.",
     cta: "Claim Yearly Offer",
     popular: true
   }
