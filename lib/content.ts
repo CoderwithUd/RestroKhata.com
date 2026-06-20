@@ -150,7 +150,7 @@ export const plans = [
   {
     name: "1 Month",
     price: "₹999",
-    suffix: "/month",
+    // suffix: "/month",
     description: "No commitment. Pay as you go.",
     cta: "Get Monthly Plan"
   },
@@ -159,7 +159,7 @@ export const plans = [
     price: "₹2,999",
     originalPrice: "₹5,994",
     discountBadge: "50% OFF",
-    suffix: "/6 mo",
+    // suffix: "/6 mo",
     description: "Good value for medium term.",
     cta: "Get 6 Months Plan"
   },
@@ -168,7 +168,7 @@ export const plans = [
     price: "₹3,999",
     originalPrice: "₹11,988",
     discountBadge: "67% OFF",
-    suffix: "/year",
+    // suffix: "/year",
     description: "Best Value! Just ₹1,000 more for 6 extra months.",
     cta: "Claim Yearly Offer",
     popular: true
