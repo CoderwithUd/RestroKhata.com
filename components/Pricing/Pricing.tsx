@@ -1,4 +1,4 @@
-import { plans } from "@/lib/content";
+import { plans, coreFeatures } from "@/lib/content";
 import Reveal from "@/components/Reveal/Reveal";
 import styles from "./Pricing.module.css";
 
@@ -25,12 +25,21 @@ export default function Pricing() {
                   {plan.price}<span>{plan.suffix}</span>
                 </p>
                 <p className={styles.desc}>{plan.description}</p>
-                <ul>{plan.features.map((feature) => <li key={feature}>{feature}</li>)}</ul>
                 <a href="#demo" className={plan.popular ? styles.primaryButton : styles.ghostButton}>{plan.cta}</a>
               </article>
             </Reveal>
           ))}
         </div>
+        <Reveal delay={3}>
+          <div className={styles.sharedFeatures}>
+            <h3 className={styles.sharedFeaturesTitle}>Every plan includes:</h3>
+            <ul>
+              {coreFeatures.map((feature) => (
+                <li key={feature}>{feature}</li>
+              ))}
+            </ul>
+          </div>
+        </Reveal>
         <Reveal>
           <aside className={styles.offer} aria-label="Special launch offer">
             <div>

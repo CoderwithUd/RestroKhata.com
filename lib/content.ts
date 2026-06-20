@@ -130,7 +130,7 @@ export const features = [
   }
 ] as const;
 
-const coreFeatures = [
+export const coreFeatures = [
   "Complete platform with no feature locks",
   "Cafe Mode and Restaurant Mode",
   "Unlimited staff members",
@@ -144,16 +144,14 @@ export const plans = [
   {
     name: "Free Trial",
     price: "FREE",
-    description: "3 Months - Full Access",
-    features: coreFeatures,
+    description: "Zero risk. Try everything for 3 months.",
     cta: "Start Free Trial"
   },
   {
     name: "1 Month",
     price: "₹999",
     suffix: "/month",
-    description: "Pay as you go monthly",
-    features: coreFeatures,
+    description: "No commitment. Pay as you go.",
     cta: "Get Monthly Plan"
   },
   {
@@ -162,8 +160,7 @@ export const plans = [
     originalPrice: "₹5,994",
     discountBadge: "35% OFF",
     suffix: "/6 mo",
-    description: "Half-yearly savings",
-    features: coreFeatures,
+    description: "Smart choice. Save ₹2,095.",
     cta: "Get 6 Months Plan"
   },
   {
@@ -172,8 +169,7 @@ export const plans = [
     originalPrice: "₹11,988",
     discountBadge: "70% OFF",
     suffix: "/year",
-    description: "Biggest Offer: Limited time only",
-    features: coreFeatures,
+    description: "Ultimate Value! Save massive ₹8,389.",
     cta: "Claim Yearly Offer",
     popular: true
   }

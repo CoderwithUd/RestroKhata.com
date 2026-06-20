@@ -14,16 +14,30 @@
   display: flex;
   flex-direction: column;
   min-height: 100%;
-  padding: 28px;
+  padding: 32px 28px;
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
   background: #fff;
   box-shadow: var(--shadow-sm);
+  transition: transform 0.3s ease, box-shadow 0.3s ease;
+}
+
+.card:hover {
+  transform: translateY(-4px);
+  box-shadow: var(--shadow-md);
 }
 
 .popular {
-  border-color: var(--orange);
-  box-shadow: var(--shadow-orange);
+  border: 2px solid var(--orange);
+  background: linear-gradient(to bottom, #fff8f3, #ffffff);
+  box-shadow: 0 12px 32px rgba(255, 102, 0, 0.15);
+  transform: scale(1.02);
+  z-index: 1;
+}
+
+.popular:hover {
+  transform: scale(1.02) translateY(-4px);
+  box-shadow: 0 16px 40px rgba(255, 102, 0, 0.25);
 }
 
 .popularBadge {
@@ -89,23 +103,50 @@
   font-size: 14px;
 }
 
-.card ul {
-  display: grid;
-  gap: 10px;
-  margin: 0 0 24px;
+.sharedFeatures {
+  margin-top: 48px;
+  padding: 32px;
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+  text-align: center;
+}
+
+.sharedFeaturesTitle {
+  font-size: 1.5rem;
+  font-family: var(--font-fraunces), Georgia, serif;
+  margin-bottom: 24px;
+  color: var(--text-primary);
+}
+
+.sharedFeatures ul {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px 24px;
+  justify-content: center;
+  margin: 0;
   padding: 0;
   list-style: none;
 }
 
-.card li {
+.sharedFeatures li {
   color: var(--text-secondary);
-  font-size: 14px;
+  font-size: 15px;
+  font-weight: 500;
+  background: var(--surface-2);
+  padding: 8px 16px;
+  border-radius: 999px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 
-.card li::before {
-  content: "✓ ";
+.sharedFeatures li::before {
+  content: "✓";
   color: var(--orange);
   font-weight: 900;
+  font-size: 1.1rem;
 }
 
 .primaryButton,
