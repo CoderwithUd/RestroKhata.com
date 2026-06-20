@@ -49,19 +49,10 @@ export const metadata: Metadata = {
   },
   manifest: "/RestroKhata-RK-Complete-Icons/manifest.json",
   keywords: [
-    "restaurant management software India",
-    "cafe management system",
-    "QR code restaurant ordering system",
-    "GST billing software for restaurant",
-    "restaurant POS free trial India",
-    "restaurant billing software",
-    "restaurant POS software",
-    "billing software for restaurant",
-    "GST billing software",
-    "cafe billing software",
-    "hotel billing software",
-    "thermal invoice software",
-    "restaurant management software",
+    "restaurant POS software India",
+    "QR code ordering system",
+    "GST restaurant billing software",
+    "cafe management system"
   ],
   alternates: {
     canonical: "/"
@@ -71,9 +62,8 @@ export const metadata: Metadata = {
     locale: "en_IN",
     url: "https://restrokhata.com",
     siteName: "RestroKhata",
-    title: "RestroKhata - Run Your Cafe or Restaurant Like a Pro",
-    description:
-      "Restaurant POS with QR ordering, live kitchen display, GST billing, and staff management. Free 1-month trial. Made in India.",
+    title: siteTitle,
+    description: siteDescription,
     images: [
       {
         url: "/RestroKhata-RK-Complete-Icons/og-image-1200x630.png",

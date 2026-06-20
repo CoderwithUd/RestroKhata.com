@@ -1,0 +1,70 @@
+.container {
+  max-width: 800px;
+  margin: 0 auto;
+  padding: 120px 24px 60px;
+}
+
+.title {
+  font-size: 3rem;
+  font-weight: 800;
+  color: var(--primary);
+  margin-bottom: 2rem;
+  text-align: center;
+}
+
+.subtitle {
+  font-size: 1.8rem;
+  font-weight: 700;
+  margin-top: 3rem;
+  margin-bottom: 1rem;
+  color: #333;
+}
+
+.content {
+  font-size: 1.1rem;
+  line-height: 1.8;
+  color: #444;
+}
+
+.content p {
+  margin-bottom: 1.5rem;
+}
+
+.content ul {
+  list-style-type: disc;
+  margin-left: 2rem;
+  margin-bottom: 1.5rem;
+}
+
+.content li {
+  margin-bottom: 0.5rem;
+}
+
+.content hr {
+  margin: 3rem 0;
+  border: 0;
+  border-top: 1px solid #eaeaea;
+}
+
+.founder {
+  background: #f9f9f9;
+  padding: 2rem;
+  border-radius: 12px;
+  margin-top: 2rem;
+  text-align: center;
+}
+
+.founderQuote {
+  font-style: italic;
+  font-size: 1.2rem;
+  color: #555;
+  margin-top: 1rem;
+}
+
+.brandEnd {
+  text-align: center;
+  margin-top: 3rem;
+  font-weight: 700;
+  font-size: 1.4rem;
+  color: var(--primary);
+}

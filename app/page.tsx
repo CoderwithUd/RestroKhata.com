@@ -8,10 +8,12 @@ import HowItWorks from "@/components/HowItWorks/HowItWorks";
 import type { Metadata } from "next";
 import Modes from "@/components/Modes/Modes";
 import Navigation from "@/components/Navigation/Navigation";
+import Pricing from "@/components/Pricing/Pricing";
 import { siteDescription, siteTitle } from "@/lib/seo";
 import Tagline from "@/components/Tagline/Tagline";
 import Testimonials from "@/components/Testimonials/Testimonials";
 import Transparency from "@/components/Transparency/Transparency";
+import { faqs } from "@/lib/content";
 
 export const metadata: Metadata = {
   title: siteTitle,
@@ -30,8 +32,7 @@ const organizationSchema = {
   image: "https://restrokhata.com/RestroKhata-RK-Complete-Icons/og-image-1200x630.png",
   applicationCategory: "BusinessApplication",
   operatingSystem: "Web",
-  description:
-    "Cloud restaurant management software for Indian cafes, restaurants, and dhabas with QR ordering, KDS, GST billing, table management, staff roles, and reports.",
+  description: siteDescription,
   offers: {
     "@type": "Offer",
     price: "0",
@@ -41,12 +42,40 @@ const organizationSchema = {
   areaServed: "IN"
 };
 
+const localBusinessSchema = {
+  "@context": "https://schema.org",
+  "@type": "LocalBusiness",
+  name: "RestroKhata",
+  image: "https://restrokhata.com/RestroKhata-RK-Complete-Icons/og-image-1200x630.png",
+  url: "https://restrokhata.com",
+  telephone: "+919131695767",
+  address: {
+    "@type": "PostalAddress",
+    addressLocality: "Raipur",
+    addressRegion: "Chhattisgarh",
+    addressCountry: "IN"
+  }
+};
+
+const faqSchema = {
+  "@context": "https://schema.org",
+  "@type": "FAQPage",
+  mainEntity: faqs.map(f => ({
+    "@type": "Question",
+    name: f.question,
+    acceptedAnswer: {
+      "@type": "Answer",
+      text: f.answer
+    }
+  }))
+};
+
 export default function Home() {
   return (
     <>
       <script
         type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(organizationSchema) }}
+        dangerouslySetInnerHTML={{ __html: JSON.stringify([organizationSchema, localBusinessSchema, faqSchema]) }}
       />
       <Navigation />
       <main>
@@ -55,7 +84,7 @@ export default function Home() {
         <HowItWorks />
         <Features />
         <Modes />
-        {/* <Pricing /> */}
+        <Pricing />
         <Transparency />
         <Demo />
         <Testimonials />

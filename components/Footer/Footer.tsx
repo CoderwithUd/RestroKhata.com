@@ -18,6 +18,7 @@ export default function Footer() {
             </Link>
             <p>All-in-one restaurant management for Indian cafes, restaurants, and dhabas. QR ordering, live kitchen display, GST billing, and more.</p>
             <address>
+              <span>📍 Raipur, Chhattisgarh, India</span>
               <Link href="mailto:restrokhata@gmail.com">restrokhata@gmail.com</Link>
               <Link href={whatsappUrl} target="_blank" rel="noreferrer">WhatsApp: +91 9131695767</Link>
               <span>Mon-Sat, 10 AM - 7 PM</span>
@@ -27,9 +28,7 @@ export default function Footer() {
             <p className={styles.navTitle}>Product</p>
             <ul>
               <li><Link href="#feature-menu">QR Self-Ordering</Link></li>
-              {/* priceing */}
-              {/* <li><Link href="#pricing">Pricing</Link></li> */}
-              {/* <li><Link href="#pricing">QR Stand Offer - ₹1,000</Link></li> */}
+              <li><Link href="/pricing">Pricing</Link></li>
               <li><Link href="#modes">Cafe POS Mode</Link></li>
               <li><Link href="#modes">Restaurant KDS Mode</Link></li>
               <li><Link href="#feature-kds">Kitchen Display System</Link></li>
@@ -43,10 +42,11 @@ export default function Footer() {
               <li><Link href={whatsappUrl} target="_blank" rel="noreferrer">WhatsApp Support</Link></li>
               <li><Link href="#faq">Restaurant POS Questions</Link></li>
               <li><Link href="https://app.restrokhata.com/register">Create Free Account</Link></li>
+              <li><Link href="/about">About Us</Link></li>
               <li><Link href="/privacy-policy">Privacy Policy</Link></li>
               <li><Link href="/terms-and-condition">Terms and Condition</Link></li>
             </ul>
-            <p>Proudly serving restaurants in Raipur, Bhilai, Durg, and beyond.</p>
+            <p>Proudly serving restaurants in Raipur, Bhilai, Durg, Rajnandgaon, and across India.</p>
           </nav>
         </div>
         <div className={styles.share} aria-label="Share RestroKhata">

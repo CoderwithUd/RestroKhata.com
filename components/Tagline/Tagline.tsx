@@ -9,9 +9,15 @@ export default function Tagline() {
           <h2 id="tagline-title">Your restaurant runs on chaos. RestroKhata fixes that.</h2>
         </Reveal>
         <Reveal delay={1}>
-          <p>
-            Stop juggling handwritten KOTs, missed orders, manual bills, and scattered reports. RestroKhata brings every daily workflow into one simple system.
-          </p>
+          <div>
+            <h3>What is RestroKhata?</h3>
+            <p>
+              RestroKhata is a smart, cloud-based restaurant POS (Point of Sale) software built for Indian cafes, dhabas, and cloud kitchens. It provides an all-in-one platform for QR code ordering, GST billing, kitchen display systems (KDS), and revenue reporting.
+            </p>
+            <p style={{ marginTop: "1rem" }}>
+              Stop juggling handwritten KOTs, missed orders, manual bills, and scattered reports. RestroKhata brings every daily workflow into one simple system.
+            </p>
+          </div>
         </Reveal>
         <Reveal delay={2}>
           <div className={styles.statRow}>

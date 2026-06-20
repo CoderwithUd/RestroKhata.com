@@ -1,4 +1,4 @@
-export const siteTitle = "RestroKhata - Smart Restaurant & Cafe POS with QR Ordering";
+export const siteTitle = "RestroKhata - Restaurant POS Software in India";
 
 export const siteDescription =
-  "Restaurant POS for Indian cafes and dhabas with QR ordering, KDS, GST billing, table management, staff roles, and reports.";
+  "Smart restaurant POS for Indian cafes, dhabas, and cloud kitchens. Get QR ordering, KDS, GST billing, and reports. Start your free trial today!";

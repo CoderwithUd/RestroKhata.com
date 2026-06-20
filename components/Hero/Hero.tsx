@@ -14,12 +14,12 @@ export default function Hero() {
       </Reveal>
       <Reveal delay={1}>
         <h1 id="hero-title">
-          Smart Restaurant POS Built for <span>Indian Cafes & Restaurants</span>
+          Smart Cafe & Restaurant POS Software in <span>India</span>
         </h1>
       </Reveal>
       <Reveal delay={2}>
         <p className={styles.subtitle}>
-          QR ordering, live kitchen display, GST billing, table management, staff roles, and revenue reports in one fast cloud system.
+          Proudly serving Raipur, Durg, Rajnandgaon & beyond. QR ordering, live kitchen display, GST billing, table management, staff roles, and reports in one fast cloud system.
         </p>
       </Reveal>
       <Reveal delay={3}>
