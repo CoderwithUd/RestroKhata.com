@@ -1,5 +1,4 @@
 import { ArrowRight } from "lucide-react";
-import { whatsappUrl } from "@/lib/content";
 import Reveal from "@/components/Reveal/Reveal";
 import styles from "./Demo.module.css";
 import Link from "next/link";
