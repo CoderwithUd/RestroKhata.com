@@ -101,10 +101,15 @@ export const viewport: Viewport = {
   themeColor: "#f47b20"
 };
 
+import DemoModal from "@/components/DemoModal/DemoModal";
+
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="en-IN">
-      <body suppressHydrationWarning>{children}</body>
+      <body suppressHydrationWarning>
+        {children}
+        <DemoModal />
+      </body>
     </html>
   );
 }

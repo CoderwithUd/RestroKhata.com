@@ -10,7 +10,7 @@ const cards = [
     body: "20-minute walkthrough with our team. We show exactly how RestroKhata works for your type of outlet.",
     points: ["QR ordering from scan to kitchen display", "Live billing and UPI receipt generation", "Kitchen queue and staff roles", "Reports dashboard and daily summary"],
     cta: "Book Free Demo",
-    href: whatsappUrl,
+    href: "#demo",
     note: "Available Mon-Sat, 10 AM to 7 PM via WhatsApp or video call"
   },
   {

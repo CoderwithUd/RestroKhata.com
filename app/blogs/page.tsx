@@ -45,6 +45,7 @@ export default function BlogsPage() {
               />
             </Link>
             <div className={styles.postCardBody}>
+              <span className={styles.postCardCategory}>{blog.category || "Restaurant Tech"}</span>
               <time dateTime={blog.date}>
                 {new Intl.DateTimeFormat("en-IN", { day: "numeric", month: "long", year: "numeric" }).format(new Date(blog.date))}
               </time>

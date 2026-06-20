@@ -17,7 +17,7 @@ export const blogs: Blog[] = [
     title: "QR Menu System for Restaurants in India 2026",
     description:
       "Digital ordering software with POS billing and GST invoices.",
-    image: "/RestroKhata-RK-Complete-Icons/og-image-1200x630.png",
+    image: "/blogs/Restrokhata-blogs.png",
     date: "2026-05-22",
     updatedAt: "2026-06-01",
     readingTime: "8 minutes",
@@ -38,6 +38,28 @@ export const blogs: Blog[] = [
       "free QR menu app for cafe",
       "restaurant digital menu software with billing",
       "how to create QR menu for restaurant",
+    ],
+  },
+  {
+    slug: "restaurant-billing-software-raipur-durg-rajnandgaon",
+    title: "RestroKhata POS | Best Restaurant Billing Software in Raipur",
+    description: "Best restaurant billing software in Raipur, Durg & Rajnandgaon. RestroKhata offers GST billing, QR ordering, KOT, & inventory. Book a free demo!",
+    image:  "/blogs/Restrokhata-blogs.png",
+    date: "2026-06-19",
+    updatedAt: "2026-06-19",
+    readingTime: "6 minutes",
+    category: "Restaurant Technology",
+    component: "blog2",
+    keywords: [
+      "Restaurant billing software in Raipur",
+      "Restaurant POS software Durg",
+      "Restaurant management software Rajnandgaon",
+      "GST billing software Chhattisgarh",
+      "QR menu restaurant software India",
+      "Cloud kitchen billing software Raipur",
+      "KOT management system restaurant",
+      "Restaurant inventory software Chhattisgarh",
+      "Best POS system for restaurant India"
     ],
   },
 ];

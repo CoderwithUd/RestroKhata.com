@@ -390,7 +390,7 @@
 }
 
 .blogIndex {
-  background: #f8f9fb;
+  background: linear-gradient(135deg, #f8f9fb 0%, #fff7ed 100%);
   color: #111827;
   min-height: 100vh;
   padding: 120px 20px 80px;
@@ -398,36 +398,51 @@
 
 .indexHero {
   max-width: 980px;
-  margin: 0 auto 48px;
+  margin: 0 auto 60px;
+  text-align: center;
 }
 
 .indexHero h1 {
-  font-size: 48px;
+  font-size: 56px;
   line-height: 1.15;
   margin: 24px 0 16px;
+  background: linear-gradient(90deg, #c2410c, #f47b20);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
 }
 
 .indexHero p {
   color: #4b5563;
-  font-size: 19px;
+  font-size: 20px;
   line-height: 1.7;
   max-width: 720px;
+  margin: 0 auto;
 }
 
 .postGrid {
   display: grid;
-  gap: 28px;
-  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-  max-width: 980px;
+  gap: 40px;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  max-width: 1200px;
   margin: 0 auto;
 }
 
 .postCard {
-  background: #ffffff;
-  border: 1px solid #e5e7eb;
-  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.8);
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.4);
+  border-radius: 16px;
   overflow: hidden;
-  box-shadow: 0 12px 32px rgba(15, 23, 42, 0.06);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.04);
+  transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+  display: flex;
+  flex-direction: column;
+}
+
+.postCard:hover {
+  transform: translateY(-8px);
+  box-shadow: 0 20px 40px rgba(244, 123, 32, 0.15);
+  border-color: rgba(244, 123, 32, 0.3);
 }
 
 .postImageLink {
@@ -435,6 +450,7 @@
   aspect-ratio: 16 / 9;
   background: #e5e7eb;
   overflow: hidden;
+  position: relative;
 }
 
 .postImage {
@@ -442,14 +458,34 @@
   width: 100%;
   height: 100%;
   object-fit: cover;
+  transition: transform 0.6s ease;
+}
+
+.postCard:hover .postImage {
+  transform: scale(1.08);
 }
 
 .postCardBody {
-  padding: 24px;
+  padding: 30px;
+  display: flex;
+  flex-direction: column;
+  flex-grow: 1;
+}
+
+.postCardCategory {
+  display: inline-block;
+  background: #fff7ed;
+  color: #f47b20;
+  padding: 6px 12px;
+  border-radius: 20px;
+  font-size: 13px;
+  font-weight: 700;
+  margin-bottom: 16px;
+  align-self: flex-start;
 }
 
 .postCardBody time {
-  color: #6b7280;
+  color: #9ca3af;
   display: block;
   font-size: 14px;
   margin-bottom: 12px;
@@ -457,8 +493,13 @@
 
 .postCardBody h2 {
   font-size: 24px;
-  line-height: 1.25;
-  margin: 0 0 12px;
+  line-height: 1.35;
+  margin: 0 0 16px;
+  transition: color 0.3s ease;
+}
+
+.postCard:hover .postCardBody h2 {
+  color: #c2410c;
 }
 
 .postCardBody a {
@@ -469,12 +510,27 @@
 .postCardBody p {
   color: #4b5563;
   line-height: 1.7;
-  margin-bottom: 20px;
+  margin-bottom: 24px;
+  flex-grow: 1;
 }
 
 .readMore {
   color: #f47b20 !important;
   font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  transition: gap 0.3s ease;
+  text-decoration: none;
+}
+
+.postCard:hover .readMore {
+  gap: 12px;
+}
+
+.readMore::after {
+  content: '→';
+  font-size: 18px;
 }
 
 .Blog_new_image{

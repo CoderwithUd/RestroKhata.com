@@ -1,4 +1,5 @@
 import Blog1 from "@/components/blogs/blog1";
+import Blog2 from "@/components/blogs/blog2";
 import type { Blog } from "@/data/blogs";
 import type { ComponentType } from "react";
 
@@ -9,4 +10,5 @@ export type BlogPostProps = {
 
 export const blogComponents: Record<string, ComponentType<BlogPostProps>> = {
   blog1: Blog1,
+  blog2: Blog2,
 };
