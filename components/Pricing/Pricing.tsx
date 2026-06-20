@@ -14,8 +14,16 @@ export default function Pricing() {
             <Reveal delay={((index % 3) + 1) as 1 | 2 | 3} key={plan.name}>
               <article className={`${styles.card} ${plan.popular ? styles.popular : ""}`}>
                 {plan.popular ? <span className={styles.popularBadge}>Most Popular</span> : null}
-                <h3>{plan.name}</h3>
-                <p className={styles.price}>{plan.price}<span>{plan.suffix}</span></p>
+                <h3 className={styles.planHeader}>
+                  {plan.name}
+                  {/* @ts-expect-error adding custom field */}
+                  {plan.discountBadge && <span className={styles.discountBadge}>{plan.discountBadge}</span>}
+                </h3>
+                <p className={styles.price}>
+                  {/* @ts-expect-error adding custom field */}
+                  {plan.originalPrice && <del className={styles.originalPrice}>{plan.originalPrice}</del>}
+                  {plan.price}<span>{plan.suffix}</span>
+                </p>
                 <p className={styles.desc}>{plan.description}</p>
                 <ul>{plan.features.map((feature) => <li key={feature}>{feature}</li>)}</ul>
                 <a href="#demo" className={plan.popular ? styles.primaryButton : styles.ghostButton}>{plan.cta}</a>

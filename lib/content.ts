@@ -166,6 +166,8 @@ export const plans = [
   {
     name: "Annual",
     price: "₹3,999",
+    originalPrice: "₹11,988",
+    discountBadge: "67% OFF",
     suffix: "/year",
     description: "Biggest Offer: Limited time only",
     features: [
