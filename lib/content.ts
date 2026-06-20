@@ -130,55 +130,52 @@ export const features = [
   }
 ] as const;
 
+const coreFeatures = [
+  "Complete platform with no feature locks",
+  "Cafe Mode and Restaurant Mode",
+  "Unlimited staff members",
+  "QR ordering for all tables",
+  "GST invoices and UPI billing",
+  "Advanced KDS & Revenue Reports",
+  "Priority WhatsApp support"
+];
+
 export const plans = [
   {
-    name: "Starter",
+    name: "Free Trial",
     price: "FREE",
     description: "3 Months - Full Access",
-    features: [
-      "Complete platform with no feature locks",
-      "Cafe Mode and Restaurant Mode",
-      "Up to 3 staff members",
-      "QR ordering for all tables",
-      "GST invoices and UPI billing",
-      "KOT print support",
-      "WhatsApp support during setup"
-    ],
+    features: coreFeatures,
     cta: "Start Free Trial"
   },
   {
-    name: "Growth",
+    name: "1 Month",
     price: "₹999",
     suffix: "/month",
-    description: "After 1-month free trial",
-    features: [
-      "Everything in Starter",
-      "Unlimited staff members",
-      "Advanced KDS: Kitchen, Bar, and Counter",
-      "Customer CRM with visit history",
-      "Expense tracking and monthly P&L reports",
-      "Group invoicing across tables",
-      "Priority WhatsApp support"
-    ],
-    cta: "Get Growth Plan",
-    popular: true
+    description: "Pay as you go monthly",
+    features: coreFeatures,
+    cta: "Get Monthly Plan"
   },
   {
-    name: "Annual",
-    price: "₹3,999",
+    name: "6 Months",
+    price: "₹3,899",
+    originalPrice: "₹5,994",
+    discountBadge: "35% OFF",
+    suffix: "/6 mo",
+    description: "Half-yearly savings",
+    features: coreFeatures,
+    cta: "Get 6 Months Plan"
+  },
+  {
+    name: "1 Year",
+    price: "₹3,599",
     originalPrice: "₹11,988",
-    discountBadge: "67% OFF",
+    discountBadge: "70% OFF",
     suffix: "/year",
     description: "Biggest Offer: Limited time only",
-    features: [
-      "Everything in Growth",
-      "Massive savings vs monthly billing",
-      "Priority onboarding call",
-      "Early access to new features",
-      "Custom domain invoice branding",
-      "Dedicated WhatsApp support line"
-    ],
-    cta: "Claim Yearly Offer"
+    features: coreFeatures,
+    cta: "Claim Yearly Offer",
+    popular: true
   }
 ];
 
