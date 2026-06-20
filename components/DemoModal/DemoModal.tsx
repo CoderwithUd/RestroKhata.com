@@ -72,7 +72,7 @@ export default function DemoModal() {
       });
       window.open(whatsappUrl, "_blank");
       closeModal();
-    } catch (error) {
+    } catch {
       window.open(whatsappUrl, "_blank");
       closeModal();
     } finally {

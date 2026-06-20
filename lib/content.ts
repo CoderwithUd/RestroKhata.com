@@ -140,7 +140,18 @@ export const coreFeatures = [
   "Priority WhatsApp support"
 ];
 
-export const plans = [
+export type Plan = {
+  name: string;
+  price: string;
+  description: string;
+  cta: string;
+  suffix?: string;
+  originalPrice?: string;
+  discountBadge?: string;
+  popular?: boolean;
+};
+
+export const plans: Plan[] = [
   {
     name: "Free Trial",
     price: "FREE",

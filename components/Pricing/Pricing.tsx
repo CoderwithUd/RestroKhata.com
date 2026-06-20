@@ -16,12 +16,12 @@ export default function Pricing() {
                 {plan.popular ? <span className={styles.popularBadge}>Most Popular</span> : null}
                 <h3 className={styles.planHeader}>
                   {plan.name}
-                  {(plan as any).discountBadge && <span className={styles.discountBadge}>{(plan as any).discountBadge}</span>}
+                  {plan.discountBadge && <span className={styles.discountBadge}>{plan.discountBadge}</span>}
                 </h3>
                 <div className={styles.priceBlock}>
-                  {(plan as any).originalPrice && <del className={styles.originalPrice}>{(plan as any).originalPrice}</del>}
+                  {plan.originalPrice && <del className={styles.originalPrice}>{plan.originalPrice}</del>}
                   <p className={styles.price}>{plan.price}</p>
-                  {(plan as any).suffix && <span className={styles.priceSuffix}>{(plan as any).suffix}</span>}
+                  {plan.suffix && <span className={styles.priceSuffix}>{plan.suffix}</span>}
                 </div>
                 <p className={styles.desc}>{plan.description}</p>
                 <a href="#demo" className={plan.popular ? styles.primaryButton : styles.ghostButton}>{plan.cta}</a>
