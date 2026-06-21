@@ -22,7 +22,7 @@ async function getLatestRelease() {
       return null;
     }
     return res.json();
-  } catch (error) {
+  } catch {
     return null;
   }
 }
@@ -38,10 +38,11 @@ export default async function DownloadPage() {
 
   if (release && release.assets) {
     version = release.tag_name;
-    const exeAsset = release.assets.find((a: any) => a.name.endsWith(".exe"));
-    const dmgAsset = release.assets.find((a: any) => a.name.endsWith(".dmg"));
-    const appImageAsset = release.assets.find((a: any) => a.name.endsWith(".AppImage") || a.name.endsWith(".deb"));
-    const apkAsset = release.assets.find((a: any) => a.name.endsWith(".apk"));
+    type Asset = { name: string; browser_download_url: string };
+    const exeAsset = release.assets.find((a: Asset) => a.name.endsWith(".exe"));
+    const dmgAsset = release.assets.find((a: Asset) => a.name.endsWith(".dmg"));
+    const appImageAsset = release.assets.find((a: Asset) => a.name.endsWith(".AppImage") || a.name.endsWith(".deb"));
+    const apkAsset = release.assets.find((a: Asset) => a.name.endsWith(".apk"));
     
     if (exeAsset) windowsUrl = exeAsset.browser_download_url;
     if (dmgAsset) macUrl = dmgAsset.browser_download_url;
