@@ -11,6 +11,7 @@ const links = [
   { href: "/#how-it-works", label: "How It Works" },
   { href: "/#features", label: "Features" },
   { href: "/blogs", label: "Blogs" },
+  { href: "/download", label: "Download App" },
   { href: "/privacy-policy", label: "Privacy Policy" },
   { href: "/#pricing", label: "Pricing" },
   { href: "/#faq", label: "FAQ" }
