@@ -62,4 +62,27 @@ export const blogs: Blog[] = [
       "Modern POS system for restaurant India"
     ],
   },
+  {
+    slug: "thermal-printer-setup-restaurant-pos-chhattisgarh",
+    title: "Thermal Printer Setup for Restaurant POS | Chhattisgarh Cafe Guide 2026",
+    description: "Learn how to connect and configure a thermal printer with your restaurant POS software. Step-by-step guide for cafes and restaurants in Raipur, Bhilai, Durg and across Chhattisgarh.",
+    image: "/blogs/b3/thermal-printer-restaurant-pos-raipur-chhattisgarh.webp",
+    date: "2026-06-01",
+    updatedAt: "2026-06-23",
+    readingTime: "6 minutes",
+    category: "Restaurant Technology",
+    component: "blog3",
+    keywords: [
+      "thermal printer for restaurant",
+      "thermal printer setup POS",
+      "restaurant billing printer Raipur",
+      "KOT printer Chhattisgarh",
+      "cafe thermal printer Bhilai",
+      "GST bill printer restaurant",
+      "restaurant POS printer setup",
+      "80mm thermal printer restaurant",
+      "RestroKhata printer setup",
+      "billing software Chhattisgarh"
+    ],
+  },
 ];
