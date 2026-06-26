@@ -85,4 +85,27 @@ export const blogs: Blog[] = [
       "billing software Chhattisgarh"
     ],
   },
+  {
+    slug: "best-restaurant-billing-software-chhattisgarh-raipur-bhilai-durg-2026",
+    title: "Best Restaurant Billing Software in Chhattisgarh 2026 | Raipur, Bhilai, Durg & Rajnandgaon",
+    description: "Looking for the best restaurant billing software in Chhattisgarh? Compare top POS systems for cafes and restaurants in Raipur, Bhilai, Durg and Rajnandgaon. Free trial available.",
+    image: "/blogs/b4/best-restaurant-billing-software-chhattisgarh-raipur-2026.png",
+    date: "2026-06-20",
+    updatedAt: "2026-06-23",
+    readingTime: "8 minutes",
+    category: "Restaurant Technology",
+    component: "blog4",
+    keywords: [
+      "best restaurant billing software Chhattisgarh",
+      "restaurant POS Raipur",
+      "cafe billing software Bhilai",
+      "restaurant software Durg",
+      "GST billing software restaurant CG",
+      "restaurant POS Rajnandgaon",
+      "best POS for cafe Chhattisgarh",
+      "restaurant billing app Raipur 2026",
+      "RestroKhata Chhattisgarh",
+      "cheap restaurant software Raipur"
+    ],
+  },
 ];
