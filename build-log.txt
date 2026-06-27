@@ -1,0 +1,43 @@
+
+> restrokhata-landing@1.0.0 build
+> next build
+
+   ▲ Next.js 15.5.18
+
+   Creating an optimized production build ...
+ ✓ Compiled successfully in 13.5s
+   Linting and checking validity of types ...
+   Collecting page data ...
+   Generating static pages (0/16) ...
+   Generating static pages (4/16) 
+   Generating static pages (8/16) 
+   Generating static pages (12/16) 
+ ✓ Generating static pages (16/16)
+   Finalizing page optimization ...
+   Collecting build traces ...
+
+Route (app)                                                                            Size  First Load JS  Revalidate  Expire
+┌ ○ /                                                                               2.37 kB         118 kB
+├ ○ /_not-found                                                                     1.04 kB         104 kB
+├ ○ /about                                                                            558 B         116 kB
+├ ○ /blogs                                                                            815 B         112 kB
+├ ● /blogs/[slug]                                                                     815 B         112 kB
+├   ├ /blogs/qr-menu-system-restaurants-india
+├   ├ /blogs/restaurant-billing-software-raipur-durg-rajnandgaon
+├   ├ /blogs/thermal-printer-setup-restaurant-pos-chhattisgarh
+├   └ /blogs/best-restaurant-billing-software-chhattisgarh-raipur-bhilai-durg-2026
+├ ○ /contact                                                                          561 B         116 kB
+├ ○ /download                                                                         489 B         116 kB          1h      1y
+├ ○ /privacy-policy                                                                   532 B         116 kB
+├ ○ /robots.txt                                                                       127 B         103 kB
+├ ○ /sitemap.xml                                                                      127 B         103 kB
+└ ○ /terms-and-condition                                                              518 B         116 kB
++ First Load JS shared by all                                                        103 kB
+  ├ chunks/255-6a3c8948473860e3.js                                                  46.3 kB
+  ├ chunks/4bd1b696-ec67ac596534aad8.js                                             54.3 kB
+  └ other shared chunks (total)                                                     2.14 kB
+
+
+○  (Static)  prerendered as static content
+●  (SSG)     prerendered as static HTML (uses generateStaticParams)
+

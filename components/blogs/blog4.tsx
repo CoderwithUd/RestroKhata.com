@@ -15,7 +15,7 @@ const faqs = [
   },
   {
     question: "Is there a free restaurant billing software in Chhattisgarh?",
-    answer: "RestroKhata offers a free trial with full access to all features. After the trial period, it moves to a paid subscription — but at pricing that's affordable for even small cafes and dhabas.",
+    answer: "RestroKhata offers a free trial with full access to all features. After the trial period, it moves to a paid subscription — but at pricing that&apos;s affordable for even small cafes and dhabas.",
   },
   {
     question: "Does restaurant billing software work offline in Chhattisgarh?",
@@ -27,7 +27,7 @@ const faqs = [
   },
   {
     question: "Can I manage multiple restaurant outlets in Chhattisgarh with one software?",
-    answer: "Yes. RestroKhata's multi-outlet plan allows you to manage multiple locations — each with its own billing and reports — from a single dashboard.",
+    answer: "Yes. RestroKhata&apos;s multi-outlet plan allows you to manage multiple locations — each with its own billing and reports — from a single dashboard.",
   },
   {
     question: "Does RestroKhata support UPI payment integration?",
@@ -136,14 +136,14 @@ export default function Blog4({ blog, relatedBlogs }: BlogPostProps) {
               <p>RestroKhata is the most complete restaurant billing software for small and mid-size cafes and restaurants in Chhattisgarh. It includes GST-compliant billing, automatic KOT printing, QR ordering, table management, UPI/card payment integration, and daily sales reports — all in one system designed specifically for Indian restaurants. It works in Raipur, Bhilai, Durg, Rajnandgaon, and across Chhattisgarh with Hindi support and local GST settings pre-configured.</p>
               
               <h2>Why Choosing the Right Billing Software Matters for Your Restaurant</h2>
-              <p>Most restaurant owners in Raipur, Bhilai, and Durg make the same mistake: they pick a billing software based on price alone — and end up with a tool that doesn't handle GST properly, doesn't print KOT slips, or doesn't work offline when the internet cuts out.</p>
+              <p>Most restaurant owners in Raipur, Bhilai, and Durg make the same mistake: they pick a billing software based on price alone — and end up with a tool that doesn&apos;t handle GST properly, doesn&apos;t print KOT slips, or doesn&apos;t work offline when the internet cuts out.</p>
               <p>The wrong software costs more in the long run — through billing errors, GST filing headaches, slow service during peak hours, and lost customer data.</p>
               <p>This guide gives you a clear, honest breakdown of what to look for — and which software actually works for restaurants in Chhattisgarh in 2026.</p>
             </section>
 
             <section className={styles.section}>
               <h2>What Features Should a Restaurant Billing Software Have?</h2>
-              <p>Before comparing options, here's what a restaurant in Chhattisgarh actually needs from its billing software:</p>
+              <p>Before comparing options, here&apos;s what a restaurant in Chhattisgarh actually needs from its billing software:</p>
               <div className={styles.tableWrap}>
                 <table className={styles.blogTable}>
                   <thead>
@@ -361,24 +361,24 @@ export default function Blog4({ blog, relatedBlogs }: BlogPostProps) {
               </div>
               <p><em>RestroKhata is used by restaurants and cafes across Chhattisgarh — from Raipur to Jagdalpur.</em></p>
               <h3>Raipur</h3>
-              <p>Raipur is Chhattisgarh's largest city with a rapidly growing food service market. Restaurants in areas like Pandri, Telibandha, Shankar Nagar, and VIP Road are adopting cloud POS and QR ordering to handle growing customer volume. Internet connectivity is strong, making WiFi printers and cloud sync reliable.<br/>
+              <p>Raipur is Chhattisgarh&apos;s largest city with a rapidly growing food service market. Restaurants in areas like Pandri, Telibandha, Shankar Nagar, and VIP Road are adopting cloud POS and QR ordering to handle growing customer volume. Internet connectivity is strong, making WiFi printers and cloud sync reliable.<br/>
               <strong>Most popular use cases in Raipur:</strong> Multi-table dine-in restaurants, cafe chains, and cloud kitchens using RestroKhata for GST billing + aggregator integration.</p>
 
               <h3>Bhilai</h3>
-              <p>Bhilai's restaurant scene is concentrated around Steel City areas, Sector 6, Sector 9, and Nehru Nagar. Family restaurants and mid-size cafes dominate. Offline billing reliability is important here.<br/>
-              <strong>Most popular use cases in Bhilai:</strong> Family restaurants with 20–40 tables using RestroKhata's table management + KOT system for smooth peak-hour operations.</p>
+              <p>Bhilai&apos;s restaurant scene is concentrated around Steel City areas, Sector 6, Sector 9, and Nehru Nagar. Family restaurants and mid-size cafes dominate. Offline billing reliability is important here.<br/>
+              <strong>Most popular use cases in Bhilai:</strong> Family restaurants with 20–40 tables using RestroKhata&apos;s table management + KOT system for smooth peak-hour operations.</p>
 
               <h3>Durg</h3>
               <p>Durg has a strong dhaba and local restaurant culture alongside growing modern cafe setups. Simple, Hindi-friendly billing software is key.<br/>
-              <strong>Most popular use cases in Durg:</strong> Dhabas and local restaurants using RestroKhata's Hindi interface + basic KOT printing for faster billing.</p>
+              <strong>Most popular use cases in Durg:</strong> Dhabas and local restaurants using RestroKhata&apos;s Hindi interface + basic KOT printing for faster billing.</p>
 
               <h3>Rajnandgaon</h3>
               <p>Rajnandgaon is a growing Tier-2 market with increasing restaurant density. Affordability and simplicity are the top priorities for restaurant owners here.<br/>
-              <strong>Most popular use cases in Rajnandgaon:</strong> Small cafes and tiffin centers starting with RestroKhata's starter plan — basic billing + daily sales report.</p>
+              <strong>Most popular use cases in Rajnandgaon:</strong> Small cafes and tiffin centers starting with RestroKhata&apos;s starter plan — basic billing + daily sales report.</p>
             </section>
 
             <section className={styles.section}>
-              <h2>What Happens When You Don't Have Proper Billing Software</h2>
+              <h2>What Happens When You Don&apos;t Have Proper Billing Software</h2>
               <p>Many restaurants in Chhattisgarh are still using one of these outdated approaches:</p>
               <ul className={styles.list}>
                 <li><strong>Manual billing register:</strong> No GST split, no sales tracking, no KOT, prone to theft and errors. Fine for a single-item stall — completely inadequate for a restaurant.</li>
@@ -425,13 +425,13 @@ export default function Blog4({ blog, relatedBlogs }: BlogPostProps) {
                 />
               </div>
               <p><em>From sign-up to first bill printed — RestroKhata setup takes under 1 hour.</em></p>
-              <p>Switching billing software sounds complicated. With RestroKhata, it isn't.</p>
+              <p>Switching billing software sounds complicated. With RestroKhata, it isn&apos;t.</p>
               <ul className={styles.list}>
                 <li><strong>Step 1: Start Free Trial</strong> - Sign up at restrokhata.com — no payment required. Access the full system immediately.</li>
                 <li><strong>Step 2: Set Up Your Restaurant Profile</strong> - Enter restaurant name, address, GSTIN, and tax settings. Takes 5 minutes.</li>
                 <li><strong>Step 3: Add Your Menu</strong> - Upload your menu items with categories, prices, and GST rates. Use the bulk upload feature for large menus.</li>
                 <li><strong>Step 4: Connect Your Printer</strong> - Follow the printer setup guide to connect your thermal printer via USB or LAN. Takes under 15 minutes.</li>
-                <li><strong>Step 5: Train Your Staff</strong> - RestroKhata's interface is simple enough for most staff to learn in one shift. Hindi interface available.</li>
+                <li><strong>Step 5: Train Your Staff</strong> - RestroKhata&apos;s interface is simple enough for most staff to learn in one shift. Hindi interface available.</li>
                 <li><strong>Step 6: Go Live</strong> - Start billing on Day 1. No downtime, no complicated migration.</li>
               </ul>
             </section>
@@ -448,7 +448,7 @@ export default function Blog4({ blog, relatedBlogs }: BlogPostProps) {
 
             <section className={styles.section}>
               <h2>Conclusion: Stop Guessing. Start Growing.</h2>
-              <p>Chhattisgarh's restaurant industry is growing — in Raipur, Bhilai, Durg, and beyond. Customers expect faster service, digital payments, and accurate bills. They want UPI QR codes on receipts and WhatsApp bills.</p>
+              <p>Chhattisgarh&apos;s restaurant industry is growing — in Raipur, Bhilai, Durg, and beyond. Customers expect faster service, digital payments, and accurate bills. They want UPI QR codes on receipts and WhatsApp bills.</p>
               <p>Your billing software is not a back-office tool anymore. It is the engine of your restaurant — managing orders, billing, kitchen communication, GST compliance, and business reporting, all at once.</p>
               <p><strong>RestroKhata is the only restaurant billing software built specifically for the way cafes and restaurants in Chhattisgarh operate</strong> — with Hindi support, local GST settings, affordable pricing, and setup that takes under an hour.</p>
             </section>
